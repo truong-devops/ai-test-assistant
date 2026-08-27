@@ -15,6 +15,8 @@ const (
 	StatusValidating        = "VALIDATING"
 	StatusRepairing         = "REPAIRING"
 	StatusWaitingReview     = "WAITING_REVIEW"
+	StatusAccepted          = "ACCEPTED"
+	StatusRejected          = "REJECTED"
 	StatusFailed            = "FAILED"
 )
 

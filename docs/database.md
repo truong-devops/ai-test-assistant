@@ -40,6 +40,14 @@ output-truncation marker. Candidate ownership is checked inside the insert.
 Results and the analysis transition to `WAITING_REVIEW` (all pass) or
 `REPAIRING` (any failure/timeout) commit atomically.
 
+Phase 8 adds `repair_attempts`. Each row links the failed generated version and
+validation run to the repaired generated version. It stores the attempt number,
+previous/repaired code and hashes, model, prompt version, provider response ID,
+and a bounded reason derived from validation feedback. New generated versions
+use increasing `generation_attempt` values. Repair records and the transition
+back to `VALIDATING` commit atomically; when no attempt remains, the analysis
+instead transitions to `WAITING_REVIEW` with its failed validation history.
+
 Migrations are in `backend/migrations` and use the `golang-migrate` filename
 format. Apply them with `make migrate-up`; roll back one migration with
 `make migrate-down`.

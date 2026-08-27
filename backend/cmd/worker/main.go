@@ -19,6 +19,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
@@ -82,6 +83,11 @@ func main() {
 	validationProcessor := validation.NewProcessor(projectRepository, generationRepository,
 		validation.NewWorkspaceManager(gitLabClient, validation.WorkspaceOptions{}),
 		sandboxRunner, validationRepository, cfg.Sandbox.Timeout)
+	repairRepository := repair.NewRepository(database.Pool())
+	repairProcessor := repair.NewProcessor(jobRepository, recommendationRepository,
+		generationRepository, validationRepository,
+		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider,
+		repairRepository, cfg.Repair.MaxAttempts)
 	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,
@@ -103,6 +109,8 @@ func main() {
 			generationProcessor, options),
 		job.NewWorker(logger.With("phase", "validation"), validationRepository,
 			validationProcessor, options),
+		job.NewWorker(logger.With("phase", "repair"), repairRepository,
+			repairProcessor, options),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

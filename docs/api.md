@@ -139,3 +139,13 @@ results, or HTTP 404 when the analysis does not exist:
 
 The HTTP API only reads stored results. Generated code is executed by the
 background worker inside the isolated Docker sandbox.
+
+## Repair attempts
+
+`GET /api/analyses/{id}/repairs` returns the auditable Phase 8 repair history,
+or HTTP 404 when the analysis does not exist. Each item contains the failed
+generated-test ID, validation-run ID, repaired generated-test ID, repair number,
+previous/repaired source and hashes, model/prompt trace, and repair reason.
+
+The endpoint never invokes the LLM. Repairs run asynchronously, append a new
+generated-test version, and are bounded by `MAX_REPAIR_ATTEMPTS`.

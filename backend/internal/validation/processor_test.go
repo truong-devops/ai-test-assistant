@@ -26,7 +26,7 @@ type generatedReaderStub struct {
 	err   error
 }
 
-func (s generatedReaderStub) List(context.Context, int64) ([]generation.GeneratedTest, error) {
+func (s generatedReaderStub) ListLatest(context.Context, int64) ([]generation.GeneratedTest, error) {
 	return s.items, s.err
 }
 

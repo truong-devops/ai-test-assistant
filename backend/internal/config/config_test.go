@@ -30,6 +30,7 @@ func TestLoad(t *testing.T) {
 	t.Setenv("SANDBOX_MEMORY_MB", "768")
 	t.Setenv("SANDBOX_CPU_LIMIT", "1.5")
 	t.Setenv("SANDBOX_PIDS_LIMIT", "96")
+	t.Setenv("MAX_REPAIR_ATTEMPTS", "3")
 
 	cfg, err := Load()
 	if err != nil {
@@ -54,6 +55,9 @@ func TestLoad(t *testing.T) {
 	if cfg.Sandbox.Image != "sandbox:test" || cfg.Sandbox.Timeout != 45*time.Second ||
 		cfg.Sandbox.MemoryMB != 768 || cfg.Sandbox.CPULimit != 1.5 || cfg.Sandbox.PIDsLimit != 96 {
 		t.Fatalf("Load() sandbox config = %+v", cfg.Sandbox)
+	}
+	if cfg.Repair.MaxAttempts != 3 {
+		t.Fatalf("Load() repair config = %+v", cfg.Repair)
 	}
 }
 
@@ -105,5 +109,25 @@ func TestLoadRejectsInvalidSandboxConfiguration(t *testing.T) {
 	t.Setenv("SANDBOX_MEMORY_MB", "32")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want sandbox validation error")
+	}
+}
+
+func TestLoadRejectsUnboundedRepairConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("MAX_REPAIR_ATTEMPTS", "4")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want repair bound error")
+	}
+}
+
+func TestLoadUsesBoundedRepairDefault(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("MAX_REPAIR_ATTEMPTS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Repair.MaxAttempts != 2 {
+		t.Fatalf("repair max attempts=%d, want 2", cfg.Repair.MaxAttempts)
 	}
 }

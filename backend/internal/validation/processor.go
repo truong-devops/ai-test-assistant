@@ -17,7 +17,7 @@ type ProjectReader interface {
 }
 
 type GeneratedTestReader interface {
-	List(ctx context.Context, analysisID int64) ([]generation.GeneratedTest, error)
+	ListLatest(ctx context.Context, analysisID int64) ([]generation.GeneratedTest, error)
 }
 
 type WorkspacePreparer interface {
@@ -57,7 +57,7 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 	if projectItem.ID != claimed.ProjectID || projectItem.GitLabProjectID <= 0 {
 		return fmt.Errorf("validation project identity does not match claimed analysis")
 	}
-	generatedTests, err := p.generated.List(ctx, claimed.ID)
+	generatedTests, err := p.generated.ListLatest(ctx, claimed.ID)
 	if err != nil {
 		return fmt.Errorf("list generated tests for validation: %w", err)
 	}

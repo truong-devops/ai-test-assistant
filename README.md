@@ -4,11 +4,11 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository currently implements Phases 0-7: the backend foundation,
+This repository currently implements Phases 0-8: the backend foundation,
 GitLab capture pipeline, deterministic Go changed-symbol analyzer, and
 project-isolated knowledge/RAG index plus structured AI test recommendations
-and generated Go test candidates with isolated Docker validation. AI repair and
-the frontend are intentionally not implemented yet.
+and generated Go test candidates with isolated Docker validation and a bounded,
+auditable AI repair loop. The human-review frontend is not implemented yet.
 
 ## Prerequisites
 
@@ -61,6 +61,7 @@ Stop the stack with `make dev-down`. Run all local tests with `make test`.
 - `GET /api/analyses/{id}/recommendations`
 - `GET /api/analyses/{id}/generated-tests`
 - `GET /api/analyses/{id}/validations`
+- `GET /api/analyses/{id}/repairs`
 
 Configure a GitLab Merge Request webhook to call `/api/webhooks/gitlab`, set
 its secret to `GITLAB_WEBHOOK_SECRET`, and enable Merge request events. The API
@@ -91,7 +92,14 @@ snapshot, inserts one candidate, copies it into an anonymous Docker volume, and
 runs `go test -count=1 ./...` in the non-root sandbox. Network, capabilities,
 privilege escalation, swap, CPU, memory, PIDs, output size, and wall time are
 bounded. Passing jobs advance to `WAITING_REVIEW`; failed or timed-out tests
-advance to `REPAIRING` for the Phase 8 handoff.
+advance to `REPAIRING` for the bounded Phase 8 repair worker.
+
+The Phase 8 worker uses the failed validation output plus exact project context
+to create a replacement test-only version. Every repair links the previous
+generated test, failed validation, new generated version, model, prompt version,
+reason, and code hashes. Repaired versions return to `VALIDATING`; after
+`MAX_REPAIR_ATTEMPTS` (default 2, hard maximum 3), a still-failing analysis moves
+to `WAITING_REVIEW` so the loop always terminates.
 
 Build and exercise the real sandbox with `make sandbox-test`. Runtime dependency
 downloads are intentionally disabled (`GOPROXY=off`); target repositories must

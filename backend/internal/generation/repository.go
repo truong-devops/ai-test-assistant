@@ -136,6 +136,25 @@ func (r *Repository) List(ctx context.Context, analysisID int64) ([]GeneratedTes
 		code, code_hash, model_name, prompt_version, provider_response_id,
 		generation_attempt, created_at, updated_at
 		FROM generated_tests WHERE analysis_job_id=$1 ORDER BY created_at, id`
+	return r.list(ctx, query, analysisID)
+}
+
+func (r *Repository) ListLatest(ctx context.Context, analysisID int64) ([]GeneratedTest, error) {
+	const query = `SELECT id, analysis_job_id, recommendation_id, file_path, test_names,
+		code, code_hash, model_name, prompt_version, provider_response_id,
+		generation_attempt, created_at, updated_at
+		FROM (
+			SELECT generated.*, ROW_NUMBER() OVER (
+				PARTITION BY recommendation_id
+				ORDER BY generation_attempt DESC, id DESC
+			) AS version_rank
+			FROM generated_tests AS generated WHERE analysis_job_id=$1
+		) AS versions
+		WHERE version_rank=1 ORDER BY recommendation_id, id`
+	return r.list(ctx, query, analysisID)
+}
+
+func (r *Repository) list(ctx context.Context, query string, analysisID int64) ([]GeneratedTest, error) {
 	rows, err := r.pool.Query(ctx, query, analysisID)
 	if err != nil {
 		return nil, fmt.Errorf("list generated tests: %w", err)

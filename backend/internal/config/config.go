@@ -25,6 +25,7 @@ type Config struct {
 	LLM             LLMConfig
 	Worker          WorkerConfig
 	Sandbox         SandboxConfig
+	Repair          RepairConfig
 }
 
 type GitLabConfig struct {
@@ -63,6 +64,10 @@ type SandboxConfig struct {
 	PIDsLimit int
 }
 
+type RepairConfig struct {
+	MaxAttempts int
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		AppEnv:          envOrDefault("APP_ENV", "development"),
@@ -96,6 +101,7 @@ func Load() (Config, error) {
 			Image:   envOrDefault("SANDBOX_IMAGE", "ai-test-assistant-sandbox:phase7"),
 			Timeout: 60 * time.Second, MemoryMB: 512, CPULimit: 1, PIDsLimit: 128,
 		},
+		Repair: RepairConfig{MaxAttempts: 2},
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -194,6 +200,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("SANDBOX_PIDS_LIMIT must be between 16 and 4096")
 		}
 		cfg.Sandbox.PIDsLimit = parsed
+	}
+	if value := os.Getenv("MAX_REPAIR_ATTEMPTS"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 || parsed > 3 {
+			return Config{}, fmt.Errorf("MAX_REPAIR_ATTEMPTS must be between 0 and 3")
+		}
+		cfg.Repair.MaxAttempts = parsed
 	}
 
 	return cfg, nil

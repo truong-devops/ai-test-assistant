@@ -45,6 +45,13 @@ validation worker -> fetch source-SHA snapshot into a bounded private workspace
                   -> non-root `go test` with no network + CPU/memory/PID/time caps
                   -> transactional validation_runs
                   -> pass: WAITING_REVIEW / fail or timeout: REPAIRING
+
+repair worker -> read latest failed version + its exact validation feedback
+              -> retrieve project-filtered interfaces/tests/mocks
+              -> repair-test-v1 structured LLM request
+              -> immutable production code + fixed target path checks
+              -> transactional generated_tests version + repair_attempts audit
+              -> VALIDATING, or WAITING_REVIEW when the hard limit is reached
 ```
 
 Worker claims use a bounded lease. Temporary GitLab/preparation failures are
@@ -72,7 +79,10 @@ The trusted worker controls Docker, but it transfers the snapshot through an
 anonymous volume instead of bind-mounting its filesystem; the sandbox never
 receives the Docker socket. Runtime dependency downloads are disabled, output
 is bounded and redacted, and the container plus workspace are removed after
-every run. Future phases add AI repair and review actions.
+every run. Phase 8 keeps AI repair attempts separate from infrastructure retry
+counts and caps them at three. The repair worker can only append a new generated
+test version; it cannot mutate repository production files. Future phases add
+human review actions and the UI.
 
 ## Decisions
 
@@ -87,5 +97,8 @@ every run. Future phases add AI repair and review actions.
   candidates with the transition to `VALIDATING`.
 - Validation writes verify candidate ownership and atomically commit results
   with the transition to `WAITING_REVIEW` or `REPAIRING`.
+- Repair writes verify source-version, validation, recommendation, and analysis
+  ownership before atomically appending a new generated version and returning
+  the analysis to `VALIDATING`.
 - The sample project is isolated in its own Go module so it can later be
   checked out and analyzed as a target repository.

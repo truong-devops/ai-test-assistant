@@ -29,3 +29,10 @@
   into a generated-test sandbox.
 - Phase 7 uses `GOPROXY=off`; projects with external modules need committed
   `vendor/` content until a trusted immutable dependency-cache design is added.
+- Phase 8 must append repaired generated-test versions and `repair_attempts` in
+  one transaction. Never update the previous generated code in place.
+- `MAX_REPAIR_ATTEMPTS` defaults to 2, accepts 0 to disable repairs, and has a
+  hard maximum of 3. It is separate from `WORKER_MAX_ATTEMPTS`, which only
+  controls infrastructure/provider retry behavior.
+- Repair prompts must include failed validation feedback, preserve the target
+  test path, forbid production-code changes, and reject unchanged code.

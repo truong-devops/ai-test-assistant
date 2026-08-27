@@ -87,6 +87,7 @@ services:
       SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-512}
       SANDBOX_CPU_LIMIT: ${SANDBOX_CPU_LIMIT:-1.0}
       SANDBOX_PIDS_LIMIT: ${SANDBOX_PIDS_LIMIT:-128}
+      MAX_REPAIR_ATTEMPTS: ${MAX_REPAIR_ATTEMPTS:-2}
     depends_on:
       migrate:
         condition: service_completed_successfully
