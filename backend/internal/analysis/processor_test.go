@@ -56,6 +56,9 @@ func (s *gitLabStub) GetMergeRequest(_ context.Context, projectID, _ int64) (git
 func (s *gitLabStub) GetMergeRequestDiff(context.Context, int64, int64) ([]gitlab.FileDiff, error) {
 	return s.diffs, nil
 }
+func (s *gitLabStub) GetFileRaw(context.Context, int64, string, string) ([]byte, error) {
+	return nil, nil
+}
 
 type saverStub struct {
 	metadata job.MergeRequestMetadata

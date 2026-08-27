@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	StatusPending         = "PENDING"
-	StatusFetchingSource  = "FETCHING_SOURCE"
-	StatusAnalyzingChange = "ANALYZING_CHANGE"
-	StatusFailed          = "FAILED"
+	StatusPending           = "PENDING"
+	StatusFetchingSource    = "FETCHING_SOURCE"
+	StatusAnalyzingChange   = "ANALYZING_CHANGE"
+	StatusRetrievingContext = "RETRIEVING_CONTEXT"
+	StatusFailed            = "FAILED"
 )
 
 type AnalysisJob struct {
@@ -63,4 +64,17 @@ type ChangedFile struct {
 	DeletedFile   bool   `json:"deleted_file"`
 	Collapsed     bool   `json:"collapsed"`
 	TooLarge      bool   `json:"too_large"`
+}
+
+type ChangedSymbol struct {
+	ID            int64  `json:"id"`
+	ChangedFileID int64  `json:"changed_file_id"`
+	SymbolName    string `json:"symbol_name"`
+	SymbolKind    string `json:"symbol_kind"`
+	ReceiverName  string `json:"receiver_name,omitempty"`
+	PackageName   string `json:"package_name"`
+	StartLine     int    `json:"start_line"`
+	EndLine       int    `json:"end_line"`
+	ChangeType    string `json:"change_type"`
+	ChangeSummary string `json:"change_summary"`
 }

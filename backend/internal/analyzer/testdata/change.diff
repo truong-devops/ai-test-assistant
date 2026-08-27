@@ -1,0 +1,15 @@
+@@ -3,11 +3,11 @@
+ func Keep() {
+-	println("old")
++	println("new")
+ }
+ 
+-func Delete() {}
++func Add() {}
+ 
+ type Service struct{}
+ 
+ func (s *Service) Run() {
+-	println("old")
++	println("new")
+ }

@@ -126,6 +126,11 @@ func TestProjectEndpoints(t *testing.T) {
 		if response.Code != test.status {
 			t.Fatalf("GET %s status=%d, want %d", test.path, response.Code, test.status)
 		}
+		if test.path == "/api/analyses/3/changes" &&
+			(!strings.Contains(response.Body.String(), `"changed_symbols"`) ||
+				!strings.Contains(response.Body.String(), `"CreateUser"`)) {
+			t.Fatalf("GET %s body=%s", test.path, response.Body.String())
+		}
 	}
 }
 
@@ -157,9 +162,14 @@ func TestCreateProjectReturnsConflict(t *testing.T) {
 }
 
 type analysisServiceStub struct {
-	items []job.AnalysisJob
-	files []job.ChangedFile
-	err   error
+	items   []job.AnalysisJob
+	files   []job.ChangedFile
+	symbols []job.ChangedSymbol
+	err     error
+}
+
+func (s analysisServiceStub) GetSymbols(context.Context, int64) ([]job.ChangedSymbol, error) {
+	return s.symbols, s.err
 }
 
 func (s analysisServiceStub) List(context.Context) ([]job.AnalysisJob, error) { return s.items, s.err }
@@ -177,7 +187,8 @@ func (s analysisServiceStub) Get(_ context.Context, id int64) (job.AnalysisJob, 
 
 func TestAnalysisEndpoints(t *testing.T) {
 	analyses := analysisServiceStub{items: []job.AnalysisJob{{ID: 3, Status: job.StatusAnalyzingChange}},
-		files: []job.ChangedFile{{ID: 4, NewPath: "service.go"}}}
+		files:   []job.ChangedFile{{ID: 4, NewPath: "service.go"}},
+		symbols: []job.ChangedSymbol{{ID: 5, ChangedFileID: 4, SymbolName: "CreateUser"}}}
 	router := testRouterWithDependencies(checkerStub{}, &repositoryStub{}, analyses)
 	tests := []struct {
 		path   string

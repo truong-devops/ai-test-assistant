@@ -4,9 +4,10 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository currently implements Phase 0, Phase 1, and the GitLab capture
-pipeline from Phase 2. RAG, LLM generation, sandbox execution, repair, and the
-frontend are intentionally not implemented yet.
+This repository currently implements Phases 0-3: the backend foundation,
+GitLab capture pipeline, and deterministic Go changed-symbol analyzer. RAG,
+LLM generation, sandbox execution, repair, and the frontend are intentionally
+not implemented yet.
 
 ## Prerequisites
 
@@ -58,4 +59,6 @@ Stop the stack with `make dev-down`. Run all local tests with `make test`.
 Configure a GitLab Merge Request webhook to call `/api/webhooks/gitlab`, set
 its secret to `GITLAB_WEBHOOK_SECRET`, and enable Merge request events. The API
 returns HTTP 202 after enqueueing; the worker fetches authoritative MR metadata
-and paginated diffs using `GITLAB_TOKEN`.
+and paginated diffs using `GITLAB_TOKEN`. A second worker phase fetches the old
+and new Go source at the MR target/source SHAs, maps unified-diff lines to Go AST
+symbols, persists them, and advances the job to `RETRIEVING_CONTEXT`.

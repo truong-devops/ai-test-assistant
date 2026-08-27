@@ -17,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analysis"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
@@ -65,7 +66,16 @@ func TestWebhookToFetchedChangesPipeline(t *testing.T) {
 		case fmt.Sprintf("/api/v4/projects/%d/merge_requests/5", gitLabProjectID):
 			fmt.Fprint(w, `{"iid":5,"title":"business rule","source_branch":"feature","target_branch":"main","web_url":"https://gitlab.example.com/mr/5","diff_refs":{"head_sha":"authoritative-head","start_sha":"authoritative-target"}}`)
 		case fmt.Sprintf("/api/v4/projects/%d/merge_requests/5/diffs", gitLabProjectID):
-			fmt.Fprint(w, `[{"old_path":"service.go","new_path":"service.go","diff":"@@ -1 +1 @@\n-old\n+new","new_file":false,"renamed_file":false,"deleted_file":false}]`)
+			fmt.Fprint(w, `[{"old_path":"service.go","new_path":"service.go","diff":"@@ -3,5 +3,5 @@\n func Keep() {\n-\tprintln(\"old\")\n+\tprintln(\"new\")\n }\n \n-func Remove() {}\n+func Add() {}","new_file":false,"renamed_file":false,"deleted_file":false}]`)
+		case fmt.Sprintf("/api/v4/projects/%d/repository/files/service.go/raw", gitLabProjectID):
+			switch r.URL.Query().Get("ref") {
+			case "authoritative-target":
+				fmt.Fprint(w, "package service\n\nfunc Keep() {\n\tprintln(\"old\")\n}\n\nfunc Remove() {}\n")
+			case "authoritative-head":
+				fmt.Fprint(w, "package service\n\nfunc Keep() {\n\tprintln(\"new\")\n}\n\nfunc Add() {}\n")
+			default:
+				http.Error(w, "unknown ref", http.StatusNotFound)
+			}
 		default:
 			http.NotFound(w, r)
 		}
@@ -75,16 +85,21 @@ func TestWebhookToFetchedChangesPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	processor := analysis.NewProcessor(projects, client, jobs)
-	worker := job.NewWorker(slog.New(slog.NewTextHandler(io.Discard, nil)), jobs, processor, job.WorkerOptions{
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	options := job.WorkerOptions{
 		PollInterval: 10 * time.Millisecond, RetryDelay: 10 * time.Millisecond,
 		LeaseDuration: time.Minute, MaxAttempts: 3,
-	})
+	}
+	sourceWorker := job.NewWorker(logger, jobs, analysis.NewProcessor(projects, client, jobs), options)
+	changeWorker := job.NewWorker(logger, job.NewChangeQueue(jobs),
+		analyzer.NewProcessor(projects, client, jobs, jobs), options)
 	workerCtx, stopWorker := context.WithCancel(ctx)
-	workerDone := make(chan error, 1)
-	go func() { workerDone <- worker.Run(workerCtx) }()
+	workerDone := make(chan error, 2)
+	go func() { workerDone <- sourceWorker.Run(workerCtx) }()
+	go func() { workerDone <- changeWorker.Run(workerCtx) }()
 	defer func() {
 		stopWorker()
+		<-workerDone
 		<-workerDone
 	}()
 
@@ -96,15 +111,24 @@ func TestWebhookToFetchedChangesPipeline(t *testing.T) {
 	}
 	var result job.AnalysisJob
 	var files []job.ChangedFile
+	var symbols []job.ChangedSymbol
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		result, files, err = jobs.Get(ctx, webhookResponse.AnalysisJobID)
-		if err == nil && result.Status == job.StatusAnalyzingChange {
+		if err == nil && result.Status == job.StatusRetrievingContext {
+			symbols, err = jobs.ListChangedSymbols(ctx, result.ID)
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if result.Status != job.StatusAnalyzingChange || result.SourceSHA != "authoritative-head" || len(files) != 1 {
-		t.Fatalf("result=%+v files=%+v", result, files)
+	if result.Status != job.StatusRetrievingContext || result.SourceSHA != "authoritative-head" ||
+		len(files) != 1 || len(symbols) != 3 {
+		t.Fatalf("result=%+v files=%+v symbols=%+v error=%v", result, files, symbols, err)
+	}
+	want := map[string]string{"Keep": "modified", "Remove": "deleted", "Add": "added"}
+	for _, symbol := range symbols {
+		if want[symbol.SymbolName] != symbol.ChangeType {
+			t.Errorf("unexpected symbol: %+v", symbol)
+		}
 	}
 }

@@ -58,6 +58,31 @@ func TestHTTPClientPaginatesDiffs(t *testing.T) {
 	}
 }
 
+func TestHTTPClientGetsRawRepositoryFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.RequestURI != "/api/v4/projects/12/repository/files/internal%2Fservice%20file.go/raw?ref=feature%2Fbranch" {
+			t.Fatalf("request URI = %q", r.RequestURI)
+		}
+		if r.Header.Get("PRIVATE-TOKEN") != "token" {
+			t.Fatal("PRIVATE-TOKEN was not sent")
+		}
+		fmt.Fprint(w, "package service\n")
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient(server.URL, "token", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.GetFileRaw(context.Background(), 12, "internal/service file.go", "feature/branch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result) != "package service\n" {
+		t.Fatalf("result = %q", result)
+	}
+}
+
 func TestHTTPClientReturnsStatusError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "denied", http.StatusForbidden)
@@ -79,6 +104,14 @@ func TestHTTPClientRejectsInvalidIdentifiers(t *testing.T) {
 	}
 	if _, err := client.GetMergeRequestDiff(context.Background(), 1, -1); err == nil {
 		t.Fatal("GetMergeRequestDiff() accepted negative IID")
+	}
+	for _, filePath := range []string{"", "/main.go", "../main.go", "a//main.go"} {
+		if _, err := client.GetFileRaw(context.Background(), 1, filePath, "main"); err == nil {
+			t.Fatalf("GetFileRaw() accepted path %q", filePath)
+		}
+	}
+	if _, err := client.GetFileRaw(context.Background(), 1, "main.go", ""); err == nil {
+		t.Fatal("GetFileRaw() accepted an empty ref")
 	}
 }
 

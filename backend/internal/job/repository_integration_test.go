@@ -90,7 +90,7 @@ func TestRepositoryLifecycle(t *testing.T) {
 	if _, err := repository.ClaimNext(ctx, time.Minute); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("ClaimNext() before retry delay error=%v, want ErrNotFound", err)
 	}
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	claimed, err = repository.ClaimNext(ctx, time.Minute)
 	if err != nil || claimed.ID != createdID || claimed.AttemptCount != 2 {
 		t.Fatalf("retried ClaimNext() job=%+v error=%v", claimed, err)
@@ -104,6 +104,45 @@ func TestRepositoryLifecycle(t *testing.T) {
 	result, files, err := repository.Get(ctx, createdID)
 	if err != nil || result.Status != StatusAnalyzingChange || len(files) != 1 || files[0].Additions != 1 {
 		t.Fatalf("Get() job=%+v files=%+v error=%v", result, files, err)
+	}
+	if result.AttemptCount != 0 {
+		t.Fatalf("source-to-change handoff attempt_count=%d, want 0", result.AttemptCount)
+	}
+	changeQueue := NewChangeQueue(repository)
+	changeClaim, err := changeQueue.ClaimNext(ctx, time.Minute)
+	if err != nil || changeClaim.ID != createdID || changeClaim.AttemptCount != 1 {
+		t.Fatalf("change ClaimNext() job=%+v error=%v", changeClaim, err)
+	}
+	if _, err := changeQueue.ClaimNext(ctx, time.Minute); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("concurrent change ClaimNext() error=%v, want ErrNotFound", err)
+	}
+	if err := changeQueue.RetryOrFail(ctx, changeClaim.ID, changeClaim.AttemptCount,
+		fmt.Errorf("temporary analyzer error"), 3, 100*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := changeQueue.ClaimNext(ctx, time.Minute); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("change ClaimNext() before retry delay error=%v, want ErrNotFound", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	retriedChange, err := changeQueue.ClaimNext(ctx, time.Minute)
+	if err != nil || retriedChange.ID != createdID || retriedChange.AttemptCount != 2 {
+		t.Fatalf("retried change ClaimNext() job=%+v error=%v", retriedChange, err)
+	}
+	if err := repository.SaveSymbols(ctx, createdID, changeClaim.AttemptCount, nil); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("stale SaveSymbols() error=%v, want ErrLeaseLost", err)
+	}
+	if err := repository.SaveSymbols(ctx, createdID, retriedChange.AttemptCount, []ChangedSymbol{{
+		ChangedFileID: files[0].ID, SymbolName: "CreateUser", SymbolKind: "function",
+		PackageName: "service", StartLine: 2, EndLine: 5, ChangeType: "modified",
+		ChangeSummary: "modified function CreateUser",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	result, _, err = repository.Get(ctx, createdID)
+	symbols, symbolErr := repository.ListChangedSymbols(ctx, createdID)
+	if err != nil || symbolErr != nil || result.Status != StatusRetrievingContext ||
+		result.AttemptCount != 0 || len(symbols) != 1 || symbols[0].SymbolName != "CreateUser" {
+		t.Fatalf("analyzed job=%+v symbols=%+v errors=%v/%v", result, symbols, err, symbolErr)
 	}
 
 	leaseJob, _, err := repository.Enqueue(ctx, EnqueueInput{

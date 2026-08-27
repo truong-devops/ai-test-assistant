@@ -5,10 +5,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analysis"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
@@ -39,20 +41,33 @@ func main() {
 	}
 	projectRepository := project.NewPostgresRepository(database.Pool())
 	jobRepository := job.NewRepository(database.Pool())
-	processor := analysis.NewProcessor(projectRepository, gitLabClient, jobRepository)
-	worker := job.NewWorker(logger, jobRepository, processor, job.WorkerOptions{
+	sourceProcessor := analysis.NewProcessor(projectRepository, gitLabClient, jobRepository)
+	changeProcessor := analyzer.NewProcessor(projectRepository, gitLabClient, jobRepository, jobRepository)
+	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,
 		LeaseDuration: cfg.Worker.LeaseDuration,
 		MaxAttempts:   cfg.Worker.MaxAttempts,
-	})
+	}
+	workers := []*job.Worker{
+		job.NewWorker(logger.With("phase", "source"), jobRepository, sourceProcessor, options),
+		job.NewWorker(logger.With("phase", "change"), job.NewChangeQueue(jobRepository), changeProcessor, options),
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	logger.Info("worker started", "poll_interval", cfg.Worker.PollInterval.String(),
+	logger.Info("workers started", "poll_interval", cfg.Worker.PollInterval.String(),
 		"max_attempts", cfg.Worker.MaxAttempts, "lease_duration", cfg.Worker.LeaseDuration.String())
-	if err := worker.Run(ctx); err != nil {
-		logger.Error("worker stopped with error", "error", err)
-		os.Exit(1)
+	var waitGroup sync.WaitGroup
+	for _, worker := range workers {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			if err := worker.Run(ctx); err != nil {
+				logger.Error("worker stopped with error", "error", err)
+				stop()
+			}
+		}()
 	}
+	waitGroup.Wait()
 }

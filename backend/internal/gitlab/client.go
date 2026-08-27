@@ -47,6 +47,7 @@ type FileDiff struct {
 type Client interface {
 	GetMergeRequest(ctx context.Context, projectID, iid int64) (MergeRequest, error)
 	GetMergeRequestDiff(ctx context.Context, projectID, iid int64) ([]FileDiff, error)
+	GetFileRaw(ctx context.Context, projectID int64, filePath, ref string) ([]byte, error)
 }
 
 type HTTPClient struct {
@@ -109,6 +110,59 @@ func (c *HTTPClient) GetMergeRequestDiff(ctx context.Context, projectID, iid int
 		page = parsedNextPage
 	}
 	return nil, fmt.Errorf("get merge request diffs: pagination exceeded 100 pages")
+}
+
+func (c *HTTPClient) GetFileRaw(ctx context.Context, projectID int64, filePath, ref string) ([]byte, error) {
+	if projectID <= 0 {
+		return nil, fmt.Errorf("project ID must be positive")
+	}
+	if err := validateRepositoryPath(filePath); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(ref) == "" {
+		return nil, fmt.Errorf("repository ref is required")
+	}
+	path := fmt.Sprintf("/projects/%d/repository/files/%s/raw", projectID, url.PathEscape(filePath))
+	query := url.Values{"ref": {ref}}
+	requestURL := c.apiBaseURL + path + "?" + query.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create repository file request: %w", err)
+	}
+	request.Header.Set("Accept", "application/octet-stream")
+	if c.token != "" {
+		request.Header.Set("PRIVATE-TOKEN", c.token)
+	}
+	response, err := c.client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("get repository file: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return nil, fmt.Errorf("GitLab returned HTTP %d for repository file: %s",
+			response.StatusCode, strings.TrimSpace(string(body)))
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read repository file: %w", err)
+	}
+	if len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("GitLab repository file exceeds %d bytes", maxResponseBytes)
+	}
+	return body, nil
+}
+
+func validateRepositoryPath(filePath string) error {
+	if filePath == "" || strings.HasPrefix(filePath, "/") || strings.ContainsRune(filePath, '\x00') {
+		return fmt.Errorf("invalid repository file path")
+	}
+	for _, segment := range strings.Split(filePath, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("invalid repository file path")
+		}
+	}
+	return nil
 }
 
 func (c *HTTPClient) getJSON(ctx context.Context, path string, query url.Values, destination any) (http.Header, error) {

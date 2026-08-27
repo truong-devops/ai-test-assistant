@@ -12,6 +12,7 @@ import (
 type AnalysisService interface {
 	List(ctx context.Context) ([]job.AnalysisJob, error)
 	Get(ctx context.Context, id int64) (job.AnalysisJob, []job.ChangedFile, error)
+	GetSymbols(ctx context.Context, id int64) ([]job.ChangedSymbol, error)
 }
 
 type analysisHandler struct{ service AnalysisService }
@@ -39,7 +40,14 @@ func (h analysisHandler) get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not get analysis")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"analysis": result, "changed_files": files})
+	symbols, err := h.service.GetSymbols(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get changed symbols")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"analysis": result, "changed_files": files, "changed_symbols": symbols,
+	})
 }
 
 func (h analysisHandler) changes(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +64,12 @@ func (h analysisHandler) changes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not get analysis changes")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"changed_files": files})
+	symbols, err := h.service.GetSymbols(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get changed symbols")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"changed_files": files, "changed_symbols": symbols})
 }
 
 func analysisID(w http.ResponseWriter, r *http.Request) (int64, bool) {

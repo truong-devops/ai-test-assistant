@@ -35,5 +35,12 @@ existing analysis job instead of creating another one.
 ## Analyses
 
 - `GET /api/analyses` lists analysis jobs.
-- `GET /api/analyses/{id}` returns metadata and normalized changed files.
-- `GET /api/analyses/{id}/changes` returns normalized changed files.
+- `GET /api/analyses/{id}` returns metadata, normalized changed files, and
+  deterministic changed-symbol records.
+- `GET /api/analyses/{id}/changes` returns `changed_files` and
+  `changed_symbols`.
+
+Each changed symbol includes its file ID, name, kind, optional method receiver,
+package, line range, change type (`added`, `modified`, or `deleted`), and a
+compact summary. Jobs successfully analyzed in Phase 3 have status
+`RETRIEVING_CONTEXT`.
