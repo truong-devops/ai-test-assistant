@@ -1,0 +1,10 @@
+.env
+.DS_Store
+.idea/
+.vscode/
+coverage.out
+*.test
+bin/
+tmp/
+frontend/node_modules/
+

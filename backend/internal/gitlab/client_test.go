@@ -1,0 +1,114 @@
+package gitlab
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func TestHTTPClientGetsMergeRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v4/projects/12/merge_requests/4" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if r.Header.Get("PRIVATE-TOKEN") != "token" {
+			t.Fatal("PRIVATE-TOKEN was not sent")
+		}
+		fmt.Fprint(w, `{"iid":4,"project_id":12,"title":"change","diff_refs":{"head_sha":"head","start_sha":"target"}}`)
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient(server.URL, "token", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.GetMergeRequest(context.Background(), 12, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IID != 4 || result.DiffRefs.HeadSHA != "head" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestHTTPClientPaginatesDiffs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		if r.URL.Query().Get("per_page") != "100" || r.URL.Query().Get("unidiff") != "true" {
+			t.Fatalf("query = %v", r.URL.Query())
+		}
+		if page == "1" {
+			w.Header().Set("X-Next-Page", "2")
+			fmt.Fprint(w, `[{"new_path":"one.go"}]`)
+			return
+		}
+		fmt.Fprint(w, `[{"new_path":"two.go"}]`)
+	}))
+	defer server.Close()
+	client, _ := NewHTTPClient(server.URL, "", time.Second)
+	results, err := client.GetMergeRequestDiff(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[1].NewPath != "two.go" {
+		t.Fatalf("results = %+v", results)
+	}
+}
+
+func TestHTTPClientReturnsStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "denied", http.StatusForbidden)
+	}))
+	defer server.Close()
+	client, _ := NewHTTPClient(server.URL, "", time.Second)
+	if _, err := client.GetMergeRequest(context.Background(), 1, 2); err == nil {
+		t.Fatal("GetMergeRequest() error = nil")
+	}
+}
+
+func TestHTTPClientRejectsInvalidIdentifiers(t *testing.T) {
+	client, err := NewHTTPClient("https://gitlab.example.com", "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.GetMergeRequest(context.Background(), 0, 1); err == nil {
+		t.Fatal("GetMergeRequest() accepted zero project ID")
+	}
+	if _, err := client.GetMergeRequestDiff(context.Background(), 1, -1); err == nil {
+		t.Fatal("GetMergeRequestDiff() accepted negative IID")
+	}
+}
+
+func TestHTTPClientRejectsInvalidPaginationHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Next-Page", "same")
+		fmt.Fprint(w, `[]`)
+	}))
+	defer server.Close()
+	client, _ := NewHTTPClient(server.URL, "", time.Second)
+	if _, err := client.GetMergeRequestDiff(context.Background(), 1, 1); err == nil {
+		t.Fatal("GetMergeRequestDiff() accepted invalid pagination")
+	}
+}
+
+func TestHTTPClientDoesNotFollowRedirectsWithToken(t *testing.T) {
+	targetCalled := false
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		targetCalled = true
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer source.Close()
+	client, _ := NewHTTPClient(source.URL, "sensitive", time.Second)
+	if _, err := client.GetMergeRequest(context.Background(), 1, 1); err == nil {
+		t.Fatal("GetMergeRequest() followed redirect")
+	}
+	if targetCalled {
+		t.Fatal("redirect target was called")
+	}
+}
