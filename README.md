@@ -4,11 +4,11 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository currently implements Phases 0-5: the backend foundation,
+This repository currently implements Phases 0-6: the backend foundation,
 GitLab capture pipeline, deterministic Go changed-symbol analyzer, and
-project-isolated knowledge/RAG index plus structured AI test recommendations.
-Test-code generation, sandbox execution, repair, and the frontend are
-intentionally not implemented yet.
+project-isolated knowledge/RAG index plus structured AI test recommendations
+and generated Go test candidates. Sandbox execution, repair, and the frontend
+are intentionally not implemented yet.
 
 ## Prerequisites
 
@@ -59,6 +59,7 @@ Stop the stack with `make dev-down`. Run all local tests with `make test`.
 - `GET /api/analyses/{id}`
 - `GET /api/analyses/{id}/changes`
 - `GET /api/analyses/{id}/recommendations`
+- `GET /api/analyses/{id}/generated-tests`
 
 Configure a GitLab Merge Request webhook to call `/api/webhooks/gitlab`, set
 its secret to `GITLAB_WEBHOOK_SECRET`, and enable Merge request events. The API
@@ -79,3 +80,10 @@ strict structured output, stores the result, and advances the analysis to
 `GENERATING_TESTS` for the Phase 6 handoff. LLM access is disabled by default.
 Set `LLM_PROVIDER=openai`, `LLM_API_KEY`, and `LLM_MODEL` in a private `.env` or
 secret manager to enable the real OpenAI provider.
+
+The generation worker uses each stored recommendation with the exact retrieved
+interfaces, implementation, mocks, and closest tests. It validates the target
+path, declared test names, package, build constraints, size, and Go syntax
+before storing the candidate with a code hash and trace metadata. Successful
+jobs advance to `VALIDATING`. Generated code is not written to GitLab and is not
+executed by Phase 6; isolated execution belongs to Phase 7.

@@ -75,7 +75,7 @@ func Load() (Config, error) {
 			Provider: envOrDefault("LLM_PROVIDER", "disabled"),
 			BaseURL:  envOrDefault("LLM_BASE_URL", "https://api.openai.com/v1"),
 			APIKey:   os.Getenv("LLM_API_KEY"), Model: os.Getenv("LLM_MODEL"),
-			RequestTimeout: 60 * time.Second, MaxOutputTokens: 2000,
+			RequestTimeout: 60 * time.Second, MaxOutputTokens: 6000,
 		},
 		Worker: WorkerConfig{
 			PollInterval:  2 * time.Second,

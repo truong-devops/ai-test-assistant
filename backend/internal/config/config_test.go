@@ -78,3 +78,15 @@ func TestLoadRejectsInvalidLLMConfiguration(t *testing.T) {
 		t.Fatal("Load() error = nil, want LLM validation error")
 	}
 }
+
+func TestLoadUsesPhaseSixLLMOutputLimitByDefault(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("LLM_MAX_OUTPUT_TOKENS", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLM.MaxOutputTokens != 6000 {
+		t.Fatalf("LLM max output tokens=%d, want 6000", cfg.LLM.MaxOutputTokens)
+	}
+}

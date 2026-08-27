@@ -26,6 +26,13 @@ and provider response ID. The repository verifies symbol ownership during the
 insert and commits the records together with the analysis transition from
 `RECOMMENDING_TESTS` to `GENERATING_TESTS`.
 
+Phase 6 adds `generated_tests`. Each candidate belongs to both an analysis and a
+recommendation and stores its safe relative `_test.go` path, declared test names,
+complete source, SHA-256 code hash, model, versioned prompt, provider response
+ID, and generation attempt. A unique `(recommendation_id, generation_attempt)`
+constraint prevents duplicate initial generations. Candidate writes and the
+analysis transition to `VALIDATING` share one transaction.
+
 Migrations are in `backend/migrations` and use the `golang-migrate` filename
 format. Apply them with `make migrate-up`; roll back one migration with
 `make migrate-down`.

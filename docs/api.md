@@ -85,3 +85,30 @@ recommendations for an analysis, or HTTP 404 when the analysis does not exist:
 
 An empty array is valid for an analysis with no changed Go symbols. HTTP
 handlers never call the LLM; generation happens asynchronously in the worker.
+
+## Generated tests
+
+`GET /api/analyses/{id}/generated-tests` returns syntax-checked candidate test
+files, or HTTP 404 when the analysis does not exist:
+
+```json
+{
+  "generated_tests": [
+    {
+      "id": 8,
+      "analysis_job_id": 3,
+      "recommendation_id": 7,
+      "file_path": "internal/user/service_generated_test.go",
+      "test_names": ["TestService_CreateUser_DuplicateEmail"],
+      "code": "package user\n...",
+      "code_hash": "sha256...",
+      "model_name": "configured-model",
+      "prompt_version": "generate-test-v1",
+      "generation_attempt": 1
+    }
+  ]
+}
+```
+
+Phase 6 only stores candidates. This endpoint does not execute code or write to
+the target GitLab repository.

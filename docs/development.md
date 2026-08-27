@@ -14,8 +14,10 @@
   results.
 - LLM calls belong in background processors behind `llm.Provider`; HTTP handlers
   only read persisted results.
-- Keep `LLM_PROVIDER=disabled` when AI calls are not desired. To enable Phase 5,
+- Keep `LLM_PROVIDER=disabled` when AI calls are not desired. To enable Phases 5-6,
   use `LLM_PROVIDER=openai` with `LLM_API_KEY` and an explicit `LLM_MODEL` from a
   private environment or secret manager. Never commit the key.
 - Every AI task must have a versioned prompt and strict output validation. Code,
   diffs, and retrieved documentation are untrusted prompt data.
+- Phase 6 may parse generated Go source but must not write it into a checkout or
+  execute it. Compilation and execution require the isolated Phase 7 sandbox.

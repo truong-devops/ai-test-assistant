@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
@@ -286,6 +287,51 @@ func TestRecommendationEndpoints(t *testing.T) {
 	response := httptest.NewRecorder()
 	notFoundRouter.ServeHTTP(response, httptest.NewRequest(http.MethodGet,
 		"/api/analyses/99/recommendations", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("not found status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+type generationServiceStub struct {
+	items []generation.GeneratedTest
+	err   error
+}
+
+func (s generationServiceStub) List(context.Context, int64) ([]generation.GeneratedTest, error) {
+	return s.items, s.err
+}
+
+func TestGeneratedTestEndpoints(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	service := generationServiceStub{items: []generation.GeneratedTest{{
+		ID: 8, AnalysisJobID: 3, RecommendationID: 7,
+		FilePath:  "internal/user/service_generated_test.go",
+		TestNames: []string{"TestService_CreateUser_DuplicateEmail"},
+		Code:      "package user\n", PromptVersion: generation.PromptVersion,
+	}}}
+	router := NewRouterWithAllServices(logger, checkerStub{}, project.NewService(&repositoryStub{}),
+		nil, nil, nil, nil, service)
+	tests := []struct {
+		path   string
+		status int
+	}{
+		{path: "/api/analyses/3/generated-tests", status: http.StatusOK},
+		{path: "/api/analyses/bad/generated-tests", status: http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if response.Code != test.status || test.status == http.StatusOK &&
+			(!strings.Contains(response.Body.String(), "service_generated_test.go") ||
+				!strings.Contains(response.Body.String(), "TestService_CreateUser_DuplicateEmail")) {
+			t.Fatalf("GET %s status=%d body=%s", test.path, response.Code, response.Body.String())
+		}
+	}
+	notFoundRouter := NewRouterWithAllServices(logger, checkerStub{}, project.NewService(&repositoryStub{}),
+		nil, nil, nil, nil, generationServiceStub{err: job.ErrNotFound})
+	response := httptest.NewRecorder()
+	notFoundRouter.ServeHTTP(response, httptest.NewRequest(http.MethodGet,
+		"/api/analyses/99/generated-tests", nil))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("not found status=%d body=%s", response.Code, response.Body.String())
 	}

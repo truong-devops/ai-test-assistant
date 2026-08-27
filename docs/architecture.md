@@ -11,7 +11,7 @@ HTTP request -> handler -> project service -> project repository -> PostgreSQL
                      \-> health checker -> PostgreSQL ping
 ```
 
-Phases 2 through 5 add asynchronous database-backed pipelines:
+Phases 2 through 6 add asynchronous database-backed pipelines:
 
 ```text
 GitLab webhook -> verify + deduplicate -> PENDING analysis job -> HTTP 202
@@ -32,6 +32,12 @@ recommendation worker -> claim RETRIEVING_CONTEXT as RECOMMENDING_TESTS
                       -> LLM provider + strict JSON schema validation
                       -> transactional test_recommendations
                       -> GENERATING_TESTS (Phase 6 handoff)
+
+generation worker -> claim GENERATING_TESTS with renewable lease
+                  -> recommendation + exact RAG context + generate-test-v1
+                  -> strict JSON/path/test-name/Go syntax validation
+                  -> transactional generated_tests + code hash
+                  -> VALIDATING (Phase 7 handoff)
 ```
 
 Worker claims use a bounded lease. Temporary GitLab/preparation failures are
@@ -51,9 +57,12 @@ be replaced by a remote model later. Phase 5 keeps vendor details behind the
 `llm.Provider` boundary and ships one real OpenAI Responses API provider. It
 sends only the compact diff and project-filtered retrieved chunks, uses a
 versioned prompt, and rejects malformed or oversized output before persistence.
-The provider is disabled unless explicitly configured. Future phases add test
-generation, validation, repair, and review modules behind interfaces. Generated
-code must only run in an isolated sandbox, never in the API or worker process.
+The provider is disabled unless explicitly configured. Phase 6 stores one
+initial candidate per recommendation and keeps worker retry count separate from
+the candidate's generation attempt. It parses generated Go syntax but never
+executes the code. Future phases add sandbox validation, repair, and review.
+Generated code must only run in an isolated sandbox, never in the API or worker
+process.
 
 ## Decisions
 
@@ -64,5 +73,7 @@ code must only run in an isolated sandbox, never in the API or worker process.
 - Hybrid retrieval always applies `project_id` inside the database query.
 - Recommendation writes verify that every changed symbol belongs to the same
   analysis and commit recommendations with the state transition atomically.
+- Generated-test writes verify recommendation ownership and atomically commit
+  candidates with the transition to `VALIDATING`.
 - The sample project is isolated in its own Go module so it can later be
   checked out and analyzed as a target repository.

@@ -7,4 +7,4 @@ coverage.out
 bin/
 tmp/
 frontend/node_modules/
-
+PROJECT_SPEC.md

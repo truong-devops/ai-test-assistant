@@ -14,18 +14,26 @@ import (
 
 func NewRouter(logger *slog.Logger, checker ReadinessChecker, projectService *project.Service,
 	analysisService AnalysisService, webhookHandler http.Handler) http.Handler {
-	return NewRouterWithServices(logger, checker, projectService, analysisService, webhookHandler, nil, nil)
+	return NewRouterWithAllServices(logger, checker, projectService, analysisService, webhookHandler, nil, nil, nil)
 }
 
 func NewRouterWithKnowledge(logger *slog.Logger, checker ReadinessChecker, projectService *project.Service,
 	analysisService AnalysisService, webhookHandler http.Handler, knowledgeService KnowledgeService) http.Handler {
-	return NewRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
-		knowledgeService, nil)
+	return NewRouterWithAllServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, nil, nil)
 }
 
 func NewRouterWithServices(logger *slog.Logger, checker ReadinessChecker, projectService *project.Service,
 	analysisService AnalysisService, webhookHandler http.Handler, knowledgeService KnowledgeService,
 	recommendationService RecommendationService,
+) http.Handler {
+	return NewRouterWithAllServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, recommendationService, nil)
+}
+
+func NewRouterWithAllServices(logger *slog.Logger, checker ReadinessChecker, projectService *project.Service,
+	analysisService AnalysisService, webhookHandler http.Handler, knowledgeService KnowledgeService,
+	recommendationService RecommendationService, generationService GenerationService,
 ) http.Handler {
 	mux := http.NewServeMux()
 	health := healthHandler{checker: checker}
@@ -50,6 +58,10 @@ func NewRouterWithServices(logger *slog.Logger, checker ReadinessChecker, projec
 	if recommendationService != nil {
 		recommendations := recommendationHandler{service: recommendationService}
 		mux.HandleFunc("GET /api/analyses/{id}/recommendations", recommendations.list)
+	}
+	if generationService != nil {
+		generatedTests := generationHandler{service: generationService}
+		mux.HandleFunc("GET /api/analyses/{id}/generated-tests", generatedTests.list)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)

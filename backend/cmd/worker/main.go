@@ -12,6 +12,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analysis"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
@@ -65,6 +66,9 @@ func main() {
 	recommendationRepository := recommendation.NewRepository(database.Pool())
 	recommendationProcessor := recommendation.NewProcessor(jobRepository,
 		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, recommendationRepository)
+	generationRepository := generation.NewRepository(database.Pool())
+	generationProcessor := generation.NewProcessor(jobRepository, recommendationRepository,
+		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, generationRepository)
 	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,
@@ -82,6 +86,8 @@ func main() {
 			}),
 		job.NewWorker(logger.With("phase", "recommendation"), recommendationRepository,
 			recommendationProcessor, options),
+		job.NewWorker(logger.With("phase", "generation"), generationRepository,
+			generationProcessor, options),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

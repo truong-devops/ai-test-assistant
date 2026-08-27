@@ -12,6 +12,7 @@ const (
 	StatusRetrievingContext = "RETRIEVING_CONTEXT"
 	StatusRecommendingTests = "RECOMMENDING_TESTS"
 	StatusGeneratingTests   = "GENERATING_TESTS"
+	StatusValidating        = "VALIDATING"
 	StatusFailed            = "FAILED"
 )
 
