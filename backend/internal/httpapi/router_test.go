@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 )
 
 type checkerStub struct{ err error }
@@ -126,11 +128,6 @@ func TestProjectEndpoints(t *testing.T) {
 		if response.Code != test.status {
 			t.Fatalf("GET %s status=%d, want %d", test.path, response.Code, test.status)
 		}
-		if test.path == "/api/analyses/3/changes" &&
-			(!strings.Contains(response.Body.String(), `"changed_symbols"`) ||
-				!strings.Contains(response.Body.String(), `"CreateUser"`)) {
-			t.Fatalf("GET %s body=%s", test.path, response.Body.String())
-		}
 	}
 }
 
@@ -206,5 +203,90 @@ func TestAnalysisEndpoints(t *testing.T) {
 		if response.Code != test.status {
 			t.Fatalf("GET %s status=%d, want %d", test.path, response.Code, test.status)
 		}
+		if test.path == "/api/analyses/3/changes" &&
+			(!strings.Contains(response.Body.String(), `"changed_symbols"`) ||
+				!strings.Contains(response.Body.String(), `"CreateUser"`)) {
+			t.Fatalf("GET %s body=%s", test.path, response.Body.String())
+		}
+	}
+}
+
+type knowledgeServiceStub struct {
+	result knowledge.IndexJob
+	err    error
+}
+
+func (s knowledgeServiceStub) RequestIndex(context.Context, int64) (knowledge.IndexJob, error) {
+	return s.result, s.err
+}
+func (s knowledgeServiceStub) GetIndexStatus(context.Context, int64) (knowledge.IndexJob, error) {
+	return s.result, s.err
+}
+
+func TestKnowledgeIndexEndpoints(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repository := &repositoryStub{items: []project.Project{{ID: 3, Name: "sample"}}}
+	service := knowledgeServiceStub{result: knowledge.IndexJob{ProjectID: 3, Ref: "main", Status: knowledge.IndexStatusPending}}
+	router := NewRouterWithKnowledge(logger, checkerStub{}, project.NewService(repository), nil, nil, service)
+	tests := []struct {
+		method string
+		path   string
+		status int
+	}{
+		{method: http.MethodPost, path: "/api/projects/3/index", status: http.StatusAccepted},
+		{method: http.MethodGet, path: "/api/projects/3/index/status", status: http.StatusOK},
+		{method: http.MethodPost, path: "/api/projects/bad/index", status: http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
+		if response.Code != test.status ||
+			(test.status < 300 && !strings.Contains(response.Body.String(), `"PENDING"`)) {
+			t.Fatalf("%s %s status=%d body=%s", test.method, test.path, response.Code, response.Body.String())
+		}
+	}
+}
+
+type recommendationServiceStub struct {
+	items []recommendation.Recommendation
+	err   error
+}
+
+func (s recommendationServiceStub) List(context.Context, int64) ([]recommendation.Recommendation, error) {
+	return s.items, s.err
+}
+
+func TestRecommendationEndpoints(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	service := recommendationServiceStub{items: []recommendation.Recommendation{{
+		ID: 7, AnalysisJobID: 3, ChangedSymbolID: 5, Title: "Duplicate email",
+		ExpectedBehavior: "returns ErrEmailExists", Status: recommendation.StatusPending,
+	}}}
+	router := NewRouterWithServices(logger, checkerStub{}, project.NewService(&repositoryStub{}),
+		nil, nil, nil, service)
+	tests := []struct {
+		path   string
+		status int
+	}{
+		{path: "/api/analyses/3/recommendations", status: http.StatusOK},
+		{path: "/api/analyses/bad/recommendations", status: http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if response.Code != test.status || test.status == http.StatusOK &&
+			(!strings.Contains(response.Body.String(), "Duplicate email") ||
+				!strings.Contains(response.Body.String(), "ErrEmailExists")) {
+			t.Fatalf("GET %s status=%d body=%s", test.path, response.Code, response.Body.String())
+		}
+	}
+
+	notFoundRouter := NewRouterWithServices(logger, checkerStub{}, project.NewService(&repositoryStub{}),
+		nil, nil, nil, recommendationServiceStub{err: job.ErrNotFound})
+	response := httptest.NewRecorder()
+	notFoundRouter.ServeHTTP(response, httptest.NewRequest(http.MethodGet,
+		"/api/analyses/99/recommendations", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("not found status=%d body=%s", response.Code, response.Body.String())
 	}
 }

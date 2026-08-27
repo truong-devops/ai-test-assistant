@@ -83,6 +83,30 @@ func TestHTTPClientGetsRawRepositoryFile(t *testing.T) {
 	}
 }
 
+func TestHTTPClientListsRecursiveRepositoryTree(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v4/projects/12/repository/tree" ||
+			r.URL.Query().Get("recursive") != "true" || r.URL.Query().Get("ref") != "main" {
+			t.Fatalf("request = %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("page") == "1" {
+			w.Header().Set("X-Next-Page", "2")
+			fmt.Fprint(w, `[{"type":"blob","path":"main.go"}]`)
+			return
+		}
+		fmt.Fprint(w, `[{"type":"tree","path":"internal"},{"type":"blob","path":"README.md"}]`)
+	}))
+	defer server.Close()
+	client, _ := NewHTTPClient(server.URL, "", time.Second)
+	entries, err := client.ListRepositoryTree(context.Background(), 12, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 3 || entries[2].Path != "README.md" {
+		t.Fatalf("entries = %#v", entries)
+	}
+}
+
 func TestHTTPClientReturnsStatusError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "denied", http.StatusForbidden)
@@ -112,6 +136,9 @@ func TestHTTPClientRejectsInvalidIdentifiers(t *testing.T) {
 	}
 	if _, err := client.GetFileRaw(context.Background(), 1, "main.go", ""); err == nil {
 		t.Fatal("GetFileRaw() accepted an empty ref")
+	}
+	if _, err := client.ListRepositoryTree(context.Background(), 1, ""); err == nil {
+		t.Fatal("ListRepositoryTree() accepted an empty ref")
 	}
 }
 

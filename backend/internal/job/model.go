@@ -10,6 +10,8 @@ const (
 	StatusFetchingSource    = "FETCHING_SOURCE"
 	StatusAnalyzingChange   = "ANALYZING_CHANGE"
 	StatusRetrievingContext = "RETRIEVING_CONTEXT"
+	StatusRecommendingTests = "RECOMMENDING_TESTS"
+	StatusGeneratingTests   = "GENERATING_TESTS"
 	StatusFailed            = "FAILED"
 )
 

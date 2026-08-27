@@ -17,6 +17,14 @@ func TestLoad(t *testing.T) {
 	t.Setenv("WORKER_RETRY_DELAY", "500ms")
 	t.Setenv("WORKER_LEASE_DURATION", "1m")
 	t.Setenv("WORKER_MAX_ATTEMPTS", "4")
+	t.Setenv("EMBEDDING_PROVIDER", "hash")
+	t.Setenv("EMBEDDING_MODEL", "fixture-v1")
+	t.Setenv("LLM_PROVIDER", "openai")
+	t.Setenv("LLM_BASE_URL", "https://llm.example.com/v1")
+	t.Setenv("LLM_API_KEY", "llm-key")
+	t.Setenv("LLM_MODEL", "fixture-model")
+	t.Setenv("LLM_REQUEST_TIMEOUT", "45s")
+	t.Setenv("LLM_MAX_OUTPUT_TOKENS", "1500")
 
 	cfg, err := Load()
 	if err != nil {
@@ -29,6 +37,14 @@ func TestLoad(t *testing.T) {
 		cfg.Worker.PollInterval != 250*time.Millisecond || cfg.Worker.RetryDelay != 500*time.Millisecond ||
 		cfg.Worker.LeaseDuration != time.Minute || cfg.Worker.MaxAttempts != 4 {
 		t.Fatalf("Load() GitLab/worker config = %+v", cfg)
+	}
+	if cfg.Embedding.Provider != "hash" || cfg.Embedding.Model != "fixture-v1" {
+		t.Fatalf("Load() embedding config = %+v", cfg.Embedding)
+	}
+	if cfg.LLM.Provider != "openai" || cfg.LLM.BaseURL != "https://llm.example.com/v1" ||
+		cfg.LLM.APIKey != "llm-key" || cfg.LLM.Model != "fixture-model" ||
+		cfg.LLM.RequestTimeout != 45*time.Second || cfg.LLM.MaxOutputTokens != 1500 {
+		t.Fatalf("Load() LLM config = %+v", cfg.LLM)
 	}
 }
 
@@ -52,5 +68,13 @@ func TestLoadRejectsInvalidWorkerConfiguration(t *testing.T) {
 	t.Setenv("WORKER_MAX_ATTEMPTS", "0")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want worker validation error")
+	}
+}
+
+func TestLoadRejectsInvalidLLMConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("LLM_MAX_OUTPUT_TOKENS", "99")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want LLM validation error")
 	}
 }

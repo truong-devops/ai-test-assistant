@@ -14,7 +14,9 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/httpapi"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 )
 
@@ -39,11 +41,16 @@ func main() {
 	projectService := project.NewService(projectRepository)
 	jobRepository := job.NewRepository(database.Pool())
 	analysisService := job.NewService(jobRepository)
+	knowledgeRepository := knowledge.NewRepository(database.Pool())
+	knowledgeService := knowledge.NewService(projectRepository, knowledgeRepository)
+	recommendationRepository := recommendation.NewRepository(database.Pool())
+	recommendationService := recommendation.NewService(jobRepository, recommendationRepository)
 	webhookService := gitlab.NewWebhookService(projectRepository, jobRepository)
 	webhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewRouter(logger, database, projectService, analysisService, webhookHandler),
+		Addr: cfg.HTTPAddr,
+		Handler: httpapi.NewRouterWithServices(logger, database, projectService, analysisService,
+			webhookHandler, knowledgeService, recommendationService),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

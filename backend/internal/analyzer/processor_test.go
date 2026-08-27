@@ -38,6 +38,9 @@ func (f fakeGitLab) GetFileRaw(_ context.Context, _ int64, path, ref string) ([]
 	}
 	return result, nil
 }
+func (f fakeGitLab) ListRepositoryTree(context.Context, int64, string) ([]gitlab.RepositoryEntry, error) {
+	return nil, nil
+}
 
 type symbolCapture struct{ symbols []job.ChangedSymbol }
 

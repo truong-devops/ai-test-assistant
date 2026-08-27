@@ -44,10 +44,19 @@ type FileDiff struct {
 	GeneratedFile bool   `json:"generated_file"`
 }
 
+type RepositoryEntry struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Path string `json:"path"`
+	Mode string `json:"mode"`
+}
+
 type Client interface {
 	GetMergeRequest(ctx context.Context, projectID, iid int64) (MergeRequest, error)
 	GetMergeRequestDiff(ctx context.Context, projectID, iid int64) ([]FileDiff, error)
 	GetFileRaw(ctx context.Context, projectID int64, filePath, ref string) ([]byte, error)
+	ListRepositoryTree(ctx context.Context, projectID int64, ref string) ([]RepositoryEntry, error)
 }
 
 type HTTPClient struct {
@@ -151,6 +160,37 @@ func (c *HTTPClient) GetFileRaw(ctx context.Context, projectID int64, filePath, 
 		return nil, fmt.Errorf("GitLab repository file exceeds %d bytes", maxResponseBytes)
 	}
 	return body, nil
+}
+
+func (c *HTTPClient) ListRepositoryTree(ctx context.Context, projectID int64, ref string) ([]RepositoryEntry, error) {
+	if projectID <= 0 {
+		return nil, fmt.Errorf("project ID must be positive")
+	}
+	if strings.TrimSpace(ref) == "" {
+		return nil, fmt.Errorf("repository ref is required")
+	}
+	results := make([]RepositoryEntry, 0)
+	for page := 1; page <= 100; {
+		query := url.Values{
+			"page": {strconv.Itoa(page)}, "per_page": {"100"}, "recursive": {"true"}, "ref": {ref},
+		}
+		var batch []RepositoryEntry
+		header, err := c.getJSON(ctx, fmt.Sprintf("/projects/%d/repository/tree", projectID), query, &batch)
+		if err != nil {
+			return nil, fmt.Errorf("list repository tree page %d: %w", page, err)
+		}
+		results = append(results, batch...)
+		nextPage := header.Get("X-Next-Page")
+		if nextPage == "" {
+			return results, nil
+		}
+		parsedNextPage, err := strconv.Atoi(nextPage)
+		if err != nil || parsedNextPage <= page || parsedNextPage > 100 {
+			return nil, fmt.Errorf("list repository tree: invalid X-Next-Page %q", nextPage)
+		}
+		page = parsedNextPage
+	}
+	return nil, fmt.Errorf("list repository tree: pagination exceeded 100 pages")
 }
 
 func validateRepositoryPath(filePath string) error {

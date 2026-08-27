@@ -14,7 +14,10 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 )
 
@@ -41,17 +44,44 @@ func main() {
 	}
 	projectRepository := project.NewPostgresRepository(database.Pool())
 	jobRepository := job.NewRepository(database.Pool())
+	knowledgeRepository := knowledge.NewRepository(database.Pool())
+	embedder, err := knowledge.NewEmbeddingClient(cfg.Embedding.Provider, cfg.Embedding.Model)
+	if err != nil {
+		logger.Error("configure embedding client", "error", err)
+		os.Exit(1)
+	}
+	llmProvider, err := llm.NewProvider(llm.Config{
+		Provider: cfg.LLM.Provider, BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey,
+		Model: cfg.LLM.Model, RequestTimeout: cfg.LLM.RequestTimeout,
+		MaxOutputTokens: cfg.LLM.MaxOutputTokens,
+	})
+	if err != nil {
+		logger.Error("configure LLM provider", "error", err)
+		os.Exit(1)
+	}
 	sourceProcessor := analysis.NewProcessor(projectRepository, gitLabClient, jobRepository)
 	changeProcessor := analyzer.NewProcessor(projectRepository, gitLabClient, jobRepository, jobRepository)
+	indexProcessor := knowledge.NewIndexer(projectRepository, gitLabClient, embedder, knowledgeRepository)
+	recommendationRepository := recommendation.NewRepository(database.Pool())
+	recommendationProcessor := recommendation.NewProcessor(jobRepository,
+		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, recommendationRepository)
 	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,
 		LeaseDuration: cfg.Worker.LeaseDuration,
 		MaxAttempts:   cfg.Worker.MaxAttempts,
 	}
-	workers := []*job.Worker{
+	type runner interface{ Run(context.Context) error }
+	workers := []runner{
 		job.NewWorker(logger.With("phase", "source"), jobRepository, sourceProcessor, options),
 		job.NewWorker(logger.With("phase", "change"), job.NewChangeQueue(jobRepository), changeProcessor, options),
+		knowledge.NewWorker(logger.With("phase", "index"), knowledgeRepository, indexProcessor,
+			knowledge.WorkerOptions{
+				PollInterval: options.PollInterval, RetryDelay: options.RetryDelay,
+				LeaseDuration: options.LeaseDuration, MaxAttempts: options.MaxAttempts,
+			}),
+		job.NewWorker(logger.With("phase", "recommendation"), recommendationRepository,
+			recommendationProcessor, options),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

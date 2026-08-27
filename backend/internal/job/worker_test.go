@@ -30,6 +30,27 @@ type processorStub struct{ err error }
 
 func (p processorStub) Process(context.Context, AnalysisJob) error { return p.err }
 
+type renewingQueueStub struct {
+	queueStub
+	renewCount int
+}
+
+func (q *renewingQueueStub) RenewLease(context.Context, AnalysisJob, time.Duration) error {
+	q.renewCount++
+	return nil
+}
+
+type waitingProcessor struct{ duration time.Duration }
+
+func (p waitingProcessor) Process(ctx context.Context, _ AnalysisJob) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(p.duration):
+		return nil
+	}
+}
+
 func TestWorkerMarksProcessingFailure(t *testing.T) {
 	processErr := errors.New("GitLab unavailable")
 	queue := &queueStub{item: AnalysisJob{ID: 9}}
@@ -67,5 +88,20 @@ func TestWorkerPersistsFailureAfterCancellation(t *testing.T) {
 	}
 	if queue.failedID != 11 || queue.persistContextErr != nil {
 		t.Fatalf("failure was not persisted with a live context: id=%d contextErr=%v", queue.failedID, queue.persistContextErr)
+	}
+}
+
+func TestWorkerRenewsLeaseWhenQueueSupportsIt(t *testing.T) {
+	queue := &renewingQueueStub{queueStub: queueStub{item: AnalysisJob{ID: 12, AttemptCount: 1}}}
+	worker := NewWorker(slog.New(slog.NewTextHandler(io.Discard, nil)), queue,
+		waitingProcessor{duration: 250 * time.Millisecond}, WorkerOptions{
+			PollInterval: time.Second, RetryDelay: time.Second,
+			LeaseDuration: 300 * time.Millisecond, MaxAttempts: 3,
+		})
+	if err := worker.runOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if queue.renewCount < 2 {
+		t.Fatalf("renew count=%d, want at least 2", queue.renewCount)
 	}
 }

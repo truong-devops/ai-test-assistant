@@ -21,6 +21,8 @@ type Config struct {
 	DatabaseMaxConn int32
 	ShutdownTimeout time.Duration
 	GitLab          GitLabConfig
+	Embedding       EmbeddingConfig
+	LLM             LLMConfig
 	Worker          WorkerConfig
 }
 
@@ -38,6 +40,20 @@ type WorkerConfig struct {
 	MaxAttempts   int
 }
 
+type EmbeddingConfig struct {
+	Provider string
+	Model    string
+}
+
+type LLMConfig struct {
+	Provider        string
+	BaseURL         string
+	APIKey          string
+	Model           string
+	RequestTimeout  time.Duration
+	MaxOutputTokens int
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		AppEnv:          envOrDefault("APP_ENV", "development"),
@@ -50,6 +66,16 @@ func Load() (Config, error) {
 			Token:          os.Getenv("GITLAB_TOKEN"),
 			WebhookSecret:  os.Getenv("GITLAB_WEBHOOK_SECRET"),
 			RequestTimeout: 15 * time.Second,
+		},
+		Embedding: EmbeddingConfig{
+			Provider: envOrDefault("EMBEDDING_PROVIDER", "local"),
+			Model:    envOrDefault("EMBEDDING_MODEL", "hash-v1"),
+		},
+		LLM: LLMConfig{
+			Provider: envOrDefault("LLM_PROVIDER", "disabled"),
+			BaseURL:  envOrDefault("LLM_BASE_URL", "https://api.openai.com/v1"),
+			APIKey:   os.Getenv("LLM_API_KEY"), Model: os.Getenv("LLM_MODEL"),
+			RequestTimeout: 60 * time.Second, MaxOutputTokens: 2000,
 		},
 		Worker: WorkerConfig{
 			PollInterval:  2 * time.Second,
@@ -113,6 +139,20 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("WORKER_MAX_ATTEMPTS must be between 1 and 20")
 		}
 		cfg.Worker.MaxAttempts = parsed
+	}
+	if value := os.Getenv("LLM_REQUEST_TIMEOUT"); value != "" {
+		parsed, err := positiveDuration("LLM_REQUEST_TIMEOUT", value)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.LLM.RequestTimeout = parsed
+	}
+	if value := os.Getenv("LLM_MAX_OUTPUT_TOKENS"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 100 || parsed > 10000 {
+			return Config{}, fmt.Errorf("LLM_MAX_OUTPUT_TOKENS must be between 100 and 10000")
+		}
+		cfg.LLM.MaxOutputTokens = parsed
 	}
 
 	return cfg, nil

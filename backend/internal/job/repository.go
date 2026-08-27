@@ -62,7 +62,11 @@ func (r *Repository) claimNext(ctx context.Context, waitingStatus, activeStatus 
 		)
 		UPDATE analysis_jobs AS jobs
 		SET status = $2, started_at = COALESCE(started_at, NOW()), error_message = NULL,
-			attempt_count = attempt_count + 1, lease_expires_at = NOW() + $3::interval
+			attempt_count = CASE
+				WHEN jobs.lease_expires_at IS NULL AND jobs.error_message IS NULL THEN 1
+				ELSE jobs.attempt_count + 1
+			END,
+			lease_expires_at = NOW() + $3::interval
 		FROM next_job WHERE jobs.id = next_job.id
 		RETURNING jobs.id, jobs.project_id, jobs.merge_request_iid, jobs.source_sha,
 			jobs.target_sha, jobs.source_branch, jobs.target_branch, jobs.title, jobs.web_url,

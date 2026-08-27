@@ -84,6 +84,10 @@ func TestRepositoryLifecycle(t *testing.T) {
 	if claimed.AttemptCount != 1 {
 		t.Fatalf("ClaimNext() attempt_count=%d, want 1", claimed.AttemptCount)
 	}
+	changeQueue := NewChangeQueue(repository)
+	if _, err := changeQueue.ClaimNext(ctx, time.Minute); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("change queue claimed a Phase 2 job: error=%v, want ErrNotFound", err)
+	}
 	if err := repository.RetryOrFail(ctx, claimed.ID, claimed.AttemptCount, fmt.Errorf("temporary"), 3, 100*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
@@ -108,10 +112,15 @@ func TestRepositoryLifecycle(t *testing.T) {
 	if result.AttemptCount != 0 {
 		t.Fatalf("source-to-change handoff attempt_count=%d, want 0", result.AttemptCount)
 	}
-	changeQueue := NewChangeQueue(repository)
+	if _, err := pool.Exec(ctx, `UPDATE analysis_jobs SET attempt_count=3 WHERE id=$1`, createdID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ClaimNext(ctx, time.Minute); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("source queue claimed a Phase 3 job: error=%v, want ErrNotFound", err)
+	}
 	changeClaim, err := changeQueue.ClaimNext(ctx, time.Minute)
 	if err != nil || changeClaim.ID != createdID || changeClaim.AttemptCount != 1 {
-		t.Fatalf("change ClaimNext() job=%+v error=%v", changeClaim, err)
+		t.Fatalf("change ClaimNext() did not reset the legacy Phase 2 attempt budget: job=%+v error=%v", changeClaim, err)
 	}
 	if _, err := changeQueue.ClaimNext(ctx, time.Minute); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("concurrent change ClaimNext() error=%v, want ErrNotFound", err)

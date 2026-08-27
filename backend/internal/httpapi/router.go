@@ -14,6 +14,19 @@ import (
 
 func NewRouter(logger *slog.Logger, checker ReadinessChecker, projectService *project.Service,
 	analysisService AnalysisService, webhookHandler http.Handler) http.Handler {
+	return NewRouterWithServices(logger, checker, projectService, analysisService, webhookHandler, nil, nil)
+}
+
+func NewRouterWithKnowledge(logger *slog.Logger, checker ReadinessChecker, projectService *project.Service,
+	analysisService AnalysisService, webhookHandler http.Handler, knowledgeService KnowledgeService) http.Handler {
+	return NewRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, nil)
+}
+
+func NewRouterWithServices(logger *slog.Logger, checker ReadinessChecker, projectService *project.Service,
+	analysisService AnalysisService, webhookHandler http.Handler, knowledgeService KnowledgeService,
+	recommendationService RecommendationService,
+) http.Handler {
 	mux := http.NewServeMux()
 	health := healthHandler{checker: checker}
 	projects := projectHandler{service: projectService}
@@ -23,11 +36,20 @@ func NewRouter(logger *slog.Logger, checker ReadinessChecker, projectService *pr
 	mux.HandleFunc("POST /api/projects", projects.create)
 	mux.HandleFunc("GET /api/projects", projects.list)
 	mux.HandleFunc("GET /api/projects/{id}", projects.get)
+	if knowledgeService != nil {
+		indexes := knowledgeHandler{service: knowledgeService}
+		mux.HandleFunc("POST /api/projects/{id}/index", indexes.requestIndex)
+		mux.HandleFunc("GET /api/projects/{id}/index/status", indexes.status)
+	}
 	if analysisService != nil {
 		analyses := analysisHandler{service: analysisService}
 		mux.HandleFunc("GET /api/analyses", analyses.list)
 		mux.HandleFunc("GET /api/analyses/{id}", analyses.get)
 		mux.HandleFunc("GET /api/analyses/{id}/changes", analyses.changes)
+	}
+	if recommendationService != nil {
+		recommendations := recommendationHandler{service: recommendationService}
+		mux.HandleFunc("GET /api/analyses/{id}/recommendations", recommendations.list)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)
