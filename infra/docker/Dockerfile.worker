@@ -5,6 +5,6 @@ RUN go mod download
 COPY backend/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM docker:28.3.3-cli
 COPY --from=build /out/worker /worker
 ENTRYPOINT ["/worker"]

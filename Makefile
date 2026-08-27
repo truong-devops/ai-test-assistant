@@ -1,9 +1,16 @@
 COMPOSE := docker compose -f infra/compose/docker-compose.yml
 
-.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test
+.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test
 
-dev-up:
+dev-up: sandbox-build
 	$(COMPOSE) up --build -d
+
+sandbox-build:
+	$(COMPOSE) build sandbox
+
+sandbox-test: sandbox-build
+	./scripts/sandbox-smoke.sh
+	cd backend && RUN_SANDBOX_TESTS=1 SANDBOX_TEST_IMAGE="$${SANDBOX_IMAGE:-ai-test-assistant-sandbox:phase7}" go test -tags=sandbox ./internal/validation
 
 dev-down:
 	$(COMPOSE) down --remove-orphans

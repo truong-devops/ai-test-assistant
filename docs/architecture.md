@@ -11,7 +11,7 @@ HTTP request -> handler -> project service -> project repository -> PostgreSQL
                      \-> health checker -> PostgreSQL ping
 ```
 
-Phases 2 through 6 add asynchronous database-backed pipelines:
+Phases 2 through 7 add asynchronous database-backed pipelines:
 
 ```text
 GitLab webhook -> verify + deduplicate -> PENDING analysis job -> HTTP 202
@@ -37,7 +37,14 @@ generation worker -> claim GENERATING_TESTS with renewable lease
                   -> recommendation + exact RAG context + generate-test-v1
                   -> strict JSON/path/test-name/Go syntax validation
                   -> transactional generated_tests + code hash
-                  -> VALIDATING (Phase 7 handoff)
+                  -> VALIDATING
+
+validation worker -> fetch source-SHA snapshot into a bounded private workspace
+                  -> overlay one generated candidate without overwriting source
+                  -> copy snapshot to an anonymous Docker volume
+                  -> non-root `go test` with no network + CPU/memory/PID/time caps
+                  -> transactional validation_runs
+                  -> pass: WAITING_REVIEW / fail or timeout: REPAIRING
 ```
 
 Worker claims use a bounded lease. Temporary GitLab/preparation failures are
@@ -60,9 +67,12 @@ versioned prompt, and rejects malformed or oversized output before persistence.
 The provider is disabled unless explicitly configured. Phase 6 stores one
 initial candidate per recommendation and keeps worker retry count separate from
 the candidate's generation attempt. It parses generated Go syntax but never
-executes the code. Future phases add sandbox validation, repair, and review.
-Generated code must only run in an isolated sandbox, never in the API or worker
-process.
+executes the code. Phase 7 executes only inside ephemeral Docker containers.
+The trusted worker controls Docker, but it transfers the snapshot through an
+anonymous volume instead of bind-mounting its filesystem; the sandbox never
+receives the Docker socket. Runtime dependency downloads are disabled, output
+is bounded and redacted, and the container plus workspace are removed after
+every run. Future phases add AI repair and review actions.
 
 ## Decisions
 
@@ -75,5 +85,7 @@ process.
   analysis and commit recommendations with the state transition atomically.
 - Generated-test writes verify recommendation ownership and atomically commit
   candidates with the transition to `VALIDATING`.
+- Validation writes verify candidate ownership and atomically commit results
+  with the transition to `WAITING_REVIEW` or `REPAIRING`.
 - The sample project is isolated in its own Go module so it can later be
   checked out and analyzed as a target repository.

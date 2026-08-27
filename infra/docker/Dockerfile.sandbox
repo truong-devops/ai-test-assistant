@@ -1,0 +1,16 @@
+FROM golang:1.26.6-alpine
+
+RUN mkdir -p /workspace /tmp/go-build /tmp/go \
+    && chmod 0777 /workspace /tmp/go-build /tmp/go
+
+WORKDIR /workspace
+ENV HOME=/tmp \
+    GOCACHE=/tmp/go-build \
+    GOPATH=/tmp/go \
+    GOTOOLCHAIN=local \
+    GOPROXY=off \
+    GOSUMDB=off \
+    CGO_ENABLED=0
+
+USER 65532:65532
+CMD ["go", "test", "./..."]

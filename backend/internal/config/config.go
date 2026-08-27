@@ -24,6 +24,7 @@ type Config struct {
 	Embedding       EmbeddingConfig
 	LLM             LLMConfig
 	Worker          WorkerConfig
+	Sandbox         SandboxConfig
 }
 
 type GitLabConfig struct {
@@ -54,6 +55,14 @@ type LLMConfig struct {
 	MaxOutputTokens int
 }
 
+type SandboxConfig struct {
+	Image     string
+	Timeout   time.Duration
+	MemoryMB  int
+	CPULimit  float64
+	PIDsLimit int
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		AppEnv:          envOrDefault("APP_ENV", "development"),
@@ -82,6 +91,10 @@ func Load() (Config, error) {
 			RetryDelay:    5 * time.Second,
 			LeaseDuration: 5 * time.Minute,
 			MaxAttempts:   3,
+		},
+		Sandbox: SandboxConfig{
+			Image:   envOrDefault("SANDBOX_IMAGE", "ai-test-assistant-sandbox:phase7"),
+			Timeout: 60 * time.Second, MemoryMB: 512, CPULimit: 1, PIDsLimit: 128,
 		},
 	}
 
@@ -153,6 +166,34 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("LLM_MAX_OUTPUT_TOKENS must be between 100 and 10000")
 		}
 		cfg.LLM.MaxOutputTokens = parsed
+	}
+	if value := os.Getenv("SANDBOX_TIMEOUT_SECONDS"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 900 {
+			return Config{}, fmt.Errorf("SANDBOX_TIMEOUT_SECONDS must be between 1 and 900")
+		}
+		cfg.Sandbox.Timeout = time.Duration(parsed) * time.Second
+	}
+	if value := os.Getenv("SANDBOX_MEMORY_MB"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 64 || parsed > 16384 {
+			return Config{}, fmt.Errorf("SANDBOX_MEMORY_MB must be between 64 and 16384")
+		}
+		cfg.Sandbox.MemoryMB = parsed
+	}
+	if value := os.Getenv("SANDBOX_CPU_LIMIT"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil || parsed < 0.1 || parsed > 32 {
+			return Config{}, fmt.Errorf("SANDBOX_CPU_LIMIT must be between 0.1 and 32")
+		}
+		cfg.Sandbox.CPULimit = parsed
+	}
+	if value := os.Getenv("SANDBOX_PIDS_LIMIT"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 16 || parsed > 4096 {
+			return Config{}, fmt.Errorf("SANDBOX_PIDS_LIMIT must be between 16 and 4096")
+		}
+		cfg.Sandbox.PIDsLimit = parsed
 	}
 
 	return cfg, nil

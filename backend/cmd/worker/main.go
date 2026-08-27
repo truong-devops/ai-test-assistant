@@ -20,6 +20,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
 
 func main() {
@@ -69,6 +70,18 @@ func main() {
 	generationRepository := generation.NewRepository(database.Pool())
 	generationProcessor := generation.NewProcessor(jobRepository, recommendationRepository,
 		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, generationRepository)
+	sandboxRunner, err := validation.NewDockerRunner(validation.DockerConfig{
+		Image: cfg.Sandbox.Image, Timeout: cfg.Sandbox.Timeout, MemoryMB: cfg.Sandbox.MemoryMB,
+		CPUs: cfg.Sandbox.CPULimit, PIDsLimit: cfg.Sandbox.PIDsLimit,
+	})
+	if err != nil {
+		logger.Error("configure Docker sandbox", "error", err)
+		os.Exit(1)
+	}
+	validationRepository := validation.NewRepository(database.Pool())
+	validationProcessor := validation.NewProcessor(projectRepository, generationRepository,
+		validation.NewWorkspaceManager(gitLabClient, validation.WorkspaceOptions{}),
+		sandboxRunner, validationRepository, cfg.Sandbox.Timeout)
 	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,
@@ -88,6 +101,8 @@ func main() {
 			recommendationProcessor, options),
 		job.NewWorker(logger.With("phase", "generation"), generationRepository,
 			generationProcessor, options),
+		job.NewWorker(logger.With("phase", "validation"), validationRepository,
+			validationProcessor, options),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

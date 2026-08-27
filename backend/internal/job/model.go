@@ -13,6 +13,8 @@ const (
 	StatusRecommendingTests = "RECOMMENDING_TESTS"
 	StatusGeneratingTests   = "GENERATING_TESTS"
 	StatusValidating        = "VALIDATING"
+	StatusRepairing         = "REPAIRING"
+	StatusWaitingReview     = "WAITING_REVIEW"
 	StatusFailed            = "FAILED"
 )
 

@@ -25,6 +25,11 @@ func TestLoad(t *testing.T) {
 	t.Setenv("LLM_MODEL", "fixture-model")
 	t.Setenv("LLM_REQUEST_TIMEOUT", "45s")
 	t.Setenv("LLM_MAX_OUTPUT_TOKENS", "1500")
+	t.Setenv("SANDBOX_IMAGE", "sandbox:test")
+	t.Setenv("SANDBOX_TIMEOUT_SECONDS", "45")
+	t.Setenv("SANDBOX_MEMORY_MB", "768")
+	t.Setenv("SANDBOX_CPU_LIMIT", "1.5")
+	t.Setenv("SANDBOX_PIDS_LIMIT", "96")
 
 	cfg, err := Load()
 	if err != nil {
@@ -45,6 +50,10 @@ func TestLoad(t *testing.T) {
 		cfg.LLM.APIKey != "llm-key" || cfg.LLM.Model != "fixture-model" ||
 		cfg.LLM.RequestTimeout != 45*time.Second || cfg.LLM.MaxOutputTokens != 1500 {
 		t.Fatalf("Load() LLM config = %+v", cfg.LLM)
+	}
+	if cfg.Sandbox.Image != "sandbox:test" || cfg.Sandbox.Timeout != 45*time.Second ||
+		cfg.Sandbox.MemoryMB != 768 || cfg.Sandbox.CPULimit != 1.5 || cfg.Sandbox.PIDsLimit != 96 {
+		t.Fatalf("Load() sandbox config = %+v", cfg.Sandbox)
 	}
 }
 
@@ -88,5 +97,13 @@ func TestLoadUsesPhaseSixLLMOutputLimitByDefault(t *testing.T) {
 	}
 	if cfg.LLM.MaxOutputTokens != 6000 {
 		t.Fatalf("LLM max output tokens=%d, want 6000", cfg.LLM.MaxOutputTokens)
+	}
+}
+
+func TestLoadRejectsInvalidSandboxConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("SANDBOX_MEMORY_MB", "32")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want sandbox validation error")
 	}
 }

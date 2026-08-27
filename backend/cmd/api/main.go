@@ -19,6 +19,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
 
 func main() {
@@ -48,12 +49,14 @@ func main() {
 	recommendationService := recommendation.NewService(jobRepository, recommendationRepository)
 	generationRepository := generation.NewRepository(database.Pool())
 	generationService := generation.NewService(jobRepository, generationRepository)
+	validationRepository := validation.NewRepository(database.Pool())
+	validationService := validation.NewService(jobRepository, validationRepository)
 	webhookService := gitlab.NewWebhookService(projectRepository, jobRepository)
 	webhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewRouterWithAllServices(logger, database, projectService, analysisService,
-			webhookHandler, knowledgeService, recommendationService, generationService),
+		Handler: httpapi.NewRouterWithPhaseSevenServices(logger, database, projectService, analysisService,
+			webhookHandler, knowledgeService, recommendationService, generationService, validationService),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

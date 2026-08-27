@@ -21,3 +21,11 @@
   diffs, and retrieved documentation are untrusted prompt data.
 - Phase 6 may parse generated Go source but must not write it into a checkout or
   execute it. Compilation and execution require the isolated Phase 7 sandbox.
+- Build and run the Phase 7 Docker cases with `make sandbox-test`. Sandbox
+  containers must keep network disabled, run as non-root, drop all capabilities,
+  use a read-only root filesystem, and enforce CPU/memory/PID/time limits.
+- The Compose worker is a trusted control-plane process with Docker socket
+  access. Never mount that socket, the worker filesystem, `.env`, or host secrets
+  into a generated-test sandbox.
+- Phase 7 uses `GOPROXY=off`; projects with external modules need committed
+  `vendor/` content until a trusted immutable dependency-cache design is added.

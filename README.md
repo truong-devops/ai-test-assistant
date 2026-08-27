@@ -4,11 +4,11 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository currently implements Phases 0-6: the backend foundation,
+This repository currently implements Phases 0-7: the backend foundation,
 GitLab capture pipeline, deterministic Go changed-symbol analyzer, and
 project-isolated knowledge/RAG index plus structured AI test recommendations
-and generated Go test candidates. Sandbox execution, repair, and the frontend
-are intentionally not implemented yet.
+and generated Go test candidates with isolated Docker validation. AI repair and
+the frontend are intentionally not implemented yet.
 
 ## Prerequisites
 
@@ -60,6 +60,7 @@ Stop the stack with `make dev-down`. Run all local tests with `make test`.
 - `GET /api/analyses/{id}/changes`
 - `GET /api/analyses/{id}/recommendations`
 - `GET /api/analyses/{id}/generated-tests`
+- `GET /api/analyses/{id}/validations`
 
 Configure a GitLab Merge Request webhook to call `/api/webhooks/gitlab`, set
 its secret to `GITLAB_WEBHOOK_SECRET`, and enable Merge request events. The API
@@ -85,5 +86,15 @@ The generation worker uses each stored recommendation with the exact retrieved
 interfaces, implementation, mocks, and closest tests. It validates the target
 path, declared test names, package, build constraints, size, and Go syntax
 before storing the candidate with a code hash and trace metadata. Successful
-jobs advance to `VALIDATING`. Generated code is not written to GitLab and is not
-executed by Phase 6; isolated execution belongs to Phase 7.
+jobs advance to `VALIDATING`. The Phase 7 worker downloads a private source-SHA
+snapshot, inserts one candidate, copies it into an anonymous Docker volume, and
+runs `go test -count=1 ./...` in the non-root sandbox. Network, capabilities,
+privilege escalation, swap, CPU, memory, PIDs, output size, and wall time are
+bounded. Passing jobs advance to `WAITING_REVIEW`; failed or timed-out tests
+advance to `REPAIRING` for the Phase 8 handoff.
+
+Build and exercise the real sandbox with `make sandbox-test`. Runtime dependency
+downloads are intentionally disabled (`GOPROXY=off`); target repositories must
+use the standard library, commit `vendor/`, or use a future trusted dependency
+cache. The trusted worker needs access to the Docker daemon, but sandbox
+containers never receive the Docker socket, worker filesystem, or host secrets.

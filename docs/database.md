@@ -33,6 +33,13 @@ ID, and generation attempt. A unique `(recommendation_id, generation_attempt)`
 constraint prevents duplicate initial generations. Candidate writes and the
 analysis transition to `VALIDATING` share one transaction.
 
+Phase 7 adds `validation_runs`. Each record belongs to an analysis and generated
+test version and stores the exact command, status (`PASSED`, `FAILED`, or
+`TIMED_OUT`), exit code, bounded/redacted stdout and stderr, duration, and an
+output-truncation marker. Candidate ownership is checked inside the insert.
+Results and the analysis transition to `WAITING_REVIEW` (all pass) or
+`REPAIRING` (any failure/timeout) commit atomically.
+
 Migrations are in `backend/migrations` and use the `golang-migrate` filename
 format. Apply them with `make migrate-up`; roll back one migration with
 `make migrate-down`.

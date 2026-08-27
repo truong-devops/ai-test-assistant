@@ -110,5 +110,32 @@ files, or HTTP 404 when the analysis does not exist:
 }
 ```
 
-Phase 6 only stores candidates. This endpoint does not execute code or write to
-the target GitLab repository.
+This endpoint does not execute code or write to the target GitLab repository.
+
+## Validation runs
+
+`GET /api/analyses/{id}/validations` returns the persisted Phase 7 sandbox
+results, or HTTP 404 when the analysis does not exist:
+
+```json
+{
+  "validation_runs": [
+    {
+      "id": 9,
+      "analysis_job_id": 3,
+      "generated_test_id": 8,
+      "attempt_number": 1,
+      "command": "go test -count=1 -timeout=55s ./...",
+      "status": "PASSED",
+      "exit_code": 0,
+      "duration_ms": 2140,
+      "stdout": "ok ...",
+      "stderr": "",
+      "output_truncated": false
+    }
+  ]
+}
+```
+
+The HTTP API only reads stored results. Generated code is executed by the
+background worker inside the isolated Docker sandbox.
