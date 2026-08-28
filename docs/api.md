@@ -2,6 +2,17 @@
 
 All responses use JSON. Errors have the shape `{"error":"message"}`.
 
+## Evaluations
+
+- `GET /api/evaluations` returns `{"evaluation_runs": [...]}` ordered newest first.
+- `GET /api/evaluations/{id}` returns the immutable run metadata plus its rebuilt
+  group summaries and paired comparisons.
+
+The detail endpoint recomputes the report from stored observations and rejects
+a stored dataset whose SHA-256 no longer matches the run. Import is deliberately
+performed by the offline `cmd/evaluate` CLI rather than an unauthenticated HTTP
+write endpoint.
+
 ## Health
 
 - `GET /health` returns liveness without checking dependencies.

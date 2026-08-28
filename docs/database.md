@@ -55,6 +55,12 @@ unique generated-test key prevents double-clicks and concurrent review requests
 from creating conflicting final decisions. Deleting an analysis cascades through
 its generated tests and review records.
 
+Phase 10 adds `evaluation_runs` and `evaluation_observations`. A run stores the
+dataset schema, SHA-256 hash, description, count, and creation time. The hash is
+unique, making imports idempotent. Observations retain an explicit ordinal and
+raw validated JSON payload; the ordinal preserves exact dataset order so a
+report rebuilt from PostgreSQL must reproduce the stored hash.
+
 Migrations are in `backend/migrations` and use the `golang-migrate` filename
 format. Apply them with `make migrate-up`; roll back one migration with
 `make migrate-down`.

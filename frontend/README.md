@@ -1,10 +1,13 @@
 # AI Test Assistant Review Console
 
-The frontend is a Next.js application for Phase 9 human review. It presents
+The frontend is a Next.js application for human review and Phase 10 experiment reporting. It presents
 project/index status, analysis history, and a traceable review screen with the
 MR diff, changed symbols, current project context, recommendation rationale,
 generated test source, every validation result, repair history, and an
 immutable Accept/Reject decision.
+The evaluation area displays immutable dataset hashes, explicit metric
+denominators, paired comparison deltas, and the interpretation guardrail that
+execution success is distinct from human usefulness.
 
 ## Local development
 

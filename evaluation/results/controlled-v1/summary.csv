@@ -1,0 +1,7 @@
+experiment,variant,observations,syntactic_validity_pct,compile_validity_pct,execution_validity_pct,human_acceptance_pct,first_pass_success_pct,repair_success_pct,final_success_pct,mean_duration_seconds,mean_coverage_delta_pp
+CONTEXT_IMPACT,DIFF_ONLY,2,100.00,50.00,0.00,0.00,,,,,0.50
+CONTEXT_IMPACT,DIFF_RAG,2,100.00,100.00,100.00,100.00,,,,,4.00
+REPAIR_IMPACT,GENERATE_ONLY,2,50.00,50.00,50.00,,50.00,,50.00,,
+REPAIR_IMPACT,GENERATE_REPAIR,2,100.00,100.00,100.00,,50.00,100.00,100.00,,
+HUMAN_EFFORT,MANUAL,2,,,,100.00,,,,1950.00,3.50
+HUMAN_EFFORT,AI_ASSISTED,2,,,,100.00,,,,660.00,4.50

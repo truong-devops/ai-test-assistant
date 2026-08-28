@@ -62,6 +62,11 @@ review POST -> lock analysis + current generated version
             -> insert one immutable test_reviews row
             -> aggregate latest candidates
             -> ACCEPTED when all accept; otherwise REJECTED after all decide
+
+evaluation-v1 dataset -> strict paired-metric validation -> SHA-256 identity
+                      -> JSON + CSV + Markdown + SVG artifacts
+                      -> optional immutable PostgreSQL run
+                      -> read-only API + Next.js evaluation ledger
 ```
 
 Worker claims use a bounded lease. Temporary GitLab/preparation failures are
@@ -93,6 +98,10 @@ every run. Phase 8 keeps AI repair attempts separate from infrastructure retry
 counts and caps them at three. The repair worker can only append a new generated
 test version; it cannot mutate repository production files. Phase 9 adds a
 human-review console and persisted Accept/Reject decisions.
+Phase 10 keeps evaluation outside the asynchronous product worker: the offline
+CLI validates versioned observations and deterministically builds thesis-ready
+artifacts. PostgreSQL is optional for artifact generation and only serves the
+read-only evaluation UI after import.
 
 ## Decisions
 
@@ -119,5 +128,8 @@ human-review console and persisted Accept/Reject decisions.
   externally visible backend address. The context panel recomputes a
   project-filtered view of the current index; it is not presented as a frozen
   historical LLM prompt.
+- Phase 10 datasets require one baseline and one treatment observation for each
+  scenario/replicate pair. Syntax, compile, execution, coverage, and human
+  acceptance keep separate numerators and denominators.
 - The sample project is isolated in its own Go module so it can later be
   checked out and analyzed as a target repository.

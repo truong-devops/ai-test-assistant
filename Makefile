@@ -1,6 +1,10 @@
 COMPOSE := docker compose -f infra/compose/docker-compose.yml
 
-.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test frontend-install frontend-typecheck frontend-build
+.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test frontend-install frontend-typecheck frontend-build evaluate evaluate-import
+
+EVALUATION_DATASET ?= evaluation/datasets/controlled-v1.json
+EVALUATION_OUTPUT ?= evaluation/results/controlled-v1
+EVALUATION_DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/ai_test_assistant?sslmode=disable
 
 dev-up: sandbox-build
 	$(COMPOSE) up --build -d
@@ -33,7 +37,13 @@ lint:
 	cd examples/go-microservices && go vet ./...
 
 build: frontend-build
-	cd backend && go build ./cmd/api ./cmd/worker
+	cd backend && go build ./cmd/api ./cmd/worker ./cmd/evaluate
+
+evaluate:
+	cd backend && go run ./cmd/evaluate -dataset ../$(EVALUATION_DATASET) -out ../$(EVALUATION_OUTPUT)
+
+evaluate-import:
+	cd backend && go run ./cmd/evaluate -dataset ../$(EVALUATION_DATASET) -out ../$(EVALUATION_OUTPUT) -database-url "$(EVALUATION_DATABASE_URL)"
 
 frontend-install:
 	cd frontend && npm ci --ignore-scripts

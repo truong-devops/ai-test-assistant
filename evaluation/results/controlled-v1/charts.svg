@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720">
+<style>text{font-family:Inter,Arial,sans-serif;fill:#18303d}.title{font-size:18px;font-weight:700}.label{font-size:12px}.value{font-size:13px;font-weight:700}.track{fill:#e7ecef}.bar{fill:#087a6f}.bar.alt{fill:#295f8b}</style>
+<g transform="translate(0 0)"><text class="title" x="28" y="36">Experiment A · execution validity</text>
+<text class="label" x="28" y="68">DIFF_ONLY</text><rect class="track" x="220" y="51" width="650" height="24" rx="4"/><rect class="bar" x="220" y="51" width="0.00" height="24" rx="4"/><text class="value" x="885" y="68">0.00%</text>
+<text class="label" x="28" y="136">DIFF_RAG</text><rect class="track" x="220" y="119" width="650" height="24" rx="4"/><rect class="bar alt" x="220" y="119" width="650.00" height="24" rx="4"/><text class="value" x="885" y="136">100.00%</text>
+</g>
+<g transform="translate(0 240)"><text class="title" x="28" y="36">Experiment B · final success</text>
+<text class="label" x="28" y="68">GENERATE_ONLY</text><rect class="track" x="220" y="51" width="650" height="24" rx="4"/><rect class="bar" x="220" y="51" width="325.00" height="24" rx="4"/><text class="value" x="885" y="68">50.00%</text>
+<text class="label" x="28" y="136">GENERATE_REPAIR</text><rect class="track" x="220" y="119" width="650" height="24" rx="4"/><rect class="bar alt" x="220" y="119" width="650.00" height="24" rx="4"/><text class="value" x="885" y="136">100.00%</text>
+</g>
+<g transform="translate(0 480)"><text class="title" x="28" y="36">Experiment C · mean effort</text>
+<text class="label" x="28" y="68">MANUAL</text><rect class="track" x="220" y="51" width="650" height="24" rx="4"/><rect class="bar" x="220" y="51" width="650.00" height="24" rx="4"/><text class="value" x="885" y="68">1950.00s</text>
+<text class="label" x="28" y="136">AI_ASSISTED</text><rect class="track" x="220" y="119" width="650" height="24" rx="4"/><rect class="bar alt" x="220" y="119" width="220.00" height="24" rx="4"/><text class="value" x="885" y="136">660.00s</text>
+</g>
+</svg>

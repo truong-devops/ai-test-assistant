@@ -66,6 +66,18 @@ func NewRouterWithPhaseNineServices(logger *slog.Logger, checker ReadinessChecke
 	generationService GenerationService, validationService ValidationService,
 	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
 ) http.Handler {
+	return NewRouterWithPhaseTenServices(logger, checker, projectService, analysisService,
+		webhookHandler, knowledgeService, recommendationService, generationService,
+		validationService, repairService, reviewService, contextService, nil)
+}
+
+func NewRouterWithPhaseTenServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService,
+) http.Handler {
 	mux := http.NewServeMux()
 	health := healthHandler{checker: checker}
 	projects := projectHandler{service: projectService}
@@ -111,6 +123,11 @@ func NewRouterWithPhaseNineServices(logger *slog.Logger, checker ReadinessChecke
 	if contextService != nil {
 		contexts := analysisContextHandler{service: contextService}
 		mux.HandleFunc("GET /api/analyses/{id}/context", contexts.list)
+	}
+	if evaluationService != nil {
+		evaluations := evaluationHandler{service: evaluationService}
+		mux.HandleFunc("GET /api/evaluations", evaluations.list)
+		mux.HandleFunc("GET /api/evaluations/{id}", evaluations.get)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)

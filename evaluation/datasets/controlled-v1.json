@@ -1,0 +1,67 @@
+{
+  "schema_version": "evaluation-v1",
+  "name": "controlled-baseline-v1",
+  "description": "Controlled deterministic fixture for exercising the Phase 10 evaluation pipeline. Replace these observations with recorded trials before drawing thesis conclusions.",
+  "observations": [
+    {
+      "key": "a-duplicate-diff", "scenario": "duplicate branch behavior", "experiment": "CONTEXT_IMPACT", "variant": "DIFF_ONLY", "replicate": 1,
+      "syntactic_valid": true, "compile_valid": false, "execution_valid": false, "human_accepted": false,
+      "coverage_before_pct": 70, "coverage_after_pct": 70
+    },
+    {
+      "key": "a-duplicate-rag", "scenario": "duplicate branch behavior", "experiment": "CONTEXT_IMPACT", "variant": "DIFF_RAG", "replicate": 1,
+      "syntactic_valid": true, "compile_valid": true, "execution_valid": true, "human_accepted": true,
+      "coverage_before_pct": 70, "coverage_after_pct": 74
+    },
+    {
+      "key": "a-boundary-diff", "scenario": "stock boundary behavior", "experiment": "CONTEXT_IMPACT", "variant": "DIFF_ONLY", "replicate": 1,
+      "syntactic_valid": true, "compile_valid": true, "execution_valid": false, "human_accepted": false,
+      "coverage_before_pct": 62, "coverage_after_pct": 63
+    },
+    {
+      "key": "a-boundary-rag", "scenario": "stock boundary behavior", "experiment": "CONTEXT_IMPACT", "variant": "DIFF_RAG", "replicate": 1,
+      "syntactic_valid": true, "compile_valid": true, "execution_valid": true, "human_accepted": true,
+      "coverage_before_pct": 62, "coverage_after_pct": 66
+    },
+    {
+      "key": "b-compile-only", "scenario": "repair compile failure", "experiment": "REPAIR_IMPACT", "variant": "GENERATE_ONLY", "replicate": 1,
+      "syntactic_valid": false, "compile_valid": false, "execution_valid": false,
+      "first_pass_success": false, "final_success": false
+    },
+    {
+      "key": "b-compile-repair", "scenario": "repair compile failure", "experiment": "REPAIR_IMPACT", "variant": "GENERATE_REPAIR", "replicate": 1,
+      "syntactic_valid": true, "compile_valid": true, "execution_valid": true,
+      "first_pass_success": false, "repair_attempted": true, "repair_success": true, "final_success": true
+    },
+    {
+      "key": "b-pass-only", "scenario": "valid first generation", "experiment": "REPAIR_IMPACT", "variant": "GENERATE_ONLY", "replicate": 1,
+      "syntactic_valid": true, "compile_valid": true, "execution_valid": true,
+      "first_pass_success": true, "final_success": true
+    },
+    {
+      "key": "b-pass-repair", "scenario": "valid first generation", "experiment": "REPAIR_IMPACT", "variant": "GENERATE_REPAIR", "replicate": 1,
+      "syntactic_valid": true, "compile_valid": true, "execution_valid": true,
+      "first_pass_success": true, "repair_attempted": false, "final_success": true
+    },
+    {
+      "key": "c-boundary-manual", "scenario": "write boundary test", "experiment": "HUMAN_EFFORT", "variant": "MANUAL", "replicate": 1,
+      "human_accepted": true, "duration_seconds": 1800,
+      "coverage_before_pct": 60, "coverage_after_pct": 64
+    },
+    {
+      "key": "c-boundary-assisted", "scenario": "write boundary test", "experiment": "HUMAN_EFFORT", "variant": "AI_ASSISTED", "replicate": 1,
+      "human_accepted": true, "duration_seconds": 600,
+      "coverage_before_pct": 60, "coverage_after_pct": 65
+    },
+    {
+      "key": "c-error-manual", "scenario": "write repository error test", "experiment": "HUMAN_EFFORT", "variant": "MANUAL", "replicate": 1,
+      "human_accepted": true, "duration_seconds": 2100,
+      "coverage_before_pct": 68, "coverage_after_pct": 71
+    },
+    {
+      "key": "c-error-assisted", "scenario": "write repository error test", "experiment": "HUMAN_EFFORT", "variant": "AI_ASSISTED", "replicate": 1,
+      "human_accepted": true, "duration_seconds": 720,
+      "coverage_before_pct": 68, "coverage_after_pct": 72
+    }
+  ]
+}

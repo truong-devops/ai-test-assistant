@@ -4,11 +4,11 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository implements Phases 0-9: the backend foundation, GitLab capture
+This repository implements Phases 0-10: the backend foundation, GitLab capture
 pipeline, deterministic Go changed-symbol analyzer, project-isolated
 knowledge/RAG index, structured AI test recommendations and generated Go test
 candidates, isolated Docker validation, a bounded repair loop, and the human
-review console.
+review console, and a reproducible evaluation pipeline for the thesis experiments.
 
 ## Prerequisites
 
@@ -52,6 +52,7 @@ cd frontend && npm run dev
 - `examples/go-microservices/`: deterministic Go services used by later analysis experiments.
 - `infra/`: application Dockerfiles and local Compose stack.
 - `docs/`: architecture, API, database, and development notes.
+- [Phase 1–10 follow-up register](docs/PHASE_1_10_FOLLOW_UPS.md): consolidated limitations and closure backlog.
 - `scripts/`: small development helpers called by the Makefile.
 
 ## Current endpoints
@@ -73,6 +74,8 @@ cd frontend && npm run dev
 - `GET /api/analyses/{id}/repairs`
 - `GET /api/analyses/{id}/reviews`
 - `GET /api/analyses/{id}/context`
+- `GET /api/evaluations`
+- `GET /api/evaluations/{id}`
 - `POST /api/generated-tests/{id}/accept`
 - `POST /api/generated-tests/{id}/reject`
 
@@ -123,6 +126,13 @@ the final analysis status `REJECTED` after every current candidate has been
 reviewed. The context panel deliberately identifies itself as the current
 project-index retrieval; it is re-evaluated with the analysis project filter
 and never mixes chunks from another project.
+
+Phase 10 compares context impact, repair impact, and human effort with paired
+scenario observations. Generate portable artifacts with `make evaluate`, or
+run `make migrate-up && make evaluate-import` to also expose an immutable run
+in the UI at `http://localhost:3000/evaluations`. The bundled dataset is a
+controlled pipeline fixture, not thesis evidence; replace it with recorded
+trials before reporting conclusions. See [docs/evaluation.md](docs/evaluation.md).
 
 Build and exercise the real sandbox with `make sandbox-test`. Runtime dependency
 downloads are intentionally disabled (`GOPROXY=off`); target repositories must

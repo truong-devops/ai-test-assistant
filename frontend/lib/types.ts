@@ -172,3 +172,57 @@ export type AnalysisDetail = {
   changed_files: ChangedFile[];
   changed_symbols: ChangedSymbol[];
 };
+
+export type EvaluationRun = {
+  id: number;
+  name: string;
+  schema_version: string;
+  dataset_hash: string;
+  description: string;
+  observation_count: number;
+  created_at: string;
+};
+
+export type RateMetric = { successes: number; total: number; rate_pct: number };
+
+export type EvaluationGroup = {
+  experiment: string;
+  variant: string;
+  observation_count: number;
+  syntactic_validity?: RateMetric;
+  compile_validity?: RateMetric;
+  execution_validity?: RateMetric;
+  human_acceptance?: RateMetric;
+  first_pass_success?: RateMetric;
+  repair_success?: RateMetric;
+  final_success?: RateMetric;
+  mean_duration_seconds?: number;
+  mean_coverage_delta_pp?: number;
+};
+
+export type EvaluationComparison = {
+  experiment: string;
+  baseline_variant: string;
+  treatment_variant: string;
+  syntactic_validity_delta_pp?: number;
+  compile_validity_delta_pp?: number;
+  execution_validity_delta_pp?: number;
+  human_acceptance_delta_pp?: number;
+  first_pass_success_delta_pp?: number;
+  repair_success_rate_pct?: number;
+  final_success_delta_pp?: number;
+  mean_coverage_delta_change_pp?: number;
+  mean_duration_reduction_seconds?: number;
+  mean_duration_reduction_pct?: number;
+};
+
+export type EvaluationReport = {
+  schema_version: string;
+  dataset_name: string;
+  dataset_hash: string;
+  description: string;
+  groups: EvaluationGroup[];
+  comparisons: EvaluationComparison[];
+};
+
+export type StoredEvaluation = { run: EvaluationRun; report: EvaluationReport };

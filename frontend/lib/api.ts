@@ -9,6 +9,8 @@ import type {
   RepairAttempt,
   Review,
   ValidationRun,
+  EvaluationRun,
+  StoredEvaluation,
 } from "@/lib/types";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
@@ -93,4 +95,12 @@ export async function getReviews(id: string): Promise<Review[]> {
 
 export async function getContext(id: string): Promise<KnowledgeChunk[]> {
   return (await request<{ context: KnowledgeChunk[] }>(`/api/analyses/${encodeURIComponent(id)}/context`)).context;
+}
+
+export async function getEvaluations(): Promise<EvaluationRun[]> {
+  return (await request<{ evaluation_runs: EvaluationRun[] }>("/api/evaluations")).evaluation_runs;
+}
+
+export async function getEvaluation(id: string): Promise<StoredEvaluation> {
+  return request<StoredEvaluation>(`/api/evaluations/${encodeURIComponent(id)}`);
 }

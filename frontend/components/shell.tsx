@@ -1,12 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-type Section = "overview" | "projects" | "analyses";
+type Section = "overview" | "projects" | "analyses" | "evaluations";
 
 const navigation: Array<{ href: string; label: string; section: Section }> = [
   { href: "/", label: "Overview", section: "overview" },
   { href: "/projects", label: "Projects", section: "projects" },
   { href: "/analyses", label: "Review queue", section: "analyses" },
+  { href: "/evaluations", label: "Evaluation", section: "evaluations" },
 ];
 
 export function AppShell({ active, children }: { active: Section; children: ReactNode }) {

@@ -1,0 +1,181 @@
+{
+  "schema_version": "evaluation-v1",
+  "dataset_name": "controlled-baseline-v1",
+  "dataset_hash": "c6ee60f08dba38e073b35f6cc4adc1d6c646daa3b20d8a27cc7f34788e060c03",
+  "description": "Controlled deterministic fixture for exercising the Phase 10 evaluation pipeline. Replace these observations with recorded trials before drawing thesis conclusions.",
+  "groups": [
+    {
+      "experiment": "CONTEXT_IMPACT",
+      "variant": "DIFF_ONLY",
+      "observation_count": 2,
+      "syntactic_validity": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "compile_validity": {
+        "successes": 1,
+        "total": 2,
+        "rate_pct": 50
+      },
+      "execution_validity": {
+        "successes": 0,
+        "total": 2,
+        "rate_pct": 0
+      },
+      "human_acceptance": {
+        "successes": 0,
+        "total": 2,
+        "rate_pct": 0
+      },
+      "mean_coverage_delta_pp": 0.5
+    },
+    {
+      "experiment": "CONTEXT_IMPACT",
+      "variant": "DIFF_RAG",
+      "observation_count": 2,
+      "syntactic_validity": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "compile_validity": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "execution_validity": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "human_acceptance": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "mean_coverage_delta_pp": 4
+    },
+    {
+      "experiment": "REPAIR_IMPACT",
+      "variant": "GENERATE_ONLY",
+      "observation_count": 2,
+      "syntactic_validity": {
+        "successes": 1,
+        "total": 2,
+        "rate_pct": 50
+      },
+      "compile_validity": {
+        "successes": 1,
+        "total": 2,
+        "rate_pct": 50
+      },
+      "execution_validity": {
+        "successes": 1,
+        "total": 2,
+        "rate_pct": 50
+      },
+      "first_pass_success": {
+        "successes": 1,
+        "total": 2,
+        "rate_pct": 50
+      },
+      "final_success": {
+        "successes": 1,
+        "total": 2,
+        "rate_pct": 50
+      }
+    },
+    {
+      "experiment": "REPAIR_IMPACT",
+      "variant": "GENERATE_REPAIR",
+      "observation_count": 2,
+      "syntactic_validity": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "compile_validity": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "execution_validity": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "first_pass_success": {
+        "successes": 1,
+        "total": 2,
+        "rate_pct": 50
+      },
+      "repair_success": {
+        "successes": 1,
+        "total": 1,
+        "rate_pct": 100
+      },
+      "final_success": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      }
+    },
+    {
+      "experiment": "HUMAN_EFFORT",
+      "variant": "MANUAL",
+      "observation_count": 2,
+      "human_acceptance": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "mean_duration_seconds": 1950,
+      "mean_coverage_delta_pp": 3.5
+    },
+    {
+      "experiment": "HUMAN_EFFORT",
+      "variant": "AI_ASSISTED",
+      "observation_count": 2,
+      "human_acceptance": {
+        "successes": 2,
+        "total": 2,
+        "rate_pct": 100
+      },
+      "mean_duration_seconds": 660,
+      "mean_coverage_delta_pp": 4.5
+    }
+  ],
+  "comparisons": [
+    {
+      "experiment": "CONTEXT_IMPACT",
+      "baseline_variant": "DIFF_ONLY",
+      "treatment_variant": "DIFF_RAG",
+      "syntactic_validity_delta_pp": 0,
+      "compile_validity_delta_pp": 50,
+      "execution_validity_delta_pp": 100,
+      "human_acceptance_delta_pp": 100,
+      "mean_coverage_delta_change_pp": 3.5
+    },
+    {
+      "experiment": "REPAIR_IMPACT",
+      "baseline_variant": "GENERATE_ONLY",
+      "treatment_variant": "GENERATE_REPAIR",
+      "syntactic_validity_delta_pp": 50,
+      "compile_validity_delta_pp": 50,
+      "execution_validity_delta_pp": 50,
+      "first_pass_success_delta_pp": 0,
+      "repair_success_rate_pct": 100,
+      "final_success_delta_pp": 50
+    },
+    {
+      "experiment": "HUMAN_EFFORT",
+      "baseline_variant": "MANUAL",
+      "treatment_variant": "AI_ASSISTED",
+      "human_acceptance_delta_pp": 0,
+      "mean_coverage_delta_change_pp": 1,
+      "mean_duration_reduction_seconds": 1290,
+      "mean_duration_reduction_pct": 66.15
+    }
+  ]
+}
