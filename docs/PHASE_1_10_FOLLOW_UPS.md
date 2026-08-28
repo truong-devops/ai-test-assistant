@@ -26,8 +26,8 @@ Mốc xử lý:
 Khi xử lý một mục, không xóa dòng. Hãy đổi trạng thái, thêm ngày đóng, PR/commit,
 test hoặc tài liệu chứng minh vào cột **Điều kiện đóng / ghi chú**.
 
-Snapshot ban đầu có **60 mục theo phase**: 43 `OPEN`, 10 `VERIFY` và 7
-`ACCEPTED_MVP`. Bảng ưu tiên cao bên dưới gồm 8 mục tóm tắt xuyên phase nên
+Snapshot sau vòng triển khai Phase 11 local có **60 mục theo phase**: 40 `OPEN`,
+13 `VERIFY` và 7 `ACCEPTED_MVP`. Bảng ưu tiên cao bên dưới gồm 8 mục tóm tắt xuyên phase nên
 không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạng thái thay đổi.
 
 ## Các mục ưu tiên cao nhất
@@ -37,8 +37,8 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | X-01 | OPEN | P0 | P11 | API và UI chưa có đăng nhập, phân quyền hoặc tenant boundary. Ngoại trừ webhook secret, các endpoint hiện chỉ phù hợp môi trường local hoặc mạng tin cậy. |
 | X-02 | OPEN | P0 | P11 | Worker là control plane tin cậy và đang nhận Docker socket của host; nếu worker bị chiếm quyền thì host Docker cũng có rủi ro. |
 | X-03 | OPEN | P0 | THESIS | Dataset Phase 10 hiện là controlled fixture, chưa phải dữ liệu thực nghiệm và không được dùng để kết luận luận văn. |
-| X-04 | OPEN | P1 | P11 | Chưa có GitLab CI đầy đủ cho lint, unit, integration, sandbox, image build và migration verification. |
-| X-05 | OPEN | P1 | P11 | Chưa có chiến lược secret production, backup/restore PostgreSQL, TLS/reverse proxy và rollback deployment. |
+| X-04 | VERIFY | P1 | P11 | Đã thêm GitLab CI cho lint, unit, integration, sandbox, image build và migration round-trip; cần xác nhận một pipeline thật trên GitLab runner. |
+| X-05 | VERIFY | P1 | P11 | Đã có secret-file production Compose, backup/restore drill và deployment runbook; TLS/reverse proxy và rollback trên host thật vẫn cần xác nhận. |
 | X-06 | OPEN | P1 | P11 | Chưa có immutable snapshot cho RAG context/prompt đã dùng ở từng lần recommendation, generation và repair. |
 | X-07 | OPEN | P1 | THESIS | Coverage, human effort và human acceptance chưa được thu tự động từ trial thật; hiện được nhập qua dataset. |
 | X-08 | OPEN | P1 | P11 | Chưa có metrics/tracing/alerting, rate limit và operational dashboard; hiện chủ yếu dựa vào structured log và timestamp DB. |
@@ -51,8 +51,8 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | P1-02 | OPEN | P2 | P11 | Project API mới có create/list/get; chưa có update, disable hoặc delete dù tài liệu ban đầu dùng từ “CRUD”. | Chốt rõ contract read/create-only hoặc thêm lifecycle endpoint an toàn cùng test cascade. |
 | P1-03 | OPEN | P1 | P11 | Bảng `gitlab_connections` đã tồn tại nhưng runtime chưa sử dụng; GitLab token và webhook secret vẫn là cấu hình toàn cục. | Hoặc wiring credential theo project với mã hóa/KMS, hoặc migration loại bỏ schema không dùng và cập nhật thiết kế. |
 | P1-04 | OPEN | P1 | P11 | `/ready` chỉ kiểm tra PostgreSQL; không phản ánh GitLab, Docker daemon, sandbox image hay cấu hình provider. | Định nghĩa dependency nào là readiness bắt buộc, dependency nào chỉ báo degraded; thêm test. |
-| P1-05 | OPEN | P0 | P11 | Compose dùng password PostgreSQL phát triển và webhook secret mặc định; database được publish ra host. | Có file/stack production tách biệt, secret injection, network nội bộ, TLS và không dùng default credential. |
-| P1-06 | OPEN | P1 | P11 | Chưa có backup/restore drill, migration preflight và chiến lược deploy khi migration lỗi. | Restore thử thành công, migration up/down được CI kiểm tra trên DB sạch và DB nâng cấp. |
+| P1-05 | VERIFY | P0 | P11 | Development Compose vẫn dùng credential local; production Compose đã tách secret file, data network và loopback port. TLS/reverse proxy trên host thật chưa được xác nhận. | Có file/stack production tách biệt, secret injection, network nội bộ, TLS và không dùng default credential. |
+| P1-06 | VERIFY | P1 | P11 | Đã có migration one-shot, CI round-trip và backup→restore test trên production Compose tạm; cần restore drill định kỳ trên host triển khai. | Restore thử thành công, migration up/down được CI kiểm tra trên DB sạch và DB nâng cấp. |
 
 ## Phase 2 — GitLab integration
 
@@ -138,7 +138,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | P9-04 | OPEN | P2 | P11 | UI chưa realtime/polling; trạng thái worker mới chỉ thấy sau refresh/navigation. | Thêm polling/SSE hoặc ghi rõ behavior, có retry/backoff và trạng thái stale. |
 | P9-05 | OPEN | P1 | P11 | Frontend mới có typecheck/build; chưa có component test, browser E2E, accessibility và responsive visual regression trong repo. | Thêm test Accept/Reject, error states, keyboard/a11y và viewport chính trong CI. |
 | P9-06 | OPEN | P2 | P11 | Diff, source và log lớn có thể làm review page nặng; chưa có pagination/virtualization/download artifact. | Benchmark payload đại diện và giới hạn/render strategy. |
-| P9-07 | OPEN | P1 | P11 | Same-origin proxy giúp không lộ backend credential nhưng chưa có CSRF/session policy, rate limit và security headers production. | Hoàn thiện cùng authentication, CSP, CSRF/SameSite, request limit và reverse proxy. |
+| P9-07 | VERIFY | P1 | P11 | Đã có API rate limit, timeout/request limits, CSP và security headers; CSRF/session, authentication và reverse-proxy policy vẫn chưa đóng. | Hoàn thiện cùng authentication, CSP, CSRF/SameSite, request limit và reverse proxy. |
 
 ## Phase 10 — Evaluation và thesis experiments
 

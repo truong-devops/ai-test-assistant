@@ -1,0 +1,181 @@
+name: ai-test-assistant
+
+x-logging: &default-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app-hardening: &app-hardening
+  restart: unless-stopped
+  read_only: true
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 256
+  logging: *default-logging
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [data]
+    restart: unless-stopped
+    shm_size: 256m
+    pids_limit: 256
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["exec migrate -path=/migrations -database=\"$$(cat /run/secrets/database_url)\" -lock-timeout=30 up"]
+    secrets: [database_url]
+    volumes:
+      - ../../backend/migrations:/migrations:ro
+    networks: [data]
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    logging: *default-logging
+
+  api:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_ADDR: :8080
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_MAX_CONNS: ${DATABASE_MAX_CONNS:-20}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-20s}
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT:-15s}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT:-30s}
+      HTTP_IDLE_TIMEOUT: ${HTTP_IDLE_TIMEOUT:-60s}
+      HTTP_MAX_HEADER_BYTES: ${HTTP_MAX_HEADER_BYTES:-1048576}
+      HTTP_RATE_LIMIT_RPS: ${HTTP_RATE_LIMIT_RPS:-20}
+      HTTP_RATE_LIMIT_BURST: ${HTTP_RATE_LIMIT_BURST:-40}
+      HTTP_RATE_LIMIT_MAX_CLIENTS: ${HTTP_RATE_LIMIT_MAX_CLIENTS:-10000}
+      GITLAB_WEBHOOK_SECRET_FILE: /run/secrets/gitlab_webhook_secret
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-hash-v1}
+    secrets: [database_url, gitlab_webhook_secret]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    networks: [app, data]
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.frontend
+    environment:
+      BACKEND_API_URL: http://api:8080
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    networks: [app]
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    <<: *app-hardening
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_MAX_CONNS: ${DATABASE_MAX_CONNS:-20}
+      GITLAB_BASE_URL: ${GITLAB_BASE_URL:-https://gitlab.com}
+      GITLAB_TOKEN_FILE: /run/secrets/gitlab_token
+      GITLAB_REQUEST_TIMEOUT: ${GITLAB_REQUEST_TIMEOUT:-15s}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-hash-v1}
+      LLM_PROVIDER: ${LLM_PROVIDER:-disabled}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_API_KEY_FILE: /run/secrets/llm_api_key
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-60s}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-6000}
+      WORKER_POLL_INTERVAL: ${WORKER_POLL_INTERVAL:-2s}
+      WORKER_RETRY_DELAY: ${WORKER_RETRY_DELAY:-5s}
+      WORKER_LEASE_DURATION: ${WORKER_LEASE_DURATION:-5m}
+      WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-ai-test-assistant-sandbox:phase11}
+      SANDBOX_TIMEOUT_SECONDS: ${SANDBOX_TIMEOUT_SECONDS:-60}
+      SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-512}
+      SANDBOX_CPU_LIMIT: ${SANDBOX_CPU_LIMIT:-1.0}
+      SANDBOX_PIDS_LIMIT: ${SANDBOX_PIDS_LIMIT:-128}
+      MAX_REPAIR_ATTEMPTS: ${MAX_REPAIR_ATTEMPTS:-2}
+      HOME: /tmp
+    secrets: [database_url, gitlab_token, llm_api_key]
+    group_add: ["${DOCKER_GID:?DOCKER_GID is required}"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=256m"]
+    networks: [app, data]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  sandbox:
+    image: ${SANDBOX_IMAGE:-ai-test-assistant-sandbox:phase11}
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.sandbox
+    profiles: ["tools"]
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_SECRET_FILE:?POSTGRES_PASSWORD_SECRET_FILE is required}
+  database_url:
+    file: ${DATABASE_URL_SECRET_FILE:?DATABASE_URL_SECRET_FILE is required}
+  gitlab_token:
+    file: ${GITLAB_TOKEN_SECRET_FILE:?GITLAB_TOKEN_SECRET_FILE is required}
+  gitlab_webhook_secret:
+    file: ${GITLAB_WEBHOOK_SECRET_FILE:?GITLAB_WEBHOOK_SECRET_FILE is required}
+  llm_api_key:
+    file: ${LLM_API_KEY_SECRET_FILE:?LLM_API_KEY_SECRET_FILE is required}
+
+networks:
+  app:
+  data:
+    internal: true
+
+volumes:
+  postgres_data:

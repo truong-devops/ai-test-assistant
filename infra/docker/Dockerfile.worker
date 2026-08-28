@@ -1,4 +1,6 @@
 FROM golang:1.26.6-alpine AS build
+ARG BUILD_VERSION=dev
+ARG VCS_REF=unknown
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
@@ -6,5 +8,12 @@ COPY backend/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
 
 FROM docker:28.3.3-cli
-COPY --from=build /out/worker /worker
+ARG BUILD_VERSION=dev
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.title="AI Test Assistant Worker" \
+      org.opencontainers.image.version="$BUILD_VERSION" \
+      org.opencontainers.image.revision="$VCS_REF"
+ENV HOME=/tmp
+COPY --from=build --chown=65532:65532 /out/worker /worker
+USER 65532:65532
 ENTRYPOINT ["/worker"]

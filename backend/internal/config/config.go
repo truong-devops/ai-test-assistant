@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -12,6 +14,7 @@ const (
 	defaultHTTPAddr        = ":8080"
 	defaultDatabaseMaxConn = int32(10)
 	defaultShutdownTimeout = 10 * time.Second
+	maxSecretFileBytes     = 64 << 10
 )
 
 type Config struct {
@@ -20,12 +23,24 @@ type Config struct {
 	DatabaseURL     string
 	DatabaseMaxConn int32
 	ShutdownTimeout time.Duration
+	LogLevel        string
+	HTTP            HTTPConfig
 	GitLab          GitLabConfig
 	Embedding       EmbeddingConfig
 	LLM             LLMConfig
 	Worker          WorkerConfig
 	Sandbox         SandboxConfig
 	Repair          RepairConfig
+}
+
+type HTTPConfig struct {
+	ReadTimeout         time.Duration
+	WriteTimeout        time.Duration
+	IdleTimeout         time.Duration
+	MaxHeaderBytes      int
+	RateLimitPerSecond  float64
+	RateLimitBurst      int
+	RateLimitMaxClients int
 }
 
 type GitLabConfig struct {
@@ -69,16 +84,38 @@ type RepairConfig struct {
 }
 
 func Load() (Config, error) {
+	databaseURL, err := secretEnv("DATABASE_URL")
+	if err != nil {
+		return Config{}, err
+	}
+	gitLabToken, err := secretEnv("GITLAB_TOKEN")
+	if err != nil {
+		return Config{}, err
+	}
+	webhookSecret, err := secretEnv("GITLAB_WEBHOOK_SECRET")
+	if err != nil {
+		return Config{}, err
+	}
+	llmAPIKey, err := secretEnv("LLM_API_KEY")
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		AppEnv:          envOrDefault("APP_ENV", "development"),
 		HTTPAddr:        envOrDefault("HTTP_ADDR", defaultHTTPAddr),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		DatabaseURL:     databaseURL,
 		DatabaseMaxConn: defaultDatabaseMaxConn,
 		ShutdownTimeout: defaultShutdownTimeout,
+		LogLevel:        envOrDefault("LOG_LEVEL", "info"),
+		HTTP: HTTPConfig{
+			ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second,
+			IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20,
+			RateLimitPerSecond: 20, RateLimitBurst: 40, RateLimitMaxClients: 10000,
+		},
 		GitLab: GitLabConfig{
 			BaseURL:        envOrDefault("GITLAB_BASE_URL", "https://gitlab.com"),
-			Token:          os.Getenv("GITLAB_TOKEN"),
-			WebhookSecret:  os.Getenv("GITLAB_WEBHOOK_SECRET"),
+			Token:          gitLabToken,
+			WebhookSecret:  webhookSecret,
 			RequestTimeout: 15 * time.Second,
 		},
 		Embedding: EmbeddingConfig{
@@ -88,7 +125,7 @@ func Load() (Config, error) {
 		LLM: LLMConfig{
 			Provider: envOrDefault("LLM_PROVIDER", "disabled"),
 			BaseURL:  envOrDefault("LLM_BASE_URL", "https://api.openai.com/v1"),
-			APIKey:   os.Getenv("LLM_API_KEY"), Model: os.Getenv("LLM_MODEL"),
+			APIKey:   llmAPIKey, Model: os.Getenv("LLM_MODEL"),
 			RequestTimeout: 60 * time.Second, MaxOutputTokens: 6000,
 		},
 		Worker: WorkerConfig{
@@ -107,6 +144,9 @@ func Load() (Config, error) {
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required")
 	}
+	if cfg.LogLevel != "debug" && cfg.LogLevel != "info" && cfg.LogLevel != "warn" && cfg.LogLevel != "error" {
+		return Config{}, errors.New("LOG_LEVEL must be debug, info, warn, or error")
+	}
 
 	if value := os.Getenv("DATABASE_MAX_CONNS"); value != "" {
 		parsed, err := strconv.ParseInt(value, 10, 32)
@@ -122,6 +162,47 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("SHUTDOWN_TIMEOUT must be a positive duration")
 		}
 		cfg.ShutdownTimeout = parsed
+	}
+	for name, destination := range map[string]*time.Duration{
+		"HTTP_READ_TIMEOUT":  &cfg.HTTP.ReadTimeout,
+		"HTTP_WRITE_TIMEOUT": &cfg.HTTP.WriteTimeout,
+		"HTTP_IDLE_TIMEOUT":  &cfg.HTTP.IdleTimeout,
+	} {
+		if value := os.Getenv(name); value != "" {
+			parsed, err := positiveDuration(name, value)
+			if err != nil {
+				return Config{}, err
+			}
+			*destination = parsed
+		}
+	}
+	if value := os.Getenv("HTTP_MAX_HEADER_BYTES"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 8192 || parsed > 8<<20 {
+			return Config{}, errors.New("HTTP_MAX_HEADER_BYTES must be between 8192 and 8388608")
+		}
+		cfg.HTTP.MaxHeaderBytes = parsed
+	}
+	if value := os.Getenv("HTTP_RATE_LIMIT_RPS"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil || parsed < .1 || parsed > 10000 {
+			return Config{}, errors.New("HTTP_RATE_LIMIT_RPS must be between 0.1 and 10000")
+		}
+		cfg.HTTP.RateLimitPerSecond = parsed
+	}
+	if value := os.Getenv("HTTP_RATE_LIMIT_BURST"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 100000 {
+			return Config{}, errors.New("HTTP_RATE_LIMIT_BURST must be between 1 and 100000")
+		}
+		cfg.HTTP.RateLimitBurst = parsed
+	}
+	if value := os.Getenv("HTTP_RATE_LIMIT_MAX_CLIENTS"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 100 || parsed > 1000000 {
+			return Config{}, errors.New("HTTP_RATE_LIMIT_MAX_CLIENTS must be between 100 and 1000000")
+		}
+		cfg.HTTP.RateLimitMaxClients = parsed
 	}
 
 	if value := os.Getenv("GITLAB_REQUEST_TIMEOUT"); value != "" {
@@ -225,4 +306,29 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func secretEnv(key string) (string, error) {
+	value := os.Getenv(key)
+	filePath := os.Getenv(key + "_FILE")
+	if value != "" && filePath != "" {
+		return "", fmt.Errorf("%s and %s_FILE cannot both be set", key, key)
+	}
+	if filePath == "" {
+		return strings.TrimSpace(value), nil
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("read %s_FILE: %w", key, err)
+	}
+	defer file.Close()
+	contents, err := io.ReadAll(io.LimitReader(file, maxSecretFileBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read %s_FILE: %w", key, err)
+	}
+	if len(contents) > maxSecretFileBytes {
+		return "", fmt.Errorf("%s_FILE exceeds %d bytes", key, maxSecretFileBytes)
+	}
+	result := strings.TrimSpace(string(contents))
+	return result, nil
 }

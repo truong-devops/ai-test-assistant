@@ -78,6 +78,18 @@ func NewRouterWithPhaseTenServices(logger *slog.Logger, checker ReadinessChecker
 	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
 	evaluationService EvaluationService,
 ) http.Handler {
+	return NewRouterWithPhaseElevenServices(logger, checker, projectService, analysisService,
+		webhookHandler, knowledgeService, recommendationService, generationService,
+		validationService, repairService, reviewService, contextService, evaluationService, RouterOptions{})
+}
+
+func NewRouterWithPhaseElevenServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService, options RouterOptions,
+) http.Handler {
 	mux := http.NewServeMux()
 	health := healthHandler{checker: checker}
 	projects := projectHandler{service: projectService}
@@ -133,7 +145,8 @@ func NewRouterWithPhaseTenServices(logger *slog.Logger, checker ReadinessChecker
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)
 	}
 
-	return requestLogger(logger, mux)
+	limiter := newClientRateLimiter(options)
+	return requestLogger(logger, securityHeaders(limiter.middleware(mux)))
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {

@@ -6,5 +6,8 @@ coverage.out
 *.test
 bin/
 tmp/
+backups/
+secrets/
+.env.production
 frontend/node_modules/
 PROJECT_SPEC.md

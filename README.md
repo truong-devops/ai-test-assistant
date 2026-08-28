@@ -4,11 +4,12 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository implements Phases 0-10: the backend foundation, GitLab capture
+This repository implements Phases 0-11: the backend foundation, GitLab capture
 pipeline, deterministic Go changed-symbol analyzer, project-isolated
 knowledge/RAG index, structured AI test recommendations and generated Go test
 candidates, isolated Docker validation, a bounded repair loop, and the human
-review console, and a reproducible evaluation pipeline for the thesis experiments.
+review console, a reproducible evaluation pipeline for the thesis experiments,
+and production deployment, CI/CD, backup, and security hardening foundations.
 
 ## Prerequisites
 
@@ -45,6 +46,13 @@ make frontend-typecheck
 cd frontend && npm run dev
 ```
 
+For a hardened single-host deployment, follow
+[the Phase 11 deployment runbook](docs/deployment.md). It uses
+`.env.production`, file-mounted secrets, a separate migration job, backup and
+restore scripts, loopback-only ports, and hardened application containers.
+The current MVP still requires an authenticated private reverse proxy because
+application-level user authentication/RBAC remains a tracked backlog item.
+
 ## Repository map
 
 - `backend/`: Go API, domain modules, storage, migrations, and tests.
@@ -54,6 +62,8 @@ cd frontend && npm run dev
 - `docs/`: architecture, API, database, and development notes.
 - [Phase 1–10 follow-up register](docs/PHASE_1_10_FOLLOW_UPS.md): consolidated limitations and closure backlog.
 - `scripts/`: small development helpers called by the Makefile.
+- `.gitlab-ci.yml`: Phase 11 lint, test, integration, build, image, migration,
+  dependency-audit, and sandbox jobs.
 
 ## Current endpoints
 
