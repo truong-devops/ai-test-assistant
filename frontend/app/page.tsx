@@ -19,9 +19,9 @@ export default async function OverviewPage() {
   return (
     <AppShell active="overview">
       <PageHeading
-        eyebrow="Review control room"
-        title="Evidence before approval."
-        description="Follow each generated test from merge-request change to human decision, with the entire validation and repair record kept visible."
+        eyebrow="Workspace overview"
+        title="Test review activity"
+        description="Monitor connected projects, merge-request analyses, sandbox validation and recorded review decisions from one workspace."
         actions={<Link className="button secondary" href="/analyses">Open review queue</Link>}
       />
       <div className="summary-grid">
@@ -56,9 +56,9 @@ export default async function OverviewPage() {
         </section>
         <aside className="stack">
           <section className="panel side-section">
-            <p className="eyebrow">Review discipline</p>
-            <h2>Failures stay visible</h2>
-            <p className="page-description">A passing sandbox result is evidence, not an automatic approval. Inspect the scenario, source context and generated assertions before accepting.</p>
+            <p className="eyebrow">Review guidance</p>
+            <h2>Validate before accepting</h2>
+            <p className="page-description">A passing sandbox run confirms execution only. Check the scenario, retrieved context and assertions before recording a decision.</p>
           </section>
           <section className="panel side-section">
             <p className="eyebrow">Workflow</p>

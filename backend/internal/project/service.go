@@ -23,12 +23,22 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Project, error
 	input.RepositoryURL = strings.TrimSpace(input.RepositoryURL)
 	input.DefaultBranch = strings.TrimSpace(input.DefaultBranch)
 	input.Language = strings.ToLower(strings.TrimSpace(input.Language))
+	input.Provider = strings.ToLower(strings.TrimSpace(input.Provider))
+	if input.Provider == "" {
+		input.Provider = "gitlab"
+	}
+	if input.ProviderProjectID <= 0 {
+		input.ProviderProjectID = input.GitLabProjectID
+	}
 
 	if input.Name == "" {
 		return Project{}, fmt.Errorf("%w: name is required", ErrInvalidInput)
 	}
-	if input.GitLabProjectID <= 0 {
-		return Project{}, fmt.Errorf("%w: gitlab_project_id must be positive", ErrInvalidInput)
+	if input.Provider != "gitlab" && input.Provider != "github" {
+		return Project{}, fmt.Errorf("%w: provider must be gitlab or github", ErrInvalidInput)
+	}
+	if input.ProviderProjectID <= 0 {
+		return Project{}, fmt.Errorf("%w: provider_project_id must be positive", ErrInvalidInput)
 	}
 	parsedURL, err := url.ParseRequestURI(input.RepositoryURL)
 	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" {

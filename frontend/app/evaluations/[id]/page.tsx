@@ -28,7 +28,7 @@ export default async function EvaluationDetailPage({ params }: { params: Promise
   const effort = report.comparisons.find((item) => item.experiment === "HUMAN_EFFORT");
   return <AppShell active="evaluations">
     <div className="breadcrumb"><Link href="/evaluations">Evaluation runs</Link><span>/</span><span>#{run.id}</span></div>
-    <section className="project-hero"><div><p className="eyebrow">{report.schema_version}</p><h1>{report.dataset_name}</h1><p>{report.description}</p></div><div className="hero-meta"><span className="status-badge positive">Reproducible</span></div></section>
+    <section className="project-hero"><div className="hero-identity"><span className="project-avatar evaluation-avatar" aria-hidden="true">E</span><div><p className="eyebrow">{report.schema_version}</p><h1>{report.dataset_name}</h1><p>{report.description}</p></div></div><div className="hero-meta"><span className="status-badge positive">Reproducible</span></div></section>
     <section className="panel"><div className="detail-grid"><div className="detail-cell"><span>Observations</span><strong>{run.observation_count}</strong></div><div className="detail-cell"><span>Dataset hash</span><strong className="mono evaluation-hash">{report.dataset_hash}</strong></div><div className="detail-cell"><span>Comparison design</span><strong>Paired by scenario + replicate</strong></div></div></section>
     <div className="summary-grid evaluation-summary">
       <Stat label="Context · execution" value={delta(context?.execution_validity_delta_pp)} detail="Diff + RAG vs diff only" />

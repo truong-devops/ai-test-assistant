@@ -9,7 +9,7 @@ export default async function EvaluationsPage() {
   const runs = await optional(getEvaluations, []);
   return (
     <AppShell active="evaluations">
-      <PageHeading eyebrow="Phase 10 · Thesis evidence" title="Evaluation runs" description="Immutable experiment datasets with paired baselines, explicit denominators and reproducible report artifacts." />
+      <PageHeading eyebrow="Thesis experiments" title="Evaluation runs" description="Review immutable datasets, paired baselines, metric denominators and reproducible report artifacts." />
       <div className="notice evaluation-notice"><strong>Interpretation guardrail</strong>A passing test is not automatically useful. Syntax, compile, execution, coverage and human acceptance remain separate.</div>
       {runs.length ? <section className="panel evaluation-runs">
         <div className="panel-header"><div><h2>Recorded datasets</h2><p>Identical dataset hashes are imported idempotently.</p></div><span className="section-counter">{runs.length} run{runs.length === 1 ? "" : "s"}</span></div>

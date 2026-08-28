@@ -26,8 +26,8 @@ Mốc xử lý:
 Khi xử lý một mục, không xóa dòng. Hãy đổi trạng thái, thêm ngày đóng, PR/commit,
 test hoặc tài liệu chứng minh vào cột **Điều kiện đóng / ghi chú**.
 
-Snapshot sau vòng triển khai Phase 11 local có **60 mục theo phase**: 40 `OPEN`,
-13 `VERIFY` và 7 `ACCEPTED_MVP`. Bảng ưu tiên cao bên dưới gồm 8 mục tóm tắt xuyên phase nên
+Snapshot sau vòng hoàn thiện UI có **60 mục theo phase**: 38 `OPEN`, 14 `VERIFY`,
+7 `ACCEPTED_MVP` và 1 `DONE`. Bảng ưu tiên cao bên dưới gồm 8 mục tóm tắt xuyên phase nên
 không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạng thái thay đổi.
 
 ## Các mục ưu tiên cao nhất
@@ -125,7 +125,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | P8-01 | VERIFY | P0 | P11 | Loop đã có hard maximum 3 và append version bất biến. Đây là invariant không được bỏ. | CI giữ test termination, concurrent lease và stale version. |
 | P8-02 | OPEN | P1 | THESIS | Cần trial model thật chứng minh ít nhất một fail→repair→pass và một trường hợp dừng ở max attempt; fixture/test mock chưa đủ làm bằng chứng. | Lưu validation/repair trace vào dataset thực nghiệm. |
 | P8-03 | OPEN | P2 | P11 | Timeout, compile failure và assertion failure đều có thể đi vào repair; chưa phân loại lỗi hạ tầng/dependency để tránh tốn lượt AI vô ích. | Error taxonomy quyết định retry infrastructure, repair code hoặc chuyển review. |
-| P8-04 | OPEN | P1 | P11 | Candidate vẫn fail sau max attempt được chuyển `WAITING_REVIEW`; backend hiện cho phép reviewer accept nếu họ chủ động chọn. | Chốt policy: cấm accept fail hoặc yêu cầu privileged override + lý do; UI hiển thị cảnh báo rõ. |
+| P8-04 | DONE | P1 | P11 | Candidate fail sau max attempt vẫn được chuyển `WAITING_REVIEW` để reviewer xem và Reject. | Đóng 2026-08-28: backend từ chối Accept nếu validation mới nhất của candidate hiện tại không `PASSED`; UI khóa nút Accept, hiển thị lý do, Reject vẫn hoạt động; có unit và PostgreSQL integration test. |
 | P8-05 | OPEN | P2 | P11 | Chưa có budget token/cost riêng cho repair và chưa persist usage/latency/prompt snapshot. | Có per-analysis budget và provenance tương tự Phase 5/6. |
 
 ## Phase 9 — Human review UI
@@ -136,7 +136,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | P9-02 | VERIFY | P1 | P11 | Decision bất biến và chống double-click/concurrency; chưa có quy trình correction/appeal nếu reviewer thao tác nhầm. | Chốt policy append-only correction có audit hoặc xác nhận tính bất biến là yêu cầu chính thức. |
 | P9-03 | OPEN | P1 | P11 | Review context là retrieval mới nhất, không phải context đúng thời điểm model chạy. | Đóng cùng P4-04; UI phân biệt historical snapshot và current index. |
 | P9-04 | OPEN | P2 | P11 | UI chưa realtime/polling; trạng thái worker mới chỉ thấy sau refresh/navigation. | Thêm polling/SSE hoặc ghi rõ behavior, có retry/backoff và trạng thái stale. |
-| P9-05 | OPEN | P1 | P11 | Frontend mới có typecheck/build; chưa có component test, browser E2E, accessibility và responsive visual regression trong repo. | Thêm test Accept/Reject, error states, keyboard/a11y và viewport chính trong CI. |
+| P9-05 | VERIFY | P1 | P11 | Đã có typecheck/build, route + security-header smoke, manual headless-browser review cho overview/project/review/evaluation và responsive CSS; chưa có browser visual regression tự động trong CI. | Thêm test Accept/Reject, error states, keyboard/a11y và viewport chính vào CI để đóng hoàn toàn. |
 | P9-06 | OPEN | P2 | P11 | Diff, source và log lớn có thể làm review page nặng; chưa có pagination/virtualization/download artifact. | Benchmark payload đại diện và giới hạn/render strategy. |
 | P9-07 | VERIFY | P1 | P11 | Đã có API rate limit, timeout/request limits, CSP và security headers; CSRF/session, authentication và reverse-proxy policy vẫn chưa đóng. | Hoàn thiện cùng authentication, CSP, CSRF/SameSite, request limit và reverse proxy. |
 

@@ -15,7 +15,7 @@ export default async function ProjectsPage() {
 
   return (
     <AppShell active="projects">
-      <PageHeading eyebrow="Connected sources" title="Projects" description="Each project keeps its own knowledge index, merge-request analyses and human review history." />
+      <PageHeading eyebrow="GitLab sources" title="Projects" description="View repository configuration, knowledge-index state and merge-request analysis history." />
       {projects.length ? (
         <section className="panel">
           <div className="panel-header"><div><h2>GitLab project registry</h2><p>Index state and most recent analysis are shown side by side.</p></div><span className="section-counter">{projects.length} project{projects.length === 1 ? "" : "s"}</span></div>

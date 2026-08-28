@@ -20,6 +20,7 @@ type Repository interface {
 	List(ctx context.Context) ([]Project, error)
 	GetByID(ctx context.Context, id int64) (Project, error)
 	GetByGitLabProjectID(ctx context.Context, gitLabProjectID int64) (Project, error)
+	GetByProviderProjectID(ctx context.Context, provider string, providerProjectID int64) (Project, error)
 }
 
 type PostgresRepository struct {
@@ -32,12 +33,12 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 
 func (r *PostgresRepository) Create(ctx context.Context, input CreateInput) (Project, error) {
 	const query = `
-		INSERT INTO projects (name, gitlab_project_id, repository_url, default_branch, language, status)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, name, gitlab_project_id, repository_url, default_branch, language, status, created_at, updated_at`
+		INSERT INTO projects (name, provider, provider_project_id, repository_url, default_branch, language, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, name, provider, provider_project_id, repository_url, default_branch, language, status, created_at, updated_at`
 
 	var result Project
-	err := r.pool.QueryRow(ctx, query, input.Name, input.GitLabProjectID, input.RepositoryURL,
+	err := r.pool.QueryRow(ctx, query, input.Name, input.Provider, input.ProviderProjectID, input.RepositoryURL,
 		input.DefaultBranch, input.Language, StatusActive).Scan(projectDestinations(&result)...)
 	if err != nil {
 		var postgresError *pgconn.PgError
@@ -51,7 +52,7 @@ func (r *PostgresRepository) Create(ctx context.Context, input CreateInput) (Pro
 
 func (r *PostgresRepository) List(ctx context.Context) ([]Project, error) {
 	const query = `
-		SELECT id, name, gitlab_project_id, repository_url, default_branch, language, status, created_at, updated_at
+		SELECT id, name, provider, provider_project_id, repository_url, default_branch, language, status, created_at, updated_at
 		FROM projects ORDER BY id`
 	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
@@ -75,7 +76,7 @@ func (r *PostgresRepository) List(ctx context.Context) ([]Project, error) {
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id int64) (Project, error) {
 	const query = `
-		SELECT id, name, gitlab_project_id, repository_url, default_branch, language, status, created_at, updated_at
+		SELECT id, name, provider, provider_project_id, repository_url, default_branch, language, status, created_at, updated_at
 		FROM projects WHERE id = $1`
 	var result Project
 	if err := r.pool.QueryRow(ctx, query, id).Scan(projectDestinations(&result)...); err != nil {
@@ -88,20 +89,24 @@ func (r *PostgresRepository) GetByID(ctx context.Context, id int64) (Project, er
 }
 
 func (r *PostgresRepository) GetByGitLabProjectID(ctx context.Context, gitLabProjectID int64) (Project, error) {
+	return r.GetByProviderProjectID(ctx, "gitlab", gitLabProjectID)
+}
+
+func (r *PostgresRepository) GetByProviderProjectID(ctx context.Context, provider string, providerProjectID int64) (Project, error) {
 	const query = `
-		SELECT id, name, gitlab_project_id, repository_url, default_branch, language, status, created_at, updated_at
-		FROM projects WHERE gitlab_project_id = $1`
+		SELECT id, name, provider, provider_project_id, repository_url, default_branch, language, status, created_at, updated_at
+		FROM projects WHERE provider = $1 AND provider_project_id = $2`
 	var result Project
-	if err := r.pool.QueryRow(ctx, query, gitLabProjectID).Scan(projectDestinations(&result)...); err != nil {
+	if err := r.pool.QueryRow(ctx, query, provider, providerProjectID).Scan(projectDestinations(&result)...); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Project{}, ErrNotFound
 		}
-		return Project{}, fmt.Errorf("query project by GitLab id %d: %w", gitLabProjectID, err)
+		return Project{}, fmt.Errorf("query project by %s id %d: %w", provider, providerProjectID, err)
 	}
 	return result, nil
 }
 
 func projectDestinations(item *Project) []any {
-	return []any{&item.ID, &item.Name, &item.GitLabProjectID, &item.RepositoryURL,
+	return []any{&item.ID, &item.Name, &item.Provider, &item.ProviderProjectID, &item.RepositoryURL,
 		&item.DefaultBranch, &item.Language, &item.Status, &item.CreatedAt, &item.UpdatedAt}
 }

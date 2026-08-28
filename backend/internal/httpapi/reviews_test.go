@@ -68,6 +68,7 @@ func TestReviewHandlerMapsErrorsAndRejectsInvalidBodies(t *testing.T) {
 		{name: "missing generated test", path: "/api/generated-tests/7/reject", body: `{}`, err: job.ErrNotFound, status: http.StatusNotFound},
 		{name: "not ready", path: "/api/generated-tests/7/accept", body: `{}`, err: review.ErrNotReady, status: http.StatusConflict},
 		{name: "stale version", path: "/api/generated-tests/7/accept", body: `{}`, err: review.ErrStaleVersion, status: http.StatusConflict},
+		{name: "validation failed", path: "/api/generated-tests/7/accept", body: `{}`, err: review.ErrValidationFailed, status: http.StatusConflict},
 		{name: "already reviewed", path: "/api/generated-tests/7/accept", body: `{}`, err: review.ErrAlreadyReviewed, status: http.StatusConflict},
 		{name: "invalid input", path: "/api/generated-tests/7/accept", body: `{}`, err: review.ErrInvalidInput, status: http.StatusBadRequest},
 		{name: "invalid identifier", path: "/api/generated-tests/nope/accept", body: `{}`, status: http.StatusBadRequest},

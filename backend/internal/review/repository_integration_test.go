@@ -61,6 +61,25 @@ func TestRepositoryAcceptsAnalysisWhenAllLatestTestsAccepted(t *testing.T) {
 	assertReviewAnalysisStatus(t, ctx, pool, analysisID, job.StatusAccepted, true)
 }
 
+func TestRepositoryRequiresPassingValidationForAcceptance(t *testing.T) {
+	ctx, pool := reviewTestPool(t)
+	defer pool.Close()
+	projectID, analysisID, _, currentID, _ := createSingleReviewFixture(t, ctx, pool, "failed-validation")
+	defer deleteReviewProject(pool, projectID)
+	if _, err := pool.Exec(ctx, `UPDATE validation_runs SET status='FAILED', exit_code=1
+		WHERE generated_test_id=$1`, currentID); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewRepository(pool)
+	if _, err := repository.Decide(ctx, currentID, DecisionAccepted, "Reviewer", "override"); !errors.Is(err, ErrValidationFailed) {
+		t.Fatalf("accept failed candidate error=%v", err)
+	}
+	if _, err := repository.Decide(ctx, currentID, DecisionRejected, "Reviewer", "sandbox failed"); err != nil {
+		t.Fatalf("reject failed candidate: %v", err)
+	}
+	assertReviewAnalysisStatus(t, ctx, pool, analysisID, job.StatusRejected, true)
+}
+
 func TestRepositoryAllowsOnlyOneConcurrentDecision(t *testing.T) {
 	ctx, pool := reviewTestPool(t)
 	defer pool.Close()
@@ -193,6 +212,11 @@ func insertReviewGeneratedTest(t *testing.T, ctx context.Context, pool *pgxpool.
 		VALUES ($1,$2,$3,$4,$5,$6,'fixture','generate-test-v1',$7) RETURNING id`,
 		analysisID, recommendationID, fmt.Sprintf("%s_generated_test.go", marker),
 		fmt.Sprintf("[\"Test%s\"]", marker), code, generation.CodeHash(code), attempt).Scan(&generatedID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO validation_runs
+		(analysis_job_id, generated_test_id, attempt_number, command, status, exit_code, duration_ms)
+		VALUES ($1,$2,1,'go test ./...','PASSED',0,10)`, analysisID, generatedID); err != nil {
 		t.Fatal(err)
 	}
 	return generatedID

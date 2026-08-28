@@ -86,6 +86,9 @@ function CandidateCard({
   const candidateIDs = new Set(allGenerated.filter((item) => item.recommendation_id === candidate.recommendation_id).map((item) => item.id));
   const relatedValidations = validations.filter((run) => candidateIDs.has(run.generated_test_id));
   const relatedRepairs = repairs.filter((attempt) => candidateIDs.has(attempt.generated_test_id) || candidateIDs.has(attempt.repaired_generated_test_id));
+  const latestCurrentValidation = validations
+    .filter((run) => run.generated_test_id === candidate.id)
+    .sort((left, right) => right.attempt_number - left.attempt_number || right.id - left.id)[0];
   return <article className="candidate-card">
     <header className="candidate-header">
       <div className="candidate-title">
@@ -115,7 +118,7 @@ function CandidateCard({
         <div className="section-heading"><div><h2>Repair history</h2><p>Every replacement remains linked to its failed source.</p></div><span className="section-counter">{relatedRepairs.length} attempt{relatedRepairs.length === 1 ? "" : "s"}</span></div>
         <RepairEvidence attempts={relatedRepairs} />
       </section>
-      <ReviewDecision generatedTestId={candidate.id} enabled={analysisStatus === "WAITING_REVIEW"} existing={review} />
+      <ReviewDecision generatedTestId={candidate.id} enabled={analysisStatus === "WAITING_REVIEW"} canAccept={latestCurrentValidation?.status === "PASSED"} existing={review} />
     </div>
   </article>;
 }

@@ -68,7 +68,8 @@ func (h reviewHandler) decide(w http.ResponseWriter, r *http.Request, decision s
 			writeError(w, http.StatusNotFound, "generated test not found")
 		case errors.Is(err, review.ErrInvalidInput):
 			writeError(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, review.ErrNotReady), errors.Is(err, review.ErrAlreadyReviewed), errors.Is(err, review.ErrStaleVersion):
+		case errors.Is(err, review.ErrNotReady), errors.Is(err, review.ErrAlreadyReviewed),
+			errors.Is(err, review.ErrStaleVersion), errors.Is(err, review.ErrValidationFailed):
 			writeError(w, http.StatusConflict, err.Error())
 		default:
 			writeError(w, http.StatusInternalServerError, "could not save review decision")

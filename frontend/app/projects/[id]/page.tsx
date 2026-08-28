@@ -25,7 +25,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     <AppShell active="projects">
       <div className="breadcrumb"><Link href="/projects">Projects</Link><span>/</span><span>{project.name}</span></div>
       <section className="project-hero">
-        <div><p className="eyebrow">GitLab project #{project.gitlab_project_id}</p><h1>{project.name}</h1><p>{project.repository_url}</p></div>
+        <div className="hero-identity"><span className="project-avatar" aria-hidden="true">{project.name.slice(0, 1).toUpperCase()}</span><div><p className="eyebrow">GitLab project #{project.gitlab_project_id}</p><h1>{project.name}</h1><p>{project.repository_url}</p></div></div>
         <div className="hero-meta"><StatusBadge status={project.status} /></div>
       </section>
       <section className="panel">

@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
 
 type PostgresRepository struct{ pool *pgxpool.Pool }
@@ -59,6 +60,18 @@ func (r *PostgresRepository) Decide(ctx context.Context, generatedTestID int64, 
 	}
 	if alreadyReviewed {
 		return Review{}, ErrAlreadyReviewed
+	}
+	if decision == DecisionAccepted {
+		var validationStatus string
+		err := tx.QueryRow(ctx, `SELECT status FROM validation_runs
+			WHERE generated_test_id=$1 ORDER BY attempt_number DESC, id DESC LIMIT 1`, generatedTestID).
+			Scan(&validationStatus)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && validationStatus != validation.StatusPassed) {
+			return Review{}, ErrValidationFailed
+		}
+		if err != nil {
+			return Review{}, fmt.Errorf("check generated test validation: %w", err)
+		}
 	}
 
 	const insert = `INSERT INTO test_reviews (generated_test_id, reviewer_name, decision, comment)

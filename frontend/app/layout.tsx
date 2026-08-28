@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Test Review · AI Test Assistant",
+  title: "AI Test Assistant · Review workspace",
   description: "Traceable human review for AI-generated Go tests.",
 };
 

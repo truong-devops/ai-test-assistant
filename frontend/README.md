@@ -9,6 +9,12 @@ The evaluation area displays immutable dataset hashes, explicit metric
 denominators, paired comparison deltas, and the interpretation guardrail that
 execution success is distinct from human usefulness.
 
+The visual system follows a restrained engineering-console layout: persistent
+workspace navigation, system typography, neutral surfaces, compact tables,
+semantic status colors and responsive layouts. It intentionally avoids remote
+font dependencies, decorative gradients and effects that compete with review
+evidence.
+
 ## Local development
 
 Use Node.js 18.18 or newer:
@@ -26,3 +32,7 @@ required.
 
 For the complete stack, run `make dev-up` from the repository root. Build the
 production bundle with `npm run build`.
+
+The main supported layouts are desktop, compact laptop/tablet and narrow mobile.
+Tables and source evidence keep horizontal scrolling inside their own container
+instead of widening the application shell.

@@ -9,10 +9,12 @@ import { StatusBadge } from "@/components/status-badge";
 export function ReviewDecision({
   generatedTestId,
   enabled,
+  canAccept,
   existing,
 }: {
   generatedTestId: number;
   enabled: boolean;
+  canAccept: boolean;
   existing?: Review;
 }) {
   const router = useRouter();
@@ -37,12 +39,16 @@ export function ReviewDecision({
 
   const decide = (action: "accept" | "reject") => {
     setError("");
+    if (!reviewerName.trim()) {
+      setError("Reviewer name is required.");
+      return;
+    }
     startTransition(async () => {
       try {
         const response = await fetch(`/api/backend/api/generated-tests/${generatedTestId}/${action}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ reviewer_name: reviewerName, comment }),
+          body: JSON.stringify({ reviewer_name: reviewerName.trim(), comment: comment.trim() }),
         });
         if (!response.ok) {
           const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -69,10 +75,11 @@ export function ReviewDecision({
           ? "Record the final judgement for this candidate. The decision is immutable and remains visible in the audit trail."
           : "The pipeline must reach Waiting Review before a final decision can be recorded."}
       </p>
+      {enabled && !canAccept ? <p className="review-warning" role="status">Acceptance is blocked because the current candidate does not have a passing sandbox validation. You can still reject it.</p> : null}
       <div className="form-grid">
         <label>
           <span>Reviewer</span>
-          <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} maxLength={128} disabled={!enabled || pending} />
+          <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} maxLength={128} required aria-required="true" disabled={!enabled || pending} />
         </label>
         <label className="comment-field">
           <span>Reviewer note <em>optional</em></span>
@@ -81,8 +88,8 @@ export function ReviewDecision({
       </div>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="decision-actions">
-        <button type="button" className="button reject" disabled={!enabled || pending} onClick={() => decide("reject")}>Reject candidate</button>
-        <button type="button" className="button accept" disabled={!enabled || pending} onClick={() => decide("accept")}>{pending ? "Saving…" : "Accept candidate"}</button>
+        <button type="button" className="button reject" disabled={!enabled || pending || !reviewerName.trim()} onClick={() => decide("reject")}>Reject candidate</button>
+        <button type="button" className="button accept" disabled={!enabled || !canAccept || pending || !reviewerName.trim()} onClick={() => decide("accept")}>{pending ? "Saving…" : "Accept candidate"}</button>
       </div>
     </section>
   );
