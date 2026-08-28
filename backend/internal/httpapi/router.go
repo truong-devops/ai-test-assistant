@@ -55,6 +55,17 @@ func NewRouterWithPhaseEightServices(logger *slog.Logger, checker ReadinessCheck
 	generationService GenerationService, validationService ValidationService,
 	repairService RepairService,
 ) http.Handler {
+	return NewRouterWithPhaseNineServices(logger, checker, projectService, analysisService,
+		webhookHandler, knowledgeService, recommendationService, generationService,
+		validationService, repairService, nil, nil)
+}
+
+func NewRouterWithPhaseNineServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+) http.Handler {
 	mux := http.NewServeMux()
 	health := healthHandler{checker: checker}
 	projects := projectHandler{service: projectService}
@@ -90,6 +101,16 @@ func NewRouterWithPhaseEightServices(logger *slog.Logger, checker ReadinessCheck
 	if repairService != nil {
 		repairs := repairHandler{service: repairService}
 		mux.HandleFunc("GET /api/analyses/{id}/repairs", repairs.list)
+	}
+	if reviewService != nil {
+		reviews := reviewHandler{service: reviewService}
+		mux.HandleFunc("GET /api/analyses/{id}/reviews", reviews.list)
+		mux.HandleFunc("POST /api/generated-tests/{id}/accept", reviews.accept)
+		mux.HandleFunc("POST /api/generated-tests/{id}/reject", reviews.reject)
+	}
+	if contextService != nil {
+		contexts := analysisContextHandler{service: contextService}
+		mux.HandleFunc("GET /api/analyses/{id}/context", contexts.list)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)

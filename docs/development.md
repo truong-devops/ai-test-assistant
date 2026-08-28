@@ -36,3 +36,15 @@
   controls infrastructure/provider retry behavior.
 - Repair prompts must include failed validation feedback, preserve the target
   test path, forbid production-code changes, and reject unchanged code.
+- The Phase 9 frontend is a Next.js application. Run `make frontend-install`
+  before `make frontend-typecheck` or `make frontend-build`; use Node.js
+  18.18+ locally. Docker builds it with Node 20.
+- Keep `BACKEND_API_URL` server-only. Browser mutations must use the
+  same-origin frontend proxy and must not expose GitLab, LLM, or database
+  credentials.
+- Review decisions are immutable. The backend, not the UI, decides whether a
+  candidate is current and whether the analysis is ready for review. Keep
+  validation failures and repair history visible in the review screen.
+- The review context endpoint is a fresh project-filtered retrieval from the
+  current index. Do not label it a historical prompt snapshot unless immutable
+  context references are persisted in a later schema change.

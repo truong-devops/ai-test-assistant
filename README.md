@@ -4,16 +4,17 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository currently implements Phases 0-8: the backend foundation,
-GitLab capture pipeline, deterministic Go changed-symbol analyzer, and
-project-isolated knowledge/RAG index plus structured AI test recommendations
-and generated Go test candidates with isolated Docker validation and a bounded,
-auditable AI repair loop. The human-review frontend is not implemented yet.
+This repository implements Phases 0-9: the backend foundation, GitLab capture
+pipeline, deterministic Go changed-symbol analyzer, project-isolated
+knowledge/RAG index, structured AI test recommendations and generated Go test
+candidates, isolated Docker validation, a bounded repair loop, and the human
+review console.
 
 ## Prerequisites
 
 - Go 1.26.6 or a newer security-patched release
 - Docker with Docker Compose
+- Node.js 18.18+ for running the frontend outside Docker
 - `make`
 
 ## Start locally
@@ -24,7 +25,8 @@ make dev-up
 make smoke
 ```
 
-The API is available at `http://localhost:8080`:
+The review console is available at `http://localhost:3000`; the API is
+available at `http://localhost:8080`:
 
 ```bash
 curl http://localhost:8080/health
@@ -36,10 +38,17 @@ curl http://localhost:8080/api/projects
 ```
 
 Stop the stack with `make dev-down`. Run all local tests with `make test`.
+For frontend-only development, run `make frontend-install` once and then:
+
+```bash
+make frontend-typecheck
+cd frontend && npm run dev
+```
 
 ## Repository map
 
 - `backend/`: Go API, domain modules, storage, migrations, and tests.
+- `frontend/`: Next.js review console and same-origin API proxy.
 - `examples/go-microservices/`: deterministic Go services used by later analysis experiments.
 - `infra/`: application Dockerfiles and local Compose stack.
 - `docs/`: architecture, API, database, and development notes.
@@ -62,6 +71,10 @@ Stop the stack with `make dev-down`. Run all local tests with `make test`.
 - `GET /api/analyses/{id}/generated-tests`
 - `GET /api/analyses/{id}/validations`
 - `GET /api/analyses/{id}/repairs`
+- `GET /api/analyses/{id}/reviews`
+- `GET /api/analyses/{id}/context`
+- `POST /api/generated-tests/{id}/accept`
+- `POST /api/generated-tests/{id}/reject`
 
 Configure a GitLab Merge Request webhook to call `/api/webhooks/gitlab`, set
 its secret to `GITLAB_WEBHOOK_SECRET`, and enable Merge request events. The API
@@ -100,6 +113,16 @@ generated test, failed validation, new generated version, model, prompt version,
 reason, and code hashes. Repaired versions return to `VALIDATING`; after
 `MAX_REPAIR_ATTEMPTS` (default 2, hard maximum 3), a still-failing analysis moves
 to `WAITING_REVIEW` so the loop always terminates.
+
+The Phase 9 console keeps the MR diff, changed symbols, recommendation
+rationale, generated test versions, sandbox output, and repair trail together
+on one review screen. A decision is written once for each latest candidate:
+only current versions can be accepted or rejected, and the analysis reaches
+`ACCEPTED` only when every current candidate is accepted. A rejection makes
+the final analysis status `REJECTED` after every current candidate has been
+reviewed. The context panel deliberately identifies itself as the current
+project-index retrieval; it is re-evaluated with the analysis project filter
+and never mixes chunks from another project.
 
 Build and exercise the real sandbox with `make sandbox-test`. Runtime dependency
 downloads are intentionally disabled (`GOPROXY=off`); target repositories must

@@ -1,0 +1,174 @@
+export type Project = {
+  id: number;
+  name: string;
+  gitlab_project_id: number;
+  repository_url: string;
+  default_branch: string;
+  language: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type IndexStatus = {
+  project_id: number;
+  ref: string;
+  status: string;
+  generation: number;
+  attempt_count: number;
+  file_count: number;
+  skipped_file_count: number;
+  chunk_count: number;
+  embedding_model: string;
+  error_message?: string;
+  requested_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  updated_at?: string;
+};
+
+export type Analysis = {
+  id: number;
+  project_id: number;
+  merge_request_iid: number;
+  source_sha: string;
+  target_sha: string;
+  source_branch: string;
+  target_branch: string;
+  title: string;
+  web_url: string;
+  status: string;
+  error_message?: string;
+  attempt_count: number;
+  started_at?: string;
+  finished_at?: string;
+  created_at: string;
+};
+
+export type ChangedFile = {
+  id: number;
+  analysis_job_id: number;
+  old_path: string;
+  new_path: string;
+  change_type: string;
+  additions: number;
+  deletions: number;
+  diff: string;
+  new_file: boolean;
+  renamed_file: boolean;
+  deleted_file: boolean;
+  collapsed: boolean;
+  too_large: boolean;
+};
+
+export type ChangedSymbol = {
+  id: number;
+  changed_file_id: number;
+  symbol_name: string;
+  symbol_kind: string;
+  receiver_name?: string;
+  package_name: string;
+  start_line: number;
+  end_line: number;
+  change_type: string;
+  change_summary: string;
+};
+
+export type Recommendation = {
+  id: number;
+  analysis_job_id: number;
+  changed_symbol_id: number;
+  title: string;
+  description: string;
+  priority: string;
+  rationale: string;
+  scenario: string;
+  expected_behavior: string;
+  status: string;
+  model_name: string;
+  prompt_version: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GeneratedTest = {
+  id: number;
+  analysis_job_id: number;
+  recommendation_id: number;
+  file_path: string;
+  test_names: string[];
+  code: string;
+  code_hash: string;
+  model_name: string;
+  prompt_version: string;
+  provider_response_id?: string;
+  generation_attempt: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ValidationRun = {
+  id: number;
+  analysis_job_id: number;
+  generated_test_id: number;
+  attempt_number: number;
+  command: string;
+  status: string;
+  exit_code: number;
+  duration_ms: number;
+  stdout: string;
+  stderr: string;
+  output_truncated: boolean;
+  created_at: string;
+};
+
+export type RepairAttempt = {
+  id: number;
+  analysis_job_id: number;
+  generated_test_id: number;
+  validation_run_id: number;
+  repaired_generated_test_id: number;
+  attempt_number: number;
+  previous_code: string;
+  repaired_code: string;
+  previous_code_hash: string;
+  repaired_code_hash: string;
+  model_name: string;
+  prompt_version: string;
+  provider_response_id?: string;
+  reason: string;
+  created_at: string;
+};
+
+export type Review = {
+  id: number;
+  generated_test_id: number;
+  reviewer_name: string;
+  decision: string;
+  comment: string;
+  created_at: string;
+};
+
+export type KnowledgeChunk = {
+  id: number;
+  project_id: number;
+  chunk_key: string;
+  file_path: string;
+  package_name: string;
+  symbol_name: string;
+  chunk_type: string;
+  content: string;
+  content_hash: string;
+  start_line: number;
+  end_line: number;
+  embedding_model: string;
+  score?: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AnalysisDetail = {
+  analysis: Analysis;
+  changed_files: ChangedFile[];
+  changed_symbols: ChangedSymbol[];
+};

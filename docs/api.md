@@ -57,6 +57,34 @@ compact summary. Jobs successfully analyzed in Phase 3 have status
 `RETRIEVING_CONTEXT`; the Phase 5 worker advances successfully recommended jobs
 to `GENERATING_TESTS`.
 
+### Review context
+
+`GET /api/analyses/{id}/context` returns the current project-filtered retrieval
+for the analysis's changed symbols. Each chunk includes its source path,
+line range, kind, content, and retrieval score:
+
+```json
+{
+  "context": [
+    {
+      "id": 42,
+      "project_id": 3,
+      "file_path": "internal/user/service.go",
+      "symbol_name": "CreateUser",
+      "chunk_type": "implementation",
+      "content": "func (s *Service) CreateUser(...) ...",
+      "start_line": 18,
+      "end_line": 61,
+      "score": 13.4
+    }
+  ]
+}
+```
+
+This read endpoint does not invoke an LLM or modify the index. It intentionally
+shows the current indexed evidence rather than claiming to be an immutable
+historical prompt snapshot.
+
 ## Recommendations
 
 `GET /api/analyses/{id}/recommendations` returns the stored structured
@@ -149,3 +177,28 @@ previous/repaired source and hashes, model/prompt trace, and repair reason.
 
 The endpoint never invokes the LLM. Repairs run asynchronously, append a new
 generated-test version, and are bounded by `MAX_REPAIR_ATTEMPTS`.
+
+## Human reviews
+
+- `GET /api/analyses/{id}/reviews` returns persisted human decisions for an
+  analysis.
+- `POST /api/generated-tests/{id}/accept` stores an `ACCEPTED` decision.
+- `POST /api/generated-tests/{id}/reject` stores a `REJECTED` decision.
+
+Both decision routes accept exactly one JSON object. The reviewer name is
+optional in this unauthenticated MVP and defaults to `local-reviewer`; the
+comment is optional:
+
+```json
+{
+  "reviewer_name": "mai.nguyen",
+  "comment": "Covers the duplicate-email branch and follows the existing table-test style."
+}
+```
+
+Decisions are immutable. The API returns HTTP 409 if the analysis is not in
+`WAITING_REVIEW`, the generated test has been superseded by a repair, or that
+candidate was already reviewed. For analyses with multiple recommendations, a
+decision is recorded per latest candidate. The analysis is terminal only after
+all current candidates have a decision: all accepted becomes `ACCEPTED`; one
+or more rejections becomes `REJECTED`.

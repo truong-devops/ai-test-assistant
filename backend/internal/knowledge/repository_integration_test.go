@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -236,6 +237,50 @@ func TestRepositoryIndexGenerationAndRetry(t *testing.T) {
 	latest, err := repository.ClaimNext(ctx, time.Minute)
 	if err != nil || latest.Generation != newRequest.Generation || latest.Ref != "develop" || latest.AttemptCount != 1 {
 		t.Fatalf("latest=%#v error=%v", latest, err)
+	}
+}
+
+func TestRepositoryRetrievalKeepsZeroVectorScoresFinite(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	projectID := createKnowledgeProject(t, ctx, pool, "zero-vector")
+	defer func() { _, _ = pool.Exec(context.Background(), `DELETE FROM projects WHERE id=$1`, projectID) }()
+	repository := NewRepository(pool)
+	embedder := NewHashEmbeddingClient("hash-integration", EmbeddingDimensions)
+	if _, err := repository.RequestIndex(ctx, projectID, "main"); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := repository.ClaimNext(ctx, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := KnowledgeChunk{
+		ProjectID: projectID, ChunkKey: "zero-vector", FilePath: "internal/user/service.go",
+		PackageName: "user", SymbolName: "CreateUser", ChunkType: "function",
+		Content:     "func CreateUser() error { return nil }",
+		ContentHash: ContentHash("func CreateUser() error { return nil }"),
+		StartLine:   1, EndLine: 1, EmbeddingModel: embedder.Model(),
+		Metadata:  json.RawMessage(`{"fixture":"zero-vector"}`),
+		Embedding: make([]float32, EmbeddingDimensions),
+	}
+	if err := repository.SaveIndex(ctx, claimed, []KnowledgeChunk{chunk}, 1, 0, embedder.Model()); err != nil {
+		t.Fatal(err)
+	}
+	results, err := NewRetriever(repository, embedder).RetrieveContext(ctx, RetrievalQuery{
+		ProjectID: projectID, Query: "CreateUser", SymbolName: "CreateUser", Limit: 1,
+	})
+	if err != nil || len(results) != 1 || math.IsNaN(results[0].Score) || math.IsInf(results[0].Score, 0) {
+		t.Fatalf("results=%#v error=%v", results, err)
 	}
 }
 

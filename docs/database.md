@@ -48,6 +48,13 @@ use increasing `generation_attempt` values. Repair records and the transition
 back to `VALIDATING` commit atomically; when no attempt remains, the analysis
 instead transitions to `WAITING_REVIEW` with its failed validation history.
 
+Phase 9 adds `test_reviews`. A review belongs to exactly one generated-test
+version and records a bounded reviewer name, immutable decision
+(`ACCEPTED` or `REJECTED`), optional bounded comment, and timestamp. The
+unique generated-test key prevents double-clicks and concurrent review requests
+from creating conflicting final decisions. Deleting an analysis cascades through
+its generated tests and review records.
+
 Migrations are in `backend/migrations` and use the `golang-migrate` filename
 format. Apply them with `make migrate-up`; roll back one migration with
 `make migrate-down`.

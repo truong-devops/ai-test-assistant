@@ -267,7 +267,9 @@ func (r *Repository) Retrieve(ctx context.Context, query RetrievalQuery, embeddi
 				CASE WHEN $7 AND chunk_type IN ('test','test_helper','mock') THEN 4.0 ELSE 0.0 END +
 				CASE WHEN chunk_type='mock' THEN 1.5 ELSE 0.0 END AS structural_score,
 				ts_rank_cd(search_vector, plainto_tsquery('simple', $2)) * 4.0 AS lexical_score,
-				GREATEST(0.0, 1.0 - (embedding <=> $8::vector)) * 2.0 AS semantic_score
+				CASE WHEN (embedding <=> $8::vector) = 'NaN'::double precision THEN 0.0
+					ELSE GREATEST(0.0, 1.0 - (embedding <=> $8::vector)) * 2.0
+				END AS semantic_score
 			FROM knowledge_chunks
 			WHERE project_id=$1
 		)

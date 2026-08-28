@@ -5,4 +5,6 @@
 **/tmp
 **/coverage.out
 frontend/node_modules
-
+frontend/.next
+frontend/*.tsbuildinfo
+frontend/.env.local

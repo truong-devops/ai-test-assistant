@@ -6,9 +6,9 @@ const (
 	DecisionAccepted = "ACCEPTED"
 	DecisionRejected = "REJECTED"
 
-	DefaultReviewerName = "local-reviewer"
-	MaxReviewerNameBytes = 128
-	MaxCommentBytes = 4000
+	DefaultReviewerName  = "local-reviewer"
+	MaxReviewerNameRunes = 128
+	MaxCommentBytes      = 4000
 )
 
 type Review struct {

@@ -40,7 +40,7 @@ func (s *Service) Decide(ctx context.Context, generatedTestID int64, decision st
 		input.ReviewerName = DefaultReviewerName
 	}
 	input.Comment = strings.TrimSpace(input.Comment)
-	if utf8.RuneCountInString(input.ReviewerName) > MaxReviewerNameBytes {
+	if utf8.RuneCountInString(input.ReviewerName) > MaxReviewerNameRunes {
 		return Review{}, fmt.Errorf("%w: reviewer_name is too long", ErrInvalidInput)
 	}
 	if len(input.Comment) > MaxCommentBytes {

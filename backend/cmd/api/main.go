@@ -19,6 +19,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/review"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
@@ -46,6 +47,11 @@ func main() {
 	analysisService := job.NewService(jobRepository)
 	knowledgeRepository := knowledge.NewRepository(database.Pool())
 	knowledgeService := knowledge.NewService(projectRepository, knowledgeRepository)
+	embedder, err := knowledge.NewEmbeddingClient(cfg.Embedding.Provider, cfg.Embedding.Model)
+	if err != nil {
+		logger.Error("configure embedding client", "error", err)
+		os.Exit(1)
+	}
 	recommendationRepository := recommendation.NewRepository(database.Pool())
 	recommendationService := recommendation.NewService(jobRepository, recommendationRepository)
 	generationRepository := generation.NewRepository(database.Pool())
@@ -54,13 +60,16 @@ func main() {
 	validationService := validation.NewService(jobRepository, validationRepository)
 	repairRepository := repair.NewRepository(database.Pool())
 	repairService := repair.NewService(jobRepository, repairRepository)
+	reviewRepository := review.NewRepository(database.Pool())
+	reviewService := review.NewService(jobRepository, reviewRepository)
+	contextService := review.NewContextService(jobRepository, knowledge.NewRetriever(knowledgeRepository, embedder))
 	webhookService := gitlab.NewWebhookService(projectRepository, jobRepository)
 	webhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewRouterWithPhaseEightServices(logger, database, projectService, analysisService,
+		Handler: httpapi.NewRouterWithPhaseNineServices(logger, database, projectService, analysisService,
 			webhookHandler, knowledgeService, recommendationService, generationService,
-			validationService, repairService),
+			validationService, repairService, reviewService, contextService),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

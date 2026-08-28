@@ -52,6 +52,16 @@ repair worker -> read latest failed version + its exact validation feedback
               -> immutable production code + fixed target path checks
               -> transactional generated_tests version + repair_attempts audit
               -> VALIDATING, or WAITING_REVIEW when the hard limit is reached
+
+Next.js review console -> server-side reads from Go API
+                       -> same-origin /api/backend proxy for browser actions
+                       -> evidence screen: diff, symbols, context, recommendations,
+                          generated code, validations, repairs, human decision
+
+review POST -> lock analysis + current generated version
+            -> insert one immutable test_reviews row
+            -> aggregate latest candidates
+            -> ACCEPTED when all accept; otherwise REJECTED after all decide
 ```
 
 Worker claims use a bounded lease. Temporary GitLab/preparation failures are
@@ -81,8 +91,8 @@ receives the Docker socket. Runtime dependency downloads are disabled, output
 is bounded and redacted, and the container plus workspace are removed after
 every run. Phase 8 keeps AI repair attempts separate from infrastructure retry
 counts and caps them at three. The repair worker can only append a new generated
-test version; it cannot mutate repository production files. Future phases add
-human review actions and the UI.
+test version; it cannot mutate repository production files. Phase 9 adds a
+human-review console and persisted Accept/Reject decisions.
 
 ## Decisions
 
@@ -100,5 +110,14 @@ human review actions and the UI.
 - Repair writes verify source-version, validation, recommendation, and analysis
   ownership before atomically appending a new generated version and returning
   the analysis to `VALIDATING`.
+- The Phase 9 review decision locks the analysis and target generated-test
+  version in one transaction. Only the latest version of a recommendation can
+  be decided, and all latest candidates must be reviewed before the analysis
+  reaches `ACCEPTED` or `REJECTED`.
+- The Next.js console uses server-side `BACKEND_API_URL` for reads and a
+  same-origin proxy for browser POST actions, so the browser never needs an
+  externally visible backend address. The context panel recomputes a
+  project-filtered view of the current index; it is not presented as a frozen
+  historical LLM prompt.
 - The sample project is isolated in its own Go module so it can later be
   checked out and analyzed as a target repository.

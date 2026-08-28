@@ -1,6 +1,25 @@
-# Frontend
+# AI Test Assistant Review Console
 
-The React/Next.js review UI starts in Phase 9. This placeholder keeps the
-designed repository boundary visible without selecting frontend dependencies
-or implementing future-phase behavior prematurely.
+The frontend is a Next.js application for Phase 9 human review. It presents
+project/index status, analysis history, and a traceable review screen with the
+MR diff, changed symbols, current project context, recommendation rationale,
+generated test source, every validation result, repair history, and an
+immutable Accept/Reject decision.
 
+## Local development
+
+Use Node.js 18.18 or newer:
+
+```bash
+npm ci --ignore-scripts
+npm run typecheck
+npm run dev
+```
+
+The development server listens on `http://localhost:3000` and reads the Go API
+from `BACKEND_API_URL` (default: `http://localhost:8080`). Browser actions
+go through the app's same-origin `/api/backend` proxy, so no CORS setup is
+required.
+
+For the complete stack, run `make dev-up` from the repository root. Build the
+production bundle with `npm run build`.
