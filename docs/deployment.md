@@ -29,6 +29,8 @@ chmod 700 secrets
 openssl rand -hex 32 > secrets/postgres_password
 openssl rand -hex 32 > secrets/gitlab_webhook_secret
 printf '%s\n' 'glpat-replace-with-real-token' > secrets/gitlab_token
+openssl rand -hex 32 > secrets/github_webhook_secret
+printf '%s\n' 'github_pat_replace-with-real-token' > secrets/github_token
 printf '%s\n' 'replace-with-real-key' > secrets/llm_api_key
 ```
 
@@ -39,7 +41,8 @@ Use the generated PostgreSQL password to create `secrets/database_url`. Because
 postgres://ai_test_assistant:<password>@postgres:5432/ai_test_assistant?sslmode=disable
 ```
 
-If `LLM_PROVIDER=disabled`, `secrets/llm_api_key` may be an empty file. Set every
+If GitHub private repositories are not used, `secrets/github_token` may be an
+empty file. If `LLM_PROVIDER=disabled`, `secrets/llm_api_key` may be an empty file. Set every
 secret file to mode `0600`. Set `DOCKER_GID` in `.env.production` to the group ID
 that owns `/var/run/docker.sock` on the deployment host; Docker Desktop commonly
 works with `0`, while Linux hosts often require the `docker` group ID.
@@ -90,7 +93,7 @@ non-production host regularly; an untested backup is not a recovery strategy.
 
 ## Reverse proxy and logs
 
-Route `/api/*`, `/health`, `/ready`, and the GitLab webhook to port 8080; route
+Route `/api/*`, `/health`, `/ready`, and both SCM webhooks to port 8080; route
 the review UI to port 3000. Terminate TLS, authenticate users, set request-size
 limits, and perform client-IP rate limiting at that proxy. The API's built-in
 rate limiter uses the direct socket peer and deliberately ignores spoofable
@@ -109,6 +112,6 @@ curl --fail http://127.0.0.1:8080/ready
 curl --fail http://127.0.0.1:3000/evaluations
 ```
 
-Also deliver a signed GitLab test webhook, process one controlled MR through
-review, and confirm a sandbox container has no network, host bind mounts, Docker
-socket, or secrets.
+Also deliver signed GitLab and GitHub test webhooks, process one controlled
+MR/PR through review, and confirm a sandbox container has no network, host bind
+mounts, Docker socket, or secrets.

@@ -51,7 +51,14 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/ai_test_assistant?sslmode=disable
       DATABASE_MAX_CONNS: 10
       SHUTDOWN_TIMEOUT: 10s
+      GITLAB_BASE_URL: ${GITLAB_BASE_URL:-https://gitlab.com}
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
+      GITLAB_REQUEST_TIMEOUT: ${GITLAB_REQUEST_TIMEOUT:-15s}
       GITLAB_WEBHOOK_SECRET: ${GITLAB_WEBHOOK_SECRET:-dev-webhook-secret}
+      GITHUB_API_BASE_URL: ${GITHUB_API_BASE_URL:-https://api.github.com}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REQUEST_TIMEOUT: ${GITHUB_REQUEST_TIMEOUT:-15s}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-dev-github-webhook-secret}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -83,6 +90,9 @@ services:
       GITLAB_BASE_URL: ${GITLAB_BASE_URL:-https://gitlab.com}
       GITLAB_TOKEN: ${GITLAB_TOKEN:-}
       GITLAB_REQUEST_TIMEOUT: 15s
+      GITHUB_API_BASE_URL: ${GITHUB_API_BASE_URL:-https://api.github.com}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REQUEST_TIMEOUT: ${GITHUB_REQUEST_TIMEOUT:-15s}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-hash-v1}
       LLM_PROVIDER: ${LLM_PROVIDER:-disabled}

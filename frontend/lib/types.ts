@@ -1,7 +1,9 @@
 export type Project = {
   id: number;
   name: string;
-  gitlab_project_id: number;
+  provider: "gitlab" | "github";
+  provider_project_id: number;
+  gitlab_project_id?: number;
   repository_url: string;
   default_branch: string;
   language: string;

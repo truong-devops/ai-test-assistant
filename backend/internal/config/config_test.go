@@ -23,6 +23,10 @@ func TestLoad(t *testing.T) {
 	t.Setenv("GITLAB_BASE_URL", "https://gitlab.example.com")
 	t.Setenv("GITLAB_TOKEN", "test-token")
 	t.Setenv("GITLAB_WEBHOOK_SECRET", "test-secret")
+	t.Setenv("GITHUB_API_BASE_URL", "https://github-api.example.com")
+	t.Setenv("GITHUB_TOKEN", "github-token")
+	t.Setenv("GITHUB_WEBHOOK_SECRET", "github-secret")
+	t.Setenv("GITHUB_REQUEST_TIMEOUT", "9s")
 	t.Setenv("WORKER_POLL_INTERVAL", "250ms")
 	t.Setenv("WORKER_RETRY_DELAY", "500ms")
 	t.Setenv("WORKER_LEASE_DURATION", "1m")
@@ -59,6 +63,10 @@ func TestLoad(t *testing.T) {
 		cfg.Worker.LeaseDuration != time.Minute || cfg.Worker.MaxAttempts != 4 {
 		t.Fatalf("Load() GitLab/worker config = %+v", cfg)
 	}
+	if cfg.GitHub.APIBaseURL != "https://github-api.example.com" || cfg.GitHub.Token != "github-token" ||
+		cfg.GitHub.WebhookSecret != "github-secret" || cfg.GitHub.RequestTimeout != 9*time.Second {
+		t.Fatalf("Load() GitHub config = %+v", cfg.GitHub)
+	}
 	if cfg.Embedding.Provider != "hash" || cfg.Embedding.Model != "fixture-v1" {
 		t.Fatalf("Load() embedding config = %+v", cfg.Embedding)
 	}
@@ -85,19 +93,22 @@ func TestLoadReadsSecretsFromFiles(t *testing.T) {
 		}
 		return path
 	}
-	for _, key := range []string{"DATABASE_URL", "GITLAB_TOKEN", "GITLAB_WEBHOOK_SECRET", "LLM_API_KEY"} {
+	for _, key := range []string{"DATABASE_URL", "GITLAB_TOKEN", "GITLAB_WEBHOOK_SECRET", "GITHUB_TOKEN", "GITHUB_WEBHOOK_SECRET", "LLM_API_KEY"} {
 		t.Setenv(key, "")
 	}
 	t.Setenv("DATABASE_URL_FILE", writeSecret("database-url", "postgres://from-file"))
 	t.Setenv("GITLAB_TOKEN_FILE", writeSecret("gitlab-token", "gitlab-from-file"))
 	t.Setenv("GITLAB_WEBHOOK_SECRET_FILE", writeSecret("webhook-secret", "webhook-from-file"))
+	t.Setenv("GITHUB_TOKEN_FILE", writeSecret("github-token", "github-from-file"))
+	t.Setenv("GITHUB_WEBHOOK_SECRET_FILE", writeSecret("github-webhook-secret", "github-webhook-from-file"))
 	t.Setenv("LLM_API_KEY_FILE", writeSecret("llm-key", "llm-from-file"))
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.DatabaseURL != "postgres://from-file" || cfg.GitLab.Token != "gitlab-from-file" ||
-		cfg.GitLab.WebhookSecret != "webhook-from-file" || cfg.LLM.APIKey != "llm-from-file" {
+		cfg.GitLab.WebhookSecret != "webhook-from-file" || cfg.GitHub.Token != "github-from-file" ||
+		cfg.GitHub.WebhookSecret != "github-webhook-from-file" || cfg.LLM.APIKey != "llm-from-file" {
 		t.Fatalf("file secrets were not loaded: %+v", cfg)
 	}
 }

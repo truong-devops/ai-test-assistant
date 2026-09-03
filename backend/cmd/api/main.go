@@ -13,6 +13,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/evaluation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/httpapi"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
@@ -22,6 +23,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/review"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
@@ -45,7 +47,25 @@ func main() {
 	defer database.Close()
 
 	projectRepository := project.NewPostgresRepository(database.Pool())
-	projectService := project.NewService(projectRepository)
+	gitLabSourceClient, err := gitlab.NewHTTPClient(cfg.GitLab.BaseURL, cfg.GitLab.Token, cfg.GitLab.RequestTimeout)
+	if err != nil {
+		logger.Error("configure GitLab source client", "error", err)
+		os.Exit(1)
+	}
+	gitHubSourceClient, err := github.NewHTTPClient(cfg.GitHub.APIBaseURL, cfg.GitHub.Token, cfg.GitHub.RequestTimeout)
+	if err != nil {
+		logger.Error("configure GitHub source client", "error", err)
+		os.Exit(1)
+	}
+	sourceResolver, err := scm.NewRouter(map[string]scm.Client{
+		scm.ProviderGitLab: gitLabSourceClient,
+		scm.ProviderGitHub: gitHubSourceClient,
+	})
+	if err != nil {
+		logger.Error("configure source metadata resolver", "error", err)
+		os.Exit(1)
+	}
+	projectService := project.NewServiceWithResolver(projectRepository, sourceResolver)
 	jobRepository := job.NewRepository(database.Pool())
 	analysisService := job.NewService(jobRepository)
 	knowledgeRepository := knowledge.NewRepository(database.Pool())
@@ -68,7 +88,12 @@ func main() {
 	contextService := review.NewContextService(jobRepository, knowledge.NewRetriever(knowledgeRepository, embedder))
 	evaluationService := evaluation.NewService(evaluation.NewRepository(database.Pool()))
 	webhookService := gitlab.NewWebhookService(projectRepository, jobRepository)
-	webhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
+	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
+	gitHubWebhookService := github.NewWebhookService(projectRepository, jobRepository)
+	gitHubWebhookHandler := github.NewWebhookHandler(cfg.GitHub.WebhookSecret, gitHubWebhookService)
+	webhookHandler := http.NewServeMux()
+	webhookHandler.Handle("POST /api/webhooks/gitlab", gitLabWebhookHandler)
+	webhookHandler.Handle("POST /api/webhooks/github", gitHubWebhookHandler)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewRouterWithPhaseElevenServices(logger, database, projectService, analysisService,

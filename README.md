@@ -1,7 +1,7 @@
 # AI Test Assistant
 
 AI Test Assistant is a graduation engineering project that turns GitLab Merge
-Request changes into project-aware Go test recommendations and generated tests.
+Request and GitHub Pull Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
 This repository implements Phases 0-11: the backend foundation, GitLab capture
@@ -34,7 +34,7 @@ curl http://localhost:8080/health
 curl http://localhost:8080/ready
 curl -X POST http://localhost:8080/api/projects \
   -H 'Content-Type: application/json' \
-  -d '{"name":"sample","gitlab_project_id":123,"repository_url":"https://gitlab.com/example/sample.git","default_branch":"main","language":"go"}'
+  -d '{"name":"sample","provider":"gitlab","provider_project_id":123,"repository_url":"https://gitlab.com/example/sample.git","default_branch":"main","language":"go"}'
 curl http://localhost:8080/api/projects
 ```
 
@@ -75,6 +75,7 @@ application-level user authentication/RBAC remains a tracked backlog item.
 - `POST /api/projects/{id}/index`
 - `GET /api/projects/{id}/index/status`
 - `POST /api/webhooks/gitlab`
+- `POST /api/webhooks/github`
 - `GET /api/analyses`
 - `GET /api/analyses/{id}`
 - `GET /api/analyses/{id}/changes`
@@ -95,6 +96,13 @@ returns HTTP 202 after enqueueing; the worker fetches authoritative MR metadata
 and paginated diffs using `GITLAB_TOKEN`. A second worker phase fetches the old
 and new Go source at the MR target/source SHAs, maps unified-diff lines to Go AST
 symbols, persists them, and advances the job to `RETRIEVING_CONTEXT`.
+
+For GitHub, register the project with `provider: "github"`, its numeric GitHub
+repository ID as `provider_project_id`, and an `https://github.com/owner/repo`
+URL. Configure a Pull request webhook at `/api/webhooks/github`, set its secret
+to `GITHUB_WEBHOOK_SECRET`, and enable Pull requests. The worker reads public
+repositories without credentials or uses `GITHUB_TOKEN` for private source and
+Pull Request access.
 
 Requesting a project index returns HTTP 202. The index worker reads the default
 branch snapshot, excludes sensitive/generated/unsupported files, creates

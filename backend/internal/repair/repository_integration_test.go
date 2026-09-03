@@ -103,8 +103,8 @@ func createRepairAnalysis(t *testing.T, ctx context.Context,
 	t.Helper()
 	var projectID int64
 	if err := pool.QueryRow(ctx, `INSERT INTO projects
-		(name, gitlab_project_id, repository_url, default_branch, language, status)
-		VALUES ($1,$2,'https://gitlab.example.com/repair.git','main','go','active') RETURNING id`,
+		(name, provider, provider_project_id, repository_url, default_branch, language, status)
+		VALUES ($1,'gitlab',$2,'https://gitlab.example.com/repair.git','main','go','active') RETURNING id`,
 		"repair-integration", time.Now().UnixNano()).Scan(&projectID); err != nil {
 		t.Fatal(err)
 	}

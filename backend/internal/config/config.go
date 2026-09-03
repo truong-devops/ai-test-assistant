@@ -26,6 +26,7 @@ type Config struct {
 	LogLevel        string
 	HTTP            HTTPConfig
 	GitLab          GitLabConfig
+	GitHub          GitHubConfig
 	Embedding       EmbeddingConfig
 	LLM             LLMConfig
 	Worker          WorkerConfig
@@ -45,6 +46,13 @@ type HTTPConfig struct {
 
 type GitLabConfig struct {
 	BaseURL        string
+	Token          string
+	WebhookSecret  string
+	RequestTimeout time.Duration
+}
+
+type GitHubConfig struct {
+	APIBaseURL     string
 	Token          string
 	WebhookSecret  string
 	RequestTimeout time.Duration
@@ -96,6 +104,14 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	gitHubToken, err := secretEnv("GITHUB_TOKEN")
+	if err != nil {
+		return Config{}, err
+	}
+	gitHubWebhookSecret, err := secretEnv("GITHUB_WEBHOOK_SECRET")
+	if err != nil {
+		return Config{}, err
+	}
 	llmAPIKey, err := secretEnv("LLM_API_KEY")
 	if err != nil {
 		return Config{}, err
@@ -117,6 +133,10 @@ func Load() (Config, error) {
 			Token:          gitLabToken,
 			WebhookSecret:  webhookSecret,
 			RequestTimeout: 15 * time.Second,
+		},
+		GitHub: GitHubConfig{
+			APIBaseURL: envOrDefault("GITHUB_API_BASE_URL", "https://api.github.com"),
+			Token:      gitHubToken, WebhookSecret: gitHubWebhookSecret, RequestTimeout: 15 * time.Second,
 		},
 		Embedding: EmbeddingConfig{
 			Provider: envOrDefault("EMBEDDING_PROVIDER", "local"),
@@ -211,6 +231,13 @@ func Load() (Config, error) {
 			return Config{}, err
 		}
 		cfg.GitLab.RequestTimeout = parsed
+	}
+	if value := os.Getenv("GITHUB_REQUEST_TIMEOUT"); value != "" {
+		parsed, err := positiveDuration("GITHUB_REQUEST_TIMEOUT", value)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.GitHub.RequestTimeout = parsed
 	}
 	if value := os.Getenv("WORKER_POLL_INTERVAL"); value != "" {
 		parsed, err := positiveDuration("WORKER_POLL_INTERVAL", value)

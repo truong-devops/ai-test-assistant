@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 type ProjectGetter interface {
@@ -24,12 +24,12 @@ type IndexStore interface {
 
 type Indexer struct {
 	projects ProjectGetter
-	source   gitlab.Client
+	source   scm.Client
 	embedder EmbeddingClient
 	store    IndexStore
 }
 
-func NewIndexer(projects ProjectGetter, source gitlab.Client, embedder EmbeddingClient, store IndexStore) *Indexer {
+func NewIndexer(projects ProjectGetter, source scm.Client, embedder EmbeddingClient, store IndexStore) *Indexer {
 	return &Indexer{projects: projects, source: source, embedder: embedder, store: store}
 }
 
@@ -38,7 +38,8 @@ func (i *Indexer) Process(ctx context.Context, claimed IndexJob) error {
 	if err != nil {
 		return fmt.Errorf("get project for indexing: %w", err)
 	}
-	entries, err := i.source.ListRepositoryTree(ctx, registeredProject.GitLabProjectID, claimed.Ref)
+	repository := registeredProject.RepositoryRef()
+	entries, err := i.source.ListRepositoryTree(ctx, repository, claimed.Ref)
 	if err != nil {
 		return err
 	}
@@ -54,7 +55,7 @@ func (i *Indexer) Process(ctx context.Context, claimed IndexJob) error {
 			continue
 		}
 		seenPaths[entry.Path] = struct{}{}
-		content, err := i.source.GetFileRaw(ctx, registeredProject.GitLabProjectID, entry.Path, claimed.Ref)
+		content, err := i.source.GetFileRaw(ctx, repository, entry.Path, claimed.Ref)
 		if err != nil {
 			return fmt.Errorf("fetch index source %q: %w", entry.Path, err)
 		}

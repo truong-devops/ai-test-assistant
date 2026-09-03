@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 var ErrDiffUnavailable = errors.New("changed Go file diff is unavailable")
@@ -27,13 +27,13 @@ type SymbolSaver interface {
 
 type Processor struct {
 	projects ProjectGetter
-	gitlab   gitlab.Client
+	source   scm.Client
 	analyses AnalysisReader
 	results  SymbolSaver
 }
 
-func NewProcessor(projects ProjectGetter, gitLabClient gitlab.Client, analyses AnalysisReader, results SymbolSaver) *Processor {
-	return &Processor{projects: projects, gitlab: gitLabClient, analyses: analyses, results: results}
+func NewProcessor(projects ProjectGetter, source scm.Client, analyses AnalysisReader, results SymbolSaver) *Processor {
+	return &Processor{projects: projects, source: source, analyses: analyses, results: results}
 }
 
 func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error {
@@ -57,12 +57,12 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		if err != nil {
 			return fmt.Errorf("parse diff for %q: %w", displayPath(file), err)
 		}
-		oldFile, err := p.loadVersion(ctx, registeredProject.GitLabProjectID, file.OldPath,
+		oldFile, err := p.loadVersion(ctx, registeredProject.RepositoryRef(), file.OldPath,
 			analysisJob.TargetSHA, !file.NewFile && strings.HasSuffix(file.OldPath, ".go"))
 		if err != nil {
 			return fmt.Errorf("load target version of %q: %w", file.OldPath, err)
 		}
-		newFile, err := p.loadVersion(ctx, registeredProject.GitLabProjectID, file.NewPath,
+		newFile, err := p.loadVersion(ctx, registeredProject.RepositoryRef(), file.NewPath,
 			analysisJob.SourceSHA, !file.DeletedFile && strings.HasSuffix(file.NewPath, ".go"))
 		if err != nil {
 			return fmt.Errorf("load source version of %q: %w", file.NewPath, err)
@@ -79,11 +79,11 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 	return p.results.SaveSymbols(ctx, claimed.ID, claimed.AttemptCount, symbols)
 }
 
-func (p *Processor) loadVersion(ctx context.Context, projectID int64, filePath, ref string, required bool) (*ParsedFile, error) {
+func (p *Processor) loadVersion(ctx context.Context, repository scm.Repository, filePath, ref string, required bool) (*ParsedFile, error) {
 	if !required {
 		return nil, nil
 	}
-	source, err := p.gitlab.GetFileRaw(ctx, projectID, filePath, ref)
+	source, err := p.source.GetFileRaw(ctx, repository, filePath, ref)
 	if err != nil {
 		return nil, err
 	}

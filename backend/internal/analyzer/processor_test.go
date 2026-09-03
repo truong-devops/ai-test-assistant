@@ -8,6 +8,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 type fakeProjects struct{ result project.Project }
@@ -25,20 +26,20 @@ func (f fakeAnalyses) Get(context.Context, int64) (job.AnalysisJob, []job.Change
 
 type fakeGitLab struct{ files map[string][]byte }
 
-func (f fakeGitLab) GetMergeRequest(context.Context, int64, int64) (gitlab.MergeRequest, error) {
+func (f fakeGitLab) GetMergeRequest(context.Context, scm.Repository, int64) (gitlab.MergeRequest, error) {
 	return gitlab.MergeRequest{}, nil
 }
-func (f fakeGitLab) GetMergeRequestDiff(context.Context, int64, int64) ([]gitlab.FileDiff, error) {
+func (f fakeGitLab) GetMergeRequestDiff(context.Context, scm.Repository, int64) ([]gitlab.FileDiff, error) {
 	return nil, nil
 }
-func (f fakeGitLab) GetFileRaw(_ context.Context, _ int64, path, ref string) ([]byte, error) {
+func (f fakeGitLab) GetFileRaw(_ context.Context, _ scm.Repository, path, ref string) ([]byte, error) {
 	result, ok := f.files[ref+":"+path]
 	if !ok {
 		return nil, errors.New("file not found")
 	}
 	return result, nil
 }
-func (f fakeGitLab) ListRepositoryTree(context.Context, int64, string) ([]gitlab.RepositoryEntry, error) {
+func (f fakeGitLab) ListRepositoryTree(context.Context, scm.Repository, string) ([]gitlab.RepositoryEntry, error) {
 	return nil, nil
 }
 

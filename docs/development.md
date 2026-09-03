@@ -40,7 +40,7 @@
   before `make frontend-typecheck` or `make frontend-build`; use Node.js
   18.18+ locally. Docker builds it with Node 20.
 - Keep `BACKEND_API_URL` server-only. Browser mutations must use the
-  same-origin frontend proxy and must not expose GitLab, LLM, or database
+  same-origin frontend proxy and must not expose GitLab/GitHub, LLM, or database
   credentials.
 - Review decisions are immutable. The backend, not the UI, decides whether a
   candidate is current and whether the analysis is ready for review. Keep

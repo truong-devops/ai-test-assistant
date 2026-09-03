@@ -5,6 +5,10 @@ project/index status, analysis history, and a traceable review screen with the
 MR diff, changed symbols, current project context, recommendation rationale,
 generated test source, every validation result, repair history, and an
 immutable Accept/Reject decision.
+The Projects page also provides a responsive GitLab/GitHub connection form.
+Pasting a repository URL is enough for the backend to resolve its name, numeric
+provider ID, and default branch; those values remain available as manual
+overrides for private or restricted repositories.
 The evaluation area displays immutable dataset hashes, explicit metric
 denominators, paired comparison deltas, and the interpretation guardrail that
 execution success is distinct from human usefulness.

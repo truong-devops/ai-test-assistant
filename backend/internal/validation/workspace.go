@@ -11,14 +11,14 @@ import (
 	"sync"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
-	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 var ErrGeneratedTargetExists = errors.New("generated test target already exists in repository")
 
 type RepositorySource interface {
-	ListRepositoryTree(ctx context.Context, projectID int64, ref string) ([]gitlab.RepositoryEntry, error)
-	GetFileRaw(ctx context.Context, projectID int64, filePath, ref string) ([]byte, error)
+	ListRepositoryTree(ctx context.Context, repository scm.Repository, ref string) ([]scm.RepositoryEntry, error)
+	GetFileRaw(ctx context.Context, repository scm.Repository, filePath, ref string) ([]byte, error)
 }
 
 type WorkspaceOptions struct {
@@ -56,21 +56,21 @@ func (w *Workspace) Cleanup() error {
 	return w.err
 }
 
-func (m *WorkspaceManager) Prepare(ctx context.Context, projectID int64, ref string,
+func (m *WorkspaceManager) Prepare(ctx context.Context, repository scm.Repository, ref string,
 	generated generation.GeneratedTest,
 ) (*Workspace, error) {
-	if projectID <= 0 || strings.TrimSpace(ref) == "" {
+	if repository.ProviderProjectID <= 0 || strings.TrimSpace(ref) == "" {
 		return nil, fmt.Errorf("workspace project ID and ref are required")
 	}
 	target, err := safeRepositoryPath(generated.FilePath)
 	if err != nil {
 		return nil, fmt.Errorf("invalid generated test path: %w", err)
 	}
-	entries, err := m.source.ListRepositoryTree(ctx, projectID, ref)
+	entries, err := m.source.ListRepositoryTree(ctx, repository, ref)
 	if err != nil {
 		return nil, fmt.Errorf("list validation repository snapshot: %w", err)
 	}
-	blobs := make([]gitlab.RepositoryEntry, 0, len(entries))
+	blobs := make([]scm.RepositoryEntry, 0, len(entries))
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
 		entryPath, err := safeRepositoryPath(entry.Path)
@@ -118,7 +118,7 @@ func (m *WorkspaceManager) Prepare(ctx context.Context, projectID int64, ref str
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		contents, err := m.source.GetFileRaw(ctx, projectID, entry.Path, ref)
+		contents, err := m.source.GetFileRaw(ctx, repository, entry.Path, ref)
 		if err != nil {
 			return nil, fmt.Errorf("fetch validation repository file %q: %w", entry.Path, err)
 		}

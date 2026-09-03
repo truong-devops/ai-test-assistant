@@ -143,6 +143,7 @@ func NewRouterWithPhaseElevenServices(logger *slog.Logger, checker ReadinessChec
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)
+		mux.Handle("POST /api/webhooks/github", webhookHandler)
 	}
 
 	limiter := newClientRateLimiter(options)

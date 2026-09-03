@@ -10,59 +10,23 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 const maxResponseBytes = 20 << 20
 
-type MergeRequest struct {
-	IID          int64    `json:"iid"`
-	ProjectID    int64    `json:"project_id"`
-	Title        string   `json:"title"`
-	State        string   `json:"state"`
-	SourceBranch string   `json:"source_branch"`
-	TargetBranch string   `json:"target_branch"`
-	SHA          string   `json:"sha"`
-	WebURL       string   `json:"web_url"`
-	DiffRefs     DiffRefs `json:"diff_refs"`
-}
-
-type DiffRefs struct {
-	BaseSHA  string `json:"base_sha"`
-	HeadSHA  string `json:"head_sha"`
-	StartSHA string `json:"start_sha"`
-}
-
-type FileDiff struct {
-	OldPath       string `json:"old_path"`
-	NewPath       string `json:"new_path"`
-	Diff          string `json:"diff"`
-	NewFile       bool   `json:"new_file"`
-	RenamedFile   bool   `json:"renamed_file"`
-	DeletedFile   bool   `json:"deleted_file"`
-	Collapsed     bool   `json:"collapsed"`
-	TooLarge      bool   `json:"too_large"`
-	GeneratedFile bool   `json:"generated_file"`
-}
-
-type RepositoryEntry struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Path string `json:"path"`
-	Mode string `json:"mode"`
-}
-
-type Client interface {
-	GetMergeRequest(ctx context.Context, projectID, iid int64) (MergeRequest, error)
-	GetMergeRequestDiff(ctx context.Context, projectID, iid int64) ([]FileDiff, error)
-	GetFileRaw(ctx context.Context, projectID int64, filePath, ref string) ([]byte, error)
-	ListRepositoryTree(ctx context.Context, projectID int64, ref string) ([]RepositoryEntry, error)
-}
+type MergeRequest = scm.MergeRequest
+type DiffRefs = scm.DiffRefs
+type FileDiff = scm.FileDiff
+type RepositoryEntry = scm.RepositoryEntry
+type Client = scm.Client
 
 type HTTPClient struct {
-	apiBaseURL string
-	token      string
-	client     *http.Client
+	apiBaseURL     string
+	repositoryHost string
+	token          string
+	client         *http.Client
 }
 
 func NewHTTPClient(baseURL, token string, timeout time.Duration) (*HTTPClient, error) {
@@ -71,8 +35,9 @@ func NewHTTPClient(baseURL, token string, timeout time.Duration) (*HTTPClient, e
 		return nil, fmt.Errorf("invalid GitLab base URL")
 	}
 	return &HTTPClient{
-		apiBaseURL: strings.TrimRight(parsed.String(), "/") + "/api/v4",
-		token:      token,
+		apiBaseURL:     strings.TrimRight(parsed.String(), "/") + "/api/v4",
+		repositoryHost: strings.ToLower(parsed.Host),
+		token:          token,
 		client: &http.Client{
 			Timeout: timeout,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
@@ -82,7 +47,36 @@ func NewHTTPClient(baseURL, token string, timeout time.Duration) (*HTTPClient, e
 	}, nil
 }
 
-func (c *HTTPClient) GetMergeRequest(ctx context.Context, projectID, iid int64) (MergeRequest, error) {
+func (c *HTTPClient) ResolveRepository(ctx context.Context, repository scm.Repository) (scm.RepositoryMetadata, error) {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(repository.RepositoryURL))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		strings.ToLower(parsed.Host) != c.repositoryHost || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return scm.RepositoryMetadata{}, fmt.Errorf("GitLab repository_url must belong to configured GitLab host")
+	}
+	pathWithNamespace := strings.TrimSuffix(strings.Trim(parsed.Path, "/"), ".git")
+	if !strings.Contains(pathWithNamespace, "/") || scm.ValidateRepositoryPath(pathWithNamespace) != nil {
+		return scm.RepositoryMetadata{}, fmt.Errorf("invalid GitLab repository path")
+	}
+	var response struct {
+		ID            int64  `json:"id"`
+		Name          string `json:"name"`
+		DefaultBranch string `json:"default_branch"`
+		WebURL        string `json:"web_url"`
+	}
+	if _, err := c.getJSON(ctx, "/projects/"+url.PathEscape(pathWithNamespace), nil, &response); err != nil {
+		return scm.RepositoryMetadata{}, fmt.Errorf("resolve GitLab project: %w", err)
+	}
+	if response.ID <= 0 || strings.TrimSpace(response.Name) == "" {
+		return scm.RepositoryMetadata{}, fmt.Errorf("GitLab returned incomplete project metadata")
+	}
+	return scm.RepositoryMetadata{
+		ProviderProjectID: response.ID, Name: response.Name,
+		DefaultBranch: response.DefaultBranch, WebURL: response.WebURL,
+	}, nil
+}
+
+func (c *HTTPClient) GetMergeRequest(ctx context.Context, repository scm.Repository, iid int64) (MergeRequest, error) {
+	projectID := repository.ProviderProjectID
 	if projectID <= 0 || iid <= 0 {
 		return MergeRequest{}, fmt.Errorf("project ID and merge request IID must be positive")
 	}
@@ -94,7 +88,8 @@ func (c *HTTPClient) GetMergeRequest(ctx context.Context, projectID, iid int64) 
 	return result, nil
 }
 
-func (c *HTTPClient) GetMergeRequestDiff(ctx context.Context, projectID, iid int64) ([]FileDiff, error) {
+func (c *HTTPClient) GetMergeRequestDiff(ctx context.Context, repository scm.Repository, iid int64) ([]FileDiff, error) {
+	projectID := repository.ProviderProjectID
 	if projectID <= 0 || iid <= 0 {
 		return nil, fmt.Errorf("project ID and merge request IID must be positive")
 	}
@@ -121,11 +116,12 @@ func (c *HTTPClient) GetMergeRequestDiff(ctx context.Context, projectID, iid int
 	return nil, fmt.Errorf("get merge request diffs: pagination exceeded 100 pages")
 }
 
-func (c *HTTPClient) GetFileRaw(ctx context.Context, projectID int64, filePath, ref string) ([]byte, error) {
+func (c *HTTPClient) GetFileRaw(ctx context.Context, repository scm.Repository, filePath, ref string) ([]byte, error) {
+	projectID := repository.ProviderProjectID
 	if projectID <= 0 {
 		return nil, fmt.Errorf("project ID must be positive")
 	}
-	if err := validateRepositoryPath(filePath); err != nil {
+	if err := scm.ValidateRepositoryPath(filePath); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(ref) == "" {
@@ -162,7 +158,8 @@ func (c *HTTPClient) GetFileRaw(ctx context.Context, projectID int64, filePath, 
 	return body, nil
 }
 
-func (c *HTTPClient) ListRepositoryTree(ctx context.Context, projectID int64, ref string) ([]RepositoryEntry, error) {
+func (c *HTTPClient) ListRepositoryTree(ctx context.Context, repository scm.Repository, ref string) ([]RepositoryEntry, error) {
+	projectID := repository.ProviderProjectID
 	if projectID <= 0 {
 		return nil, fmt.Errorf("project ID must be positive")
 	}
@@ -191,18 +188,6 @@ func (c *HTTPClient) ListRepositoryTree(ctx context.Context, projectID int64, re
 		page = parsedNextPage
 	}
 	return nil, fmt.Errorf("list repository tree: pagination exceeded 100 pages")
-}
-
-func validateRepositoryPath(filePath string) error {
-	if filePath == "" || strings.HasPrefix(filePath, "/") || strings.ContainsRune(filePath, '\x00') {
-		return fmt.Errorf("invalid repository file path")
-	}
-	for _, segment := range strings.Split(filePath, "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return fmt.Errorf("invalid repository file path")
-		}
-	}
-	return nil
 }
 
 func (c *HTTPClient) getJSON(ctx context.Context, path string, query url.Values, destination any) (http.Header, error) {

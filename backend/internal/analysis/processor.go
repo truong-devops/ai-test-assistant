@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 var ErrMergeRequestNotReady = errors.New("merge request diff is not ready")
@@ -23,12 +23,12 @@ type ResultSaver interface {
 
 type Processor struct {
 	projects ProjectGetter
-	gitlab   gitlab.Client
+	source   scm.Client
 	results  ResultSaver
 }
 
-func NewProcessor(projects ProjectGetter, gitLabClient gitlab.Client, results ResultSaver) *Processor {
-	return &Processor{projects: projects, gitlab: gitLabClient, results: results}
+func NewProcessor(projects ProjectGetter, source scm.Client, results ResultSaver) *Processor {
+	return &Processor{projects: projects, source: source, results: results}
 }
 
 func (p *Processor) Process(ctx context.Context, analysisJob job.AnalysisJob) error {
@@ -36,7 +36,8 @@ func (p *Processor) Process(ctx context.Context, analysisJob job.AnalysisJob) er
 	if err != nil {
 		return fmt.Errorf("get project: %w", err)
 	}
-	mergeRequest, err := p.gitlab.GetMergeRequest(ctx, registeredProject.GitLabProjectID, analysisJob.MergeRequestIID)
+	repository := registeredProject.RepositoryRef()
+	mergeRequest, err := p.source.GetMergeRequest(ctx, repository, analysisJob.MergeRequestIID)
 	if err != nil {
 		return err
 	}
@@ -51,7 +52,7 @@ func (p *Processor) Process(ctx context.Context, analysisJob job.AnalysisJob) er
 	if sourceSHA == "" || targetSHA == "" {
 		return ErrMergeRequestNotReady
 	}
-	diffs, err := p.gitlab.GetMergeRequestDiff(ctx, registeredProject.GitLabProjectID, analysisJob.MergeRequestIID)
+	diffs, err := p.source.GetMergeRequestDiff(ctx, repository, analysisJob.MergeRequestIID)
 	if err != nil {
 		return err
 	}
@@ -62,6 +63,9 @@ func (p *Processor) Process(ctx context.Context, analysisJob job.AnalysisJob) er
 	files := make([]job.ChangedFile, 0, len(diffs))
 	for _, diff := range diffs {
 		additions, deletions := countChangedLines(diff.Diff)
+		if diff.Additions > 0 || diff.Deletions > 0 {
+			additions, deletions = diff.Additions, diff.Deletions
+		}
 		files = append(files, job.ChangedFile{
 			OldPath: diff.OldPath, NewPath: diff.NewPath, ChangeType: changeType(diff),
 			Additions: additions, Deletions: deletions, Diff: diff.Diff, NewFile: diff.NewFile,
@@ -75,7 +79,7 @@ func (p *Processor) Process(ctx context.Context, analysisJob job.AnalysisJob) er
 	}, files)
 }
 
-func changeType(diff gitlab.FileDiff) string {
+func changeType(diff scm.FileDiff) string {
 	switch {
 	case diff.NewFile:
 		return "added"

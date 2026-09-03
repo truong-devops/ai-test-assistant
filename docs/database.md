@@ -61,6 +61,10 @@ unique, making imports idempotent. Observations retain an explicit ordinal and
 raw validated JSON payload; the ordinal preserves exact dataset order so a
 report rebuilt from PostgreSQL must reproduce the stored hash.
 
+Migration 12 generalizes projects from `gitlab_project_id` to the unique pair
+`(provider, provider_project_id)`. Existing rows become `gitlab`; new rows may
+use `gitlab` or `github` without changing downstream project ownership.
+
 Migrations are in `backend/migrations` and use the `golang-migrate` filename
 format. Apply them with `make migrate-up`; roll back one migration with
 `make migrate-down`.

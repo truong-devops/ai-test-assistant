@@ -10,6 +10,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 type projectReaderStub struct {
@@ -35,7 +36,7 @@ type workspacePreparerStub struct {
 	paths []string
 }
 
-func (s *workspacePreparerStub) Prepare(_ context.Context, _ int64, _ string,
+func (s *workspacePreparerStub) Prepare(_ context.Context, _ scm.Repository, _ string,
 	_ generation.GeneratedTest,
 ) (*Workspace, error) {
 	if s.err != nil {

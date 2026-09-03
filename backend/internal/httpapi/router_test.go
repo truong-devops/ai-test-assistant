@@ -32,7 +32,7 @@ func (r *repositoryStub) Create(_ context.Context, input project.CreateInput) (p
 	if r.createErr != nil {
 		return project.Project{}, r.createErr
 	}
-	item := project.Project{ID: 1, Name: input.Name, GitLabProjectID: input.GitLabProjectID, RepositoryURL: input.RepositoryURL,
+	item := project.Project{ID: 1, Name: input.Name, Provider: input.Provider, ProviderProjectID: input.ProviderProjectID, RepositoryURL: input.RepositoryURL,
 		DefaultBranch: input.DefaultBranch, Language: input.Language, Status: project.StatusActive}
 	r.items = append(r.items, item)
 	return item, nil
@@ -50,8 +50,11 @@ func (r *repositoryStub) GetByID(_ context.Context, id int64) (project.Project, 
 	return project.Project{}, project.ErrNotFound
 }
 func (r *repositoryStub) GetByGitLabProjectID(_ context.Context, id int64) (project.Project, error) {
+	return r.GetByProviderProjectID(context.Background(), "gitlab", id)
+}
+func (r *repositoryStub) GetByProviderProjectID(_ context.Context, provider string, id int64) (project.Project, error) {
 	for _, item := range r.items {
-		if item.GitLabProjectID == id {
+		if item.RepositoryRef().Provider == provider && item.ExternalProjectID() == id {
 			return item, nil
 		}
 	}
@@ -108,6 +111,17 @@ func TestCreateProject(t *testing.T) {
 	testRouter(checkerStub{}).ServeHTTP(response, request)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusCreated, response.Body.String())
+	}
+}
+
+func TestCreateGitHubProject(t *testing.T) {
+	body := `{"name":"service","provider":"github","provider_project_id":456,"repository_url":"https://github.com/acme/service.git"}`
+	request := httptest.NewRequest(http.MethodPost, "/api/projects", strings.NewReader(body))
+	response := httptest.NewRecorder()
+	testRouter(checkerStub{}).ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || !strings.Contains(response.Body.String(), `"provider":"github"`) ||
+		!strings.Contains(response.Body.String(), `"provider_project_id":456`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

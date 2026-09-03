@@ -9,6 +9,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 type projectGetterStub struct{ item project.Project }
@@ -49,17 +50,17 @@ type gitLabStub struct {
 	projectID    int64
 }
 
-func (s *gitLabStub) GetMergeRequest(_ context.Context, projectID, _ int64) (gitlab.MergeRequest, error) {
-	s.projectID = projectID
+func (s *gitLabStub) GetMergeRequest(_ context.Context, repository scm.Repository, _ int64) (gitlab.MergeRequest, error) {
+	s.projectID = repository.ProviderProjectID
 	return s.mergeRequest, nil
 }
-func (s *gitLabStub) GetMergeRequestDiff(context.Context, int64, int64) ([]gitlab.FileDiff, error) {
+func (s *gitLabStub) GetMergeRequestDiff(context.Context, scm.Repository, int64) ([]gitlab.FileDiff, error) {
 	return s.diffs, nil
 }
-func (s *gitLabStub) GetFileRaw(context.Context, int64, string, string) ([]byte, error) {
+func (s *gitLabStub) GetFileRaw(context.Context, scm.Repository, string, string) ([]byte, error) {
 	return nil, nil
 }
-func (s *gitLabStub) ListRepositoryTree(context.Context, int64, string) ([]gitlab.RepositoryEntry, error) {
+func (s *gitLabStub) ListRepositoryTree(context.Context, scm.Repository, string) ([]gitlab.RepositoryEntry, error) {
 	return nil, nil
 }
 

@@ -34,8 +34,8 @@ func TestRequestedIndexToRetrievalPipeline(t *testing.T) {
 	gitLabProjectID := time.Now().UnixNano()
 	var projectID int64
 	if err := pool.QueryRow(ctx, `INSERT INTO projects
-		(name, gitlab_project_id, repository_url, default_branch, language, status)
-		VALUES ('index-pipeline',$1,'https://gitlab.example.com/index.git','main','go','active') RETURNING id`,
+		(name, provider, provider_project_id, repository_url, default_branch, language, status)
+		VALUES ('index-pipeline','gitlab',$1,'https://gitlab.example.com/index.git','main','go','active') RETURNING id`,
 		gitLabProjectID).Scan(&projectID); err != nil {
 		t.Fatal(err)
 	}

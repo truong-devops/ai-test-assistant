@@ -166,8 +166,8 @@ func createReviewAnalysis(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 ) (projectID, analysisID, firstRecommendationID, secondRecommendationID int64) {
 	t.Helper()
 	if err := pool.QueryRow(ctx, `INSERT INTO projects
-		(name, gitlab_project_id, repository_url, default_branch, language, status)
-		VALUES ($1,$2,'https://gitlab.example.com/review.git','main','go','active') RETURNING id`,
+		(name, provider, provider_project_id, repository_url, default_branch, language, status)
+		VALUES ($1,'gitlab',$2,'https://gitlab.example.com/review.git','main','go','active') RETURNING id`,
 		"review-"+suffix, time.Now().UnixNano()).Scan(&projectID); err != nil {
 		t.Fatal(err)
 	}

@@ -31,8 +31,8 @@ func TestRepositoryLifecycle(t *testing.T) {
 	gitLabProjectID := time.Now().UnixNano()
 	var projectID int64
 	err = pool.QueryRow(ctx, `INSERT INTO projects
-		(name, gitlab_project_id, repository_url, default_branch, language, status)
-		VALUES ('integration', $1, 'https://gitlab.example.com/test.git', 'main', 'go', 'active') RETURNING id`,
+		(name, provider, provider_project_id, repository_url, default_branch, language, status)
+		VALUES ('integration', 'gitlab', $1, 'https://gitlab.example.com/test.git', 'main', 'go', 'active') RETURNING id`,
 		gitLabProjectID).Scan(&projectID)
 	if err != nil {
 		t.Fatal(err)

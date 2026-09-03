@@ -1,6 +1,11 @@
 package project
 
-import "time"
+import (
+	"strings"
+	"time"
+
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
+)
 
 const StatusActive = "active"
 
@@ -35,4 +40,14 @@ func (p Project) ExternalProjectID() int64 {
 		return p.ProviderProjectID
 	}
 	return p.GitLabProjectID
+}
+
+func (p Project) RepositoryRef() scm.Repository {
+	provider := strings.ToLower(strings.TrimSpace(p.Provider))
+	if provider == "" {
+		provider = scm.ProviderGitLab
+	}
+	return scm.Repository{
+		Provider: provider, ProviderProjectID: p.ExternalProjectID(), RepositoryURL: p.RepositoryURL,
+	}
 }

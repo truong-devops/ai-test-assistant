@@ -6,6 +6,7 @@ import (
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 type indexProjectStub struct{ project project.Project }
@@ -20,16 +21,16 @@ type sourceStub struct {
 	fetched []string
 }
 
-func (s *sourceStub) GetMergeRequest(context.Context, int64, int64) (gitlab.MergeRequest, error) {
+func (s *sourceStub) GetMergeRequest(context.Context, scm.Repository, int64) (gitlab.MergeRequest, error) {
 	return gitlab.MergeRequest{}, nil
 }
-func (s *sourceStub) GetMergeRequestDiff(context.Context, int64, int64) ([]gitlab.FileDiff, error) {
+func (s *sourceStub) GetMergeRequestDiff(context.Context, scm.Repository, int64) ([]gitlab.FileDiff, error) {
 	return nil, nil
 }
-func (s *sourceStub) ListRepositoryTree(context.Context, int64, string) ([]gitlab.RepositoryEntry, error) {
+func (s *sourceStub) ListRepositoryTree(context.Context, scm.Repository, string) ([]gitlab.RepositoryEntry, error) {
 	return s.entries, nil
 }
-func (s *sourceStub) GetFileRaw(_ context.Context, _ int64, filePath, _ string) ([]byte, error) {
+func (s *sourceStub) GetFileRaw(_ context.Context, _ scm.Repository, filePath, _ string) ([]byte, error) {
 	s.fetched = append(s.fetched, filePath)
 	return s.files[filePath], nil
 }

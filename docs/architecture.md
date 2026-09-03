@@ -14,14 +14,14 @@ HTTP request -> handler -> project service -> project repository -> PostgreSQL
 Phases 2 through 7 add asynchronous database-backed pipelines:
 
 ```text
-GitLab webhook -> verify + deduplicate -> PENDING analysis job -> HTTP 202
-worker -> claim job -> GitLab MR API + paginated diffs -> changed_files
+GitLab/GitHub webhook -> verify + deduplicate -> PENDING analysis job -> HTTP 202
+worker -> claim job -> provider MR/PR API + normalized paginated diffs -> changed_files
        -> ANALYZING_CHANGE
 change worker -> fetch target/source Go files -> Go AST + diff line mapping
               -> changed_symbols -> RETRIEVING_CONTEXT (Phase 4 handoff)
 
 POST project index -> PENDING index generation -> index worker
-index worker -> recursive GitLab tree at default branch
+index worker -> provider repository tree at default branch
              -> path/content security filters -> semantic Go/docs chunks
              -> content-hash update + pgvector -> READY
 retriever -> mandatory project filter + structural + full-text + cosine scores
@@ -69,7 +69,7 @@ evaluation-v1 dataset -> strict paired-metric validation -> SHA-256 identity
                       -> read-only API + Next.js evaluation ledger
 ```
 
-Worker claims use a bounded lease. Temporary GitLab/preparation failures are
+Worker claims use a bounded lease. Temporary SCM/preparation failures are
 retried with a delay up to `WORKER_MAX_ATTEMPTS`; an expired lease makes a job
 recoverable after a worker crash. Retry counts reset at each phase handoff, so a
 temporary source-fetch failure does not consume the analyzer retry budget. AI
@@ -106,6 +106,8 @@ read-only evaluation UI after import.
 ## Decisions
 
 - Standard `net/http` routing keeps the initial API small.
+- `scm.Client` routes GitLab and GitHub through one normalized source boundary;
+  provider-specific tokens and webhook verification remain isolated.
 - `pgx` provides PostgreSQL pooling and context-aware operations.
 - Numeric database IDs avoid introducing identity infrastructure before auth.
 - Migrations are explicit and run before the API starts in Docker Compose.

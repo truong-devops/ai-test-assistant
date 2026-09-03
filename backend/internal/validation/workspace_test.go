@@ -9,6 +9,7 @@ import (
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 type repositorySourceStub struct {
@@ -18,11 +19,11 @@ type repositorySourceStub struct {
 	getErr  error
 }
 
-func (s repositorySourceStub) ListRepositoryTree(context.Context, int64, string) ([]gitlab.RepositoryEntry, error) {
+func (s repositorySourceStub) ListRepositoryTree(context.Context, scm.Repository, string) ([]gitlab.RepositoryEntry, error) {
 	return s.entries, s.listErr
 }
 
-func (s repositorySourceStub) GetFileRaw(_ context.Context, _ int64, filePath, _ string) ([]byte, error) {
+func (s repositorySourceStub) GetFileRaw(_ context.Context, _ scm.Repository, filePath, _ string) ([]byte, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
@@ -42,7 +43,7 @@ func TestWorkspaceManagerPreparesIsolatedSnapshotAndCleansIt(t *testing.T) {
 		},
 	}
 	manager := NewWorkspaceManager(source, WorkspaceOptions{})
-	workspace, err := manager.Prepare(context.Background(), 123, "head-sha", generation.GeneratedTest{
+	workspace, err := manager.Prepare(context.Background(), scm.Repository{Provider: "gitlab", ProviderProjectID: 123}, "head-sha", generation.GeneratedTest{
 		FilePath: "internal/user/service_generated_test.go", Code: "package user\n",
 	})
 	if err != nil {
@@ -81,7 +82,7 @@ func TestWorkspaceManagerRejectsTargetCollisionAndUnsafeTreePath(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := NewWorkspaceManager(repositorySourceStub{entries: test.entries}, WorkspaceOptions{}).
-				Prepare(context.Background(), 1, "sha", generation.GeneratedTest{
+				Prepare(context.Background(), scm.Repository{Provider: "gitlab", ProviderProjectID: 1}, "sha", generation.GeneratedTest{
 					FilePath: "internal/user/generated_test.go", Code: "package user\n",
 				})
 			if err == nil || (test.wantErr != nil && !errors.Is(err, test.wantErr)) {
@@ -96,13 +97,13 @@ func TestWorkspaceManagerEnforcesFileAndByteLimits(t *testing.T) {
 		{Path: "one.go", Type: "blob"}, {Path: "two.go", Type: "blob"},
 	}, files: map[string][]byte{"one.go": []byte("1234"), "two.go": []byte("5678")}}
 	if _, err := NewWorkspaceManager(source, WorkspaceOptions{MaxFiles: 1, MaxBytes: 100}).
-		Prepare(context.Background(), 1, "sha", generation.GeneratedTest{
+		Prepare(context.Background(), scm.Repository{Provider: "gitlab", ProviderProjectID: 1}, "sha", generation.GeneratedTest{
 			FilePath: "generated_test.go", Code: "package test\n",
 		}); err == nil {
 		t.Fatal("Prepare() error=nil, want file limit error")
 	}
 	if _, err := NewWorkspaceManager(source, WorkspaceOptions{MaxFiles: 2, MaxBytes: 5}).
-		Prepare(context.Background(), 1, "sha", generation.GeneratedTest{
+		Prepare(context.Background(), scm.Repository{Provider: "gitlab", ProviderProjectID: 1}, "sha", generation.GeneratedTest{
 			FilePath: "generated_test.go", Code: "package test\n",
 		}); err == nil {
 		t.Fatal("Prepare() error=nil, want byte limit error")

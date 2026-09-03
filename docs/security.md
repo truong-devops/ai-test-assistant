@@ -10,7 +10,7 @@ that the unauthenticated MVP is safe for public internet exposure.
 | API/frontend | Trusted application | input size/schema checks, rate limit, security headers, non-root/read-only containers | no user authentication/RBAC yet |
 | Worker | Trusted control plane | non-root UID, dropped Linux capabilities, secret files, job leases | Docker socket can control the host daemon |
 | Generated test sandbox | Hostile workload | no network, non-root, read-only root, no-new-privileges, all capabilities dropped, CPU/RAM/PID/time/output limits | Docker/kernel/runtime vulnerability remains possible |
-| GitLab/repository content | Untrusted external input | response limits, path validation, AST parsing, sensitive-content filters | prompt injection and heuristic secret-filter gaps |
+| GitLab/GitHub repository content | Untrusted external input | response limits, path validation, AST parsing, sensitive-content filters | prompt injection and heuristic secret-filter gaps |
 | LLM provider/output | External/untrusted | provider interface, timeout/size caps, strict JSON schema, path/source validation | repository content leaves the deployment when provider is enabled |
 | PostgreSQL | Trusted state | isolated Compose network, file secret, migrations, backup checksum | DB role separation and immutable audit storage are pending |
 

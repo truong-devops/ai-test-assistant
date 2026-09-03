@@ -10,6 +10,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
 
 type ProjectReader interface {
@@ -21,7 +22,7 @@ type GeneratedTestReader interface {
 }
 
 type WorkspacePreparer interface {
-	Prepare(ctx context.Context, projectID int64, ref string,
+	Prepare(ctx context.Context, repository scm.Repository, ref string,
 		generated generation.GeneratedTest) (*Workspace, error)
 }
 
@@ -54,7 +55,7 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 	if err != nil {
 		return fmt.Errorf("get validation project: %w", err)
 	}
-	if projectItem.ID != claimed.ProjectID || projectItem.GitLabProjectID <= 0 {
+	if projectItem.ID != claimed.ProjectID || projectItem.ExternalProjectID() <= 0 {
 		return fmt.Errorf("validation project identity does not match claimed analysis")
 	}
 	generatedTests, err := p.generated.ListLatest(ctx, claimed.ID)
@@ -67,7 +68,7 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		if generatedTest.AnalysisJobID != claimed.ID {
 			return fmt.Errorf("generated test %d belongs to another analysis", generatedTest.ID)
 		}
-		run, err := p.validateOne(ctx, claimed, projectItem.GitLabProjectID,
+		run, err := p.validateOne(ctx, claimed, projectItem.RepositoryRef(),
 			generatedTest, command)
 		if err != nil {
 			return err
@@ -78,11 +79,11 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 }
 
 func (p *Processor) validateOne(ctx context.Context, claimed job.AnalysisJob,
-	gitLabProjectID int64, generatedTest generation.GeneratedTest, command []string,
+	repository scm.Repository, generatedTest generation.GeneratedTest, command []string,
 ) (Run, error) {
 	base := Run{AnalysisJobID: claimed.ID, GeneratedTestID: generatedTest.ID,
 		AttemptNumber: generatedTest.GenerationAttempt, Command: strings.Join(command, " ")}
-	workspace, err := p.workspaces.Prepare(ctx, gitLabProjectID, claimed.SourceSHA, generatedTest)
+	workspace, err := p.workspaces.Prepare(ctx, repository, claimed.SourceSHA, generatedTest)
 	if err != nil {
 		if errors.Is(err, ErrGeneratedTargetExists) {
 			base.Status = StatusFailed

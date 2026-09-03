@@ -21,11 +21,11 @@ export default async function OverviewPage() {
       <PageHeading
         eyebrow="Workspace overview"
         title="Test review activity"
-        description="Monitor connected projects, merge-request analyses, sandbox validation and recorded review decisions from one workspace."
+        description="Monitor connected projects, merge/pull-request analyses, sandbox validation and recorded review decisions from one workspace."
         actions={<Link className="button secondary" href="/analyses">Open review queue</Link>}
       />
       <div className="summary-grid">
-        <Stat label="Connected projects" value={projects.length} detail="GitLab sources in this workspace" />
+        <Stat label="Connected projects" value={projects.length} detail="GitLab and GitHub sources" />
         <Stat label="Awaiting review" value={waiting.length} detail="Human decision required" tone={waiting.length ? "warning" : "plain"} />
         <Stat label="Accepted analyses" value={accepted.length} detail="All latest candidates accepted" tone={accepted.length ? "accent" : "plain"} />
         <Stat label="Needs attention" value={attention.length} detail="Failed or rejected outcomes" tone={attention.length ? "warning" : "plain"} />
@@ -52,7 +52,7 @@ export default async function OverviewPage() {
                 </tbody>
               </table>
             </div>
-          ) : <div className="panel-body"><EmptyState title="No analysis jobs yet" message="Connect a GitLab project and send a merge-request webhook to begin building review evidence." /></div>}
+          ) : <div className="panel-body"><EmptyState title="No analysis jobs yet" message="Connect a GitLab or GitHub project and send a change-request webhook to begin building review evidence." /></div>}
         </section>
         <aside className="stack">
           <section className="panel side-section">

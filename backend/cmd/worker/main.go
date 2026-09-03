@@ -13,6 +13,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
@@ -21,6 +22,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
@@ -47,6 +49,19 @@ func main() {
 		logger.Error("configure GitLab client", "error", err)
 		os.Exit(1)
 	}
+	gitHubClient, err := github.NewHTTPClient(cfg.GitHub.APIBaseURL, cfg.GitHub.Token, cfg.GitHub.RequestTimeout)
+	if err != nil {
+		logger.Error("configure GitHub client", "error", err)
+		os.Exit(1)
+	}
+	sourceClient, err := scm.NewRouter(map[string]scm.Client{
+		scm.ProviderGitLab: gitLabClient,
+		scm.ProviderGitHub: gitHubClient,
+	})
+	if err != nil {
+		logger.Error("configure source providers", "error", err)
+		os.Exit(1)
+	}
 	projectRepository := project.NewPostgresRepository(database.Pool())
 	jobRepository := job.NewRepository(database.Pool())
 	knowledgeRepository := knowledge.NewRepository(database.Pool())
@@ -64,9 +79,9 @@ func main() {
 		logger.Error("configure LLM provider", "error", err)
 		os.Exit(1)
 	}
-	sourceProcessor := analysis.NewProcessor(projectRepository, gitLabClient, jobRepository)
-	changeProcessor := analyzer.NewProcessor(projectRepository, gitLabClient, jobRepository, jobRepository)
-	indexProcessor := knowledge.NewIndexer(projectRepository, gitLabClient, embedder, knowledgeRepository)
+	sourceProcessor := analysis.NewProcessor(projectRepository, sourceClient, jobRepository)
+	changeProcessor := analyzer.NewProcessor(projectRepository, sourceClient, jobRepository, jobRepository)
+	indexProcessor := knowledge.NewIndexer(projectRepository, sourceClient, embedder, knowledgeRepository)
 	recommendationRepository := recommendation.NewRepository(database.Pool())
 	recommendationProcessor := recommendation.NewProcessor(jobRepository,
 		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, recommendationRepository)
@@ -83,7 +98,7 @@ func main() {
 	}
 	validationRepository := validation.NewRepository(database.Pool())
 	validationProcessor := validation.NewProcessor(projectRepository, generationRepository,
-		validation.NewWorkspaceManager(gitLabClient, validation.WorkspaceOptions{}),
+		validation.NewWorkspaceManager(sourceClient, validation.WorkspaceOptions{}),
 		sandboxRunner, validationRepository, cfg.Sandbox.Timeout)
 	repairRepository := repair.NewRepository(database.Pool())
 	repairProcessor := repair.NewProcessor(jobRepository, recommendationRepository,

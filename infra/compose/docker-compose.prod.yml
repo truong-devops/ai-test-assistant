@@ -72,10 +72,17 @@ services:
       HTTP_RATE_LIMIT_RPS: ${HTTP_RATE_LIMIT_RPS:-20}
       HTTP_RATE_LIMIT_BURST: ${HTTP_RATE_LIMIT_BURST:-40}
       HTTP_RATE_LIMIT_MAX_CLIENTS: ${HTTP_RATE_LIMIT_MAX_CLIENTS:-10000}
+      GITLAB_BASE_URL: ${GITLAB_BASE_URL:-https://gitlab.com}
+      GITLAB_TOKEN_FILE: /run/secrets/gitlab_token
+      GITLAB_REQUEST_TIMEOUT: ${GITLAB_REQUEST_TIMEOUT:-15s}
       GITLAB_WEBHOOK_SECRET_FILE: /run/secrets/gitlab_webhook_secret
+      GITHUB_API_BASE_URL: ${GITHUB_API_BASE_URL:-https://api.github.com}
+      GITHUB_TOKEN_FILE: /run/secrets/github_token
+      GITHUB_REQUEST_TIMEOUT: ${GITHUB_REQUEST_TIMEOUT:-15s}
+      GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-hash-v1}
-    secrets: [database_url, gitlab_webhook_secret]
+    secrets: [database_url, gitlab_token, gitlab_webhook_secret, github_token, github_webhook_secret]
     tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
     networks: [app, data]
     ports:
@@ -124,6 +131,9 @@ services:
       GITLAB_BASE_URL: ${GITLAB_BASE_URL:-https://gitlab.com}
       GITLAB_TOKEN_FILE: /run/secrets/gitlab_token
       GITLAB_REQUEST_TIMEOUT: ${GITLAB_REQUEST_TIMEOUT:-15s}
+      GITHUB_API_BASE_URL: ${GITHUB_API_BASE_URL:-https://api.github.com}
+      GITHUB_TOKEN_FILE: /run/secrets/github_token
+      GITHUB_REQUEST_TIMEOUT: ${GITHUB_REQUEST_TIMEOUT:-15s}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-hash-v1}
       LLM_PROVIDER: ${LLM_PROVIDER:-disabled}
@@ -143,7 +153,7 @@ services:
       SANDBOX_PIDS_LIMIT: ${SANDBOX_PIDS_LIMIT:-128}
       MAX_REPAIR_ATTEMPTS: ${MAX_REPAIR_ATTEMPTS:-2}
       HOME: /tmp
-    secrets: [database_url, gitlab_token, llm_api_key]
+    secrets: [database_url, gitlab_token, github_token, llm_api_key]
     group_add: ["${DOCKER_GID:?DOCKER_GID is required}"]
     tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=256m"]
     networks: [app, data]
@@ -169,6 +179,10 @@ secrets:
     file: ${GITLAB_TOKEN_SECRET_FILE:?GITLAB_TOKEN_SECRET_FILE is required}
   gitlab_webhook_secret:
     file: ${GITLAB_WEBHOOK_SECRET_FILE:?GITLAB_WEBHOOK_SECRET_FILE is required}
+  github_token:
+    file: ${GITHUB_TOKEN_SECRET_FILE:?GITHUB_TOKEN_SECRET_FILE is required}
+  github_webhook_secret:
+    file: ${GITHUB_WEBHOOK_SECRET_FILE:?GITHUB_WEBHOOK_SECRET_FILE is required}
   llm_api_key:
     file: ${LLM_API_KEY_SECRET_FILE:?LLM_API_KEY_SECRET_FILE is required}
 

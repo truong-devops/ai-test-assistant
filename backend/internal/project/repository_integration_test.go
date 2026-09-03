@@ -28,7 +28,7 @@ func TestPostgresRepositoryLifecycle(t *testing.T) {
 	repository := NewPostgresRepository(pool)
 	gitLabID := time.Now().UnixNano()
 	created, err := repository.Create(ctx, CreateInput{
-		Name: "project-repository-integration", GitLabProjectID: gitLabID,
+		Name: "project-repository-integration", Provider: "gitlab", ProviderProjectID: gitLabID,
 		RepositoryURL: "https://gitlab.example.com/repository-integration.git",
 		DefaultBranch: "main", Language: "go",
 	})
@@ -38,7 +38,7 @@ func TestPostgresRepositoryLifecycle(t *testing.T) {
 	defer func() { _, _ = pool.Exec(context.Background(), `DELETE FROM projects WHERE id=$1`, created.ID) }()
 
 	byID, err := repository.GetByID(ctx, created.ID)
-	if err != nil || byID.GitLabProjectID != gitLabID {
+	if err != nil || byID.Provider != "gitlab" || byID.ProviderProjectID != gitLabID {
 		t.Fatalf("GetByID() project=%+v error=%v", byID, err)
 	}
 	byGitLabID, err := repository.GetByGitLabProjectID(ctx, gitLabID)
@@ -50,7 +50,7 @@ func TestPostgresRepositoryLifecycle(t *testing.T) {
 		t.Fatalf("List() projects=%v error=%v", projects, err)
 	}
 	_, err = repository.Create(ctx, CreateInput{
-		Name: "duplicate", GitLabProjectID: gitLabID,
+		Name: "duplicate", Provider: "gitlab", ProviderProjectID: gitLabID,
 		RepositoryURL: "https://gitlab.example.com/duplicate.git", DefaultBranch: "main", Language: "go",
 	})
 	if !errors.Is(err, ErrAlreadyExists) {

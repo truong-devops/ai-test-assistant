@@ -49,7 +49,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 |---|---|---:|---|---|---|
 | P1-01 | OPEN | P0 | P11 | `POST/GET` project và các API đọc khác chưa được bảo vệ bởi authentication/authorization. ID số có thể bị đoán. | Có identity, RBAC/project authorization, test truy cập chéo và audit actor. |
 | P1-02 | OPEN | P2 | P11 | Project API mới có create/list/get; chưa có update, disable hoặc delete dù tài liệu ban đầu dùng từ “CRUD”. | Chốt rõ contract read/create-only hoặc thêm lifecycle endpoint an toàn cùng test cascade. |
-| P1-03 | OPEN | P1 | P11 | Bảng `gitlab_connections` đã tồn tại nhưng runtime chưa sử dụng; GitLab token và webhook secret vẫn là cấu hình toàn cục. | Hoặc wiring credential theo project với mã hóa/KMS, hoặc migration loại bỏ schema không dùng và cập nhật thiết kế. |
+| P1-03 | OPEN | P1 | P11 | Bảng `gitlab_connections` đã tồn tại nhưng runtime chưa sử dụng; GitLab/GitHub token và webhook secret vẫn là cấu hình toàn cục theo provider. | Hoặc wiring credential theo project với mã hóa/KMS, hoặc migration loại bỏ schema không dùng và cập nhật thiết kế. |
 | P1-04 | OPEN | P1 | P11 | `/ready` chỉ kiểm tra PostgreSQL; không phản ánh GitLab, Docker daemon, sandbox image hay cấu hình provider. | Định nghĩa dependency nào là readiness bắt buộc, dependency nào chỉ báo degraded; thêm test. |
 | P1-05 | VERIFY | P0 | P11 | Development Compose vẫn dùng credential local; production Compose đã tách secret file, data network và loopback port. TLS/reverse proxy trên host thật chưa được xác nhận. | Có file/stack production tách biệt, secret injection, network nội bộ, TLS và không dùng default credential. |
 | P1-06 | VERIFY | P1 | P11 | Đã có migration one-shot, CI round-trip và backup→restore test trên production Compose tạm; cần restore drill định kỳ trên host triển khai. | Restore thử thành công, migration up/down được CI kiểm tra trên DB sạch và DB nâng cấp. |
@@ -58,8 +58,8 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 
 | ID | Trạng thái | Ưu tiên | Mốc | Lưu ý | Điều kiện đóng / ghi chú |
 |---|---|---:|---|---|---|
-| P2-01 | OPEN | P1 | P11 | Một `GITLAB_TOKEN` và webhook secret toàn cục phục vụ mọi project. Điều này chưa phù hợp multi-user/multi-group. | Credential được scope theo project/group, mã hóa khi lưu và không xuất hiện trong log/UI. |
-| P2-02 | ACCEPTED_MVP | P3 | P12 | Chỉ hỗ trợ GitLab và MR action `open`, `reopen`, `update`; chưa xử lý GitHub/Bitbucket hoặc workflow đóng/merge. | Chỉ mở lại nếu Phase 12 mở rộng SCM/lifecycle. |
+| P2-01 | OPEN | P1 | P11 | Mỗi provider dùng một token và webhook secret toàn cục cho mọi project. Điều này chưa phù hợp multi-user/multi-group. | Credential được scope theo project/group, mã hóa khi lưu và không xuất hiện trong log/UI. |
+| P2-02 | ACCEPTED_MVP | P3 | P12 | Hỗ trợ GitLab MR `open`/`reopen`/`update` và GitHub PR `opened`/`reopened`/`synchronize`; chưa xử lý Bitbucket hoặc workflow đóng/merge. | Chỉ mở lại nếu Phase 12 mở rộng SCM/lifecycle. |
 | P2-03 | VERIFY | P1 | P11 | GitLab client giới hạn response 20 MiB và tối đa 100 trang. Diff `collapsed`/`too_large` được lưu nhưng Phase 3 sẽ dừng phân tích. | Có UX/status rõ ràng và phương án fetch diff/file thay thế hoặc kết thúc job với lỗi có thể hành động. |
 | P2-04 | OPEN | P2 | P11 | Dedupe hiện dựa vào `X-Gitlab-Webhook-UUID`; chưa có retention policy cho raw webhook và UUID. | Xác định thời gian lưu, cleanup, privacy policy và test replay sau retention. |
 | P2-05 | OPEN | P2 | P11 | Chưa có endpoint/manual replay có kiểm soát cho job thất bại; vận hành hiện phải tạo event mới hoặc thao tác DB. | Có retry/replay được phân quyền, idempotent và ghi audit trail. |
@@ -175,7 +175,7 @@ Các cơ chế dưới đây đang hoạt động và phải tiếp tục có te
 
 Những nội dung sau không cần “sửa” trong Phase 11 trừ khi scope thay đổi:
 
-- Chỉ hỗ trợ Go và GitLab.
+- Chỉ hỗ trợ Go; SCM hỗ trợ GitLab và GitHub.
 - Không tự commit/push/merge generated test.
 - Không bắt buộc Kubernetes hoặc tách hệ thống thành nhiều microservice.
 - Không bắt buộc mutation testing, release-risk scoring hoặc log root-cause analysis.

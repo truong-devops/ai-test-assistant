@@ -29,12 +29,24 @@ Create request:
 ```json
 {
   "name": "sample",
-  "gitlab_project_id": 123,
+  "provider": "gitlab",
+  "provider_project_id": 123,
   "repository_url": "https://gitlab.com/example/sample.git",
   "default_branch": "main",
   "language": "go"
 }
 ```
+
+`provider` accepts `gitlab` or `github`. For GitHub, `repository_url` must be an
+`https://github.com/owner/repository` URL and `provider_project_id` is the
+numeric repository ID returned by GitHub. The legacy `gitlab_project_id` input
+is still accepted when `provider` is omitted.
+
+When `provider_project_id` is omitted, the API resolves repository metadata
+through the configured provider client. `provider` is inferred as `github` for
+`github.com` URLs and otherwise defaults to `gitlab`; missing `name` and
+`default_branch` are filled from the provider response. Private repositories
+require the corresponding server-side token.
 
 ## GitLab webhook
 
@@ -42,6 +54,13 @@ Create request:
 `reopen`, and `update`. Requests must include `X-Gitlab-Token` and
 `X-Gitlab-Webhook-UUID`. Repeated deliveries with the same UUID return the
 existing analysis job instead of creating another one.
+
+## GitHub webhook
+
+`POST /api/webhooks/github` accepts `pull_request` events for `opened`,
+`reopened`, and `synchronize`. Requests must include `X-GitHub-Delivery` and a
+valid HMAC-SHA256 `X-Hub-Signature-256` generated with
+`GITHUB_WEBHOOK_SECRET`. Delivery IDs are namespaced before deduplication.
 
 ## Project knowledge index
 

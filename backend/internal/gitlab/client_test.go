@@ -7,7 +7,14 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 )
+
+func testRepository(id int64) scm.Repository {
+	return scm.Repository{Provider: scm.ProviderGitLab, ProviderProjectID: id,
+		RepositoryURL: "https://gitlab.com/acme/service"}
+}
 
 func TestHTTPClientGetsMergeRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,12 +32,29 @@ func TestHTTPClientGetsMergeRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := client.GetMergeRequest(context.Background(), 12, 4)
+	result, err := client.GetMergeRequest(context.Background(), testRepository(12), 4)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.IID != 4 || result.DiffRefs.HeadSHA != "head" {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestHTTPClientResolvesProjectMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.RequestURI != "/api/v4/projects/acme%2Fservice" {
+			t.Fatalf("request URI=%q", r.RequestURI)
+		}
+		fmt.Fprint(w, `{"id":12,"name":"service","default_branch":"trunk","web_url":"https://gitlab.example/acme/service"}`)
+	}))
+	defer server.Close()
+	client, _ := NewHTTPClient(server.URL, "", time.Second)
+	metadata, err := client.ResolveRepository(context.Background(), scm.Repository{
+		Provider: scm.ProviderGitLab, RepositoryURL: server.URL + "/acme/service.git",
+	})
+	if err != nil || metadata.ProviderProjectID != 12 || metadata.DefaultBranch != "trunk" {
+		t.Fatalf("metadata=%+v error=%v", metadata, err)
 	}
 }
 
@@ -49,7 +73,7 @@ func TestHTTPClientPaginatesDiffs(t *testing.T) {
 	}))
 	defer server.Close()
 	client, _ := NewHTTPClient(server.URL, "", time.Second)
-	results, err := client.GetMergeRequestDiff(context.Background(), 1, 2)
+	results, err := client.GetMergeRequestDiff(context.Background(), testRepository(1), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +98,7 @@ func TestHTTPClientGetsRawRepositoryFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := client.GetFileRaw(context.Background(), 12, "internal/service file.go", "feature/branch")
+	result, err := client.GetFileRaw(context.Background(), testRepository(12), "internal/service file.go", "feature/branch")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +122,7 @@ func TestHTTPClientListsRecursiveRepositoryTree(t *testing.T) {
 	}))
 	defer server.Close()
 	client, _ := NewHTTPClient(server.URL, "", time.Second)
-	entries, err := client.ListRepositoryTree(context.Background(), 12, "main")
+	entries, err := client.ListRepositoryTree(context.Background(), testRepository(12), "main")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +137,7 @@ func TestHTTPClientReturnsStatusError(t *testing.T) {
 	}))
 	defer server.Close()
 	client, _ := NewHTTPClient(server.URL, "", time.Second)
-	if _, err := client.GetMergeRequest(context.Background(), 1, 2); err == nil {
+	if _, err := client.GetMergeRequest(context.Background(), testRepository(1), 2); err == nil {
 		t.Fatal("GetMergeRequest() error = nil")
 	}
 }
@@ -123,21 +147,21 @@ func TestHTTPClientRejectsInvalidIdentifiers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.GetMergeRequest(context.Background(), 0, 1); err == nil {
+	if _, err := client.GetMergeRequest(context.Background(), testRepository(0), 1); err == nil {
 		t.Fatal("GetMergeRequest() accepted zero project ID")
 	}
-	if _, err := client.GetMergeRequestDiff(context.Background(), 1, -1); err == nil {
+	if _, err := client.GetMergeRequestDiff(context.Background(), testRepository(1), -1); err == nil {
 		t.Fatal("GetMergeRequestDiff() accepted negative IID")
 	}
 	for _, filePath := range []string{"", "/main.go", "../main.go", "a//main.go"} {
-		if _, err := client.GetFileRaw(context.Background(), 1, filePath, "main"); err == nil {
+		if _, err := client.GetFileRaw(context.Background(), testRepository(1), filePath, "main"); err == nil {
 			t.Fatalf("GetFileRaw() accepted path %q", filePath)
 		}
 	}
-	if _, err := client.GetFileRaw(context.Background(), 1, "main.go", ""); err == nil {
+	if _, err := client.GetFileRaw(context.Background(), testRepository(1), "main.go", ""); err == nil {
 		t.Fatal("GetFileRaw() accepted an empty ref")
 	}
-	if _, err := client.ListRepositoryTree(context.Background(), 1, ""); err == nil {
+	if _, err := client.ListRepositoryTree(context.Background(), testRepository(1), ""); err == nil {
 		t.Fatal("ListRepositoryTree() accepted an empty ref")
 	}
 }
@@ -149,7 +173,7 @@ func TestHTTPClientRejectsInvalidPaginationHeader(t *testing.T) {
 	}))
 	defer server.Close()
 	client, _ := NewHTTPClient(server.URL, "", time.Second)
-	if _, err := client.GetMergeRequestDiff(context.Background(), 1, 1); err == nil {
+	if _, err := client.GetMergeRequestDiff(context.Background(), testRepository(1), 1); err == nil {
 		t.Fatal("GetMergeRequestDiff() accepted invalid pagination")
 	}
 }
@@ -165,7 +189,7 @@ func TestHTTPClientDoesNotFollowRedirectsWithToken(t *testing.T) {
 	}))
 	defer source.Close()
 	client, _ := NewHTTPClient(source.URL, "sensitive", time.Second)
-	if _, err := client.GetMergeRequest(context.Background(), 1, 1); err == nil {
+	if _, err := client.GetMergeRequest(context.Background(), testRepository(1), 1); err == nil {
 		t.Fatal("GetMergeRequest() followed redirect")
 	}
 	if targetCalled {
