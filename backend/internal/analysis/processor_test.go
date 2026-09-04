@@ -27,6 +27,27 @@ func TestProcessorRetriesWhenMergeRequestIsNotReady(t *testing.T) {
 	}
 }
 
+func TestProcessorRecordsGitHubPullRequestWithNoChangedFiles(t *testing.T) {
+	client := &gitLabStub{mergeRequest: gitlab.MergeRequest{
+		Title: "empty commit", SourceBranch: "feature", TargetBranch: "main",
+		DiffRefs: gitlab.DiffRefs{HeadSHA: "head", StartSHA: "target"},
+	}}
+	saver := &saverStub{}
+	processor := NewProcessor(projectGetterStub{item: project.Project{
+		Provider: scm.ProviderGitHub, ProviderProjectID: 88,
+	}}, client, saver)
+
+	if err := processor.Process(context.Background(), job.AnalysisJob{
+		ID: 1, ProjectID: 2, MergeRequestIID: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if saver.metadata.SourceSHA != "head" || saver.metadata.TargetSHA != "target" ||
+		saver.metadata.Title != "empty commit" || len(saver.files) != 0 {
+		t.Fatalf("metadata=%+v files=%+v", saver.metadata, saver.files)
+	}
+}
+
 func TestChangeType(t *testing.T) {
 	tests := []struct {
 		diff gitlab.FileDiff
