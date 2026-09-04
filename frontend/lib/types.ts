@@ -266,3 +266,47 @@ export type ProvenanceBundle = {
   analysis: Analysis;
   llm_calls: ProvenanceCall[];
 };
+
+export type ImpactRun = {
+  id: number;
+  analysis_job_id: number;
+  project_id: number;
+  source_sha: string;
+  mode: "SSA" | "AST_FALLBACK";
+  algorithm: string;
+  max_depth: number;
+  max_nodes: number;
+  package_count: number;
+  fallback_reason?: string;
+  created_at: string;
+};
+
+export type ImpactNode = {
+  id: number;
+  stable_key: string;
+  package_path: string;
+  package_name: string;
+  symbol_name: string;
+  receiver_name?: string;
+  symbol_kind: string;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  direct_change: boolean;
+  existing_test: boolean;
+  depth: number;
+  score: number;
+  reason_codes: string[];
+};
+
+export type ImpactEdge = {
+  id: number;
+  from_node_id: number;
+  to_node_id: number;
+  relation: "CALLS" | "IMPLEMENTS" | "USES_TYPE";
+  reason_code: "CALLER" | "CALLEE" | "INTERFACE_IMPLEMENTATION" | "TYPE_USAGE" | "EXISTING_TEST";
+  depth: number;
+  score: number;
+};
+
+export type ImpactBundle = { run: ImpactRun; nodes: ImpactNode[]; edges: ImpactEdge[] };

@@ -18,6 +18,20 @@ retrieved chunk content and content hash. It does not reference live
 All three tables reject `UPDATE` through a database trigger. They can only be
 appended during normal operation. Parent deletion remains available for a future
 explicit retention policy.
+
+## Phase 13 impact graph
+
+- `impact_analysis_runs`: one source-SHA-bound analyzer run per analysis,
+  including mode, pinned algorithm, traversal limits, package count, and
+  fallback reason.
+- `impact_nodes`: direct and inferred symbols with file location, depth, score,
+  test marker, and reason-code array.
+- `impact_edges`: bounded `CALLS`, `IMPLEMENTS`, and `USES_TYPE` relations with
+  an explainable reason code and score.
+
+The analyzer replaces the graph and direct `changed_symbols` atomically while
+the analysis owns its worker lease. Composite edge foreign keys prevent a node
+from another run/project being attached to the graph.
 Phase 1 defines `projects`, `gitlab_connections`, and `analysis_jobs`. Phase 2
 adds auditable webhook metadata to analysis jobs plus normalized `changed_files`
 with raw unified diff text, size flags, and addition/deletion counts. Phase 3

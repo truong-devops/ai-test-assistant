@@ -26,8 +26,8 @@ Mốc xử lý:
 Khi xử lý một mục, không xóa dòng. Hãy đổi trạng thái, thêm ngày đóng, PR/commit,
 test hoặc tài liệu chứng minh vào cột **Điều kiện đóng / ghi chú**.
 
-Snapshot sau Phase 12 có **60 mục theo phase**: 33 `OPEN`, 15 `VERIFY`,
-7 `ACCEPTED_MVP` và 5 `DONE`. Bảng ưu tiên cao bên dưới gồm 8 mục tóm tắt xuyên phase nên
+Snapshot sau Phase 13 có **60 mục theo phase**: 31 `OPEN`, 16 `VERIFY`,
+7 `ACCEPTED_MVP` và 6 `DONE`. Bảng ưu tiên cao bên dưới gồm 8 mục tóm tắt xuyên phase nên
 không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạng thái thay đổi.
 
 ## Các mục ưu tiên cao nhất
@@ -69,9 +69,9 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | ID | Trạng thái | Ưu tiên | Mốc | Lưu ý | Điều kiện đóng / ghi chú |
 |---|---|---:|---|---|---|
 | P3-01 | ACCEPTED_MVP | P3 | P12 | Analyzer chỉ hỗ trợ Go. | Multi-language chỉ thực hiện nếu Phase 12 được duyệt. |
-| P3-02 | OPEN | P2 | THESIS | Analyzer dùng `go/parser`/AST và overlap dòng diff, chưa dùng `go/types` hoặc `go/packages`; không phát hiện đầy đủ tác động xuyên package/call graph. | Ghi rõ giới hạn trong luận văn; nếu cần, thêm dependency analysis và fixture đánh giá precision/recall. |
+| P3-02 | DONE | P2 | THESIS | Phase 13 dùng `go/packages`, `go/types`, SSA/CHA và graph có caller/callee/interface/type/test reasons; direct overlap vẫn được giữ riêng. | Đóng 2026-09-04: migration 000014, impact API, labelled corpus và PostgreSQL integration test. |
 | P3-03 | VERIFY | P1 | P11 | File Go có diff collapsed/too-large làm cả analysis lỗi thay vì tạo partial result. | Chọn policy fail-fast hay partial; UI phải phân biệt “không đổi” với “không phân tích được”. |
-| P3-04 | OPEN | P2 | THESIS | Chưa có benchmark lớn cho rename phức tạp, build tag, generic receiver, cgo/generated source và diff bất thường ngoài fixture hiện tại. | Thêm corpus/fixtures và báo cáo false positive/false negative trước khi tuyên bố độ chính xác. |
+| P3-04 | VERIFY | P2 | THESIS | Phase 13 có controlled corpus cho cross-package/interface/generic/test link và benchmark lặp lại; chưa có corpus lớn cho rename, build tag, cgo và generated source. | Mở rộng corpus thật trước Phase 19; không dùng baseline nhỏ để tuyên bố độ chính xác ngoài phạm vi. |
 
 ## Phase 4 — Knowledge index và RAG
 

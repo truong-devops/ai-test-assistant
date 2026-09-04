@@ -16,6 +16,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/httpapi"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/impact"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/logging"
@@ -94,6 +95,8 @@ func main() {
 		OutputCostPerMillionUSD: cfg.LLM.OutputCostPerMillionUSD,
 	})
 	provenanceService := provenance.NewService(jobRepository, provenanceRepository)
+	impactRepository := impact.NewRepository(database.Pool())
+	impactService := impact.NewService(jobRepository, impactRepository)
 	webhookService := gitlab.NewWebhookService(projectRepository, jobRepository)
 	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
 	gitHubWebhookService := github.NewWebhookService(projectRepository, jobRepository)
@@ -103,10 +106,10 @@ func main() {
 	webhookHandler.Handle("POST /api/webhooks/github", gitHubWebhookHandler)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewRouterWithPhaseTwelveServices(logger, database, projectService, analysisService,
+		Handler: httpapi.NewRouterWithPhaseThirteenServices(logger, database, projectService, analysisService,
 			webhookHandler, knowledgeService, recommendationService, generationService,
 			validationService, repairService, reviewService, contextService, evaluationService,
-			provenanceService,
+			provenanceService, impactService,
 			httpapi.RouterOptions{RateLimitPerSecond: cfg.HTTP.RateLimitPerSecond,
 				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients}),
 		ReadHeaderTimeout: 5 * time.Second,

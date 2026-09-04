@@ -15,6 +15,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/impact"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
@@ -81,7 +82,14 @@ func main() {
 		os.Exit(1)
 	}
 	sourceProcessor := analysis.NewProcessor(projectRepository, sourceClient, jobRepository)
-	changeProcessor := analyzer.NewProcessor(projectRepository, sourceClient, jobRepository, jobRepository)
+	impactEngine, err := analyzer.NewImpactEngine(analyzer.DefaultImpactOptions())
+	if err != nil {
+		logger.Error("configure impact analyzer", "error", err)
+		os.Exit(1)
+	}
+	impactRepository := impact.NewRepository(database.Pool())
+	changeProcessor := analyzer.NewProcessorWithImpact(projectRepository, sourceClient,
+		jobRepository, impactEngine, impactRepository)
 	indexProcessor := knowledge.NewIndexer(projectRepository, sourceClient, embedder, knowledgeRepository)
 	recommendationRepository := recommendation.NewRepository(database.Pool())
 	provenanceRepository := provenance.NewRepository(database.Pool(), provenance.RuntimeConfig{

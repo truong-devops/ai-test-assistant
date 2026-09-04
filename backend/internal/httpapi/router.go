@@ -103,6 +103,20 @@ func NewRouterWithPhaseTwelveServices(logger *slog.Logger, checker ReadinessChec
 	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
 	evaluationService EvaluationService, provenanceService ProvenanceService, options RouterOptions,
 ) http.Handler {
+	return NewRouterWithPhaseThirteenServices(logger, checker, projectService, analysisService,
+		webhookHandler, knowledgeService, recommendationService, generationService,
+		validationService, repairService, reviewService, contextService, evaluationService,
+		provenanceService, nil, options)
+}
+
+func NewRouterWithPhaseThirteenServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService, provenanceService ProvenanceService,
+	impactService ImpactService, options RouterOptions,
+) http.Handler {
 	mux := http.NewServeMux()
 	health := healthHandler{checker: checker}
 	projects := projectHandler{service: projectService}
@@ -158,6 +172,10 @@ func NewRouterWithPhaseTwelveServices(logger *slog.Logger, checker ReadinessChec
 		evidence := provenanceHandler{service: provenanceService}
 		mux.HandleFunc("GET /api/analyses/{id}/evidence", evidence.get)
 		mux.HandleFunc("GET /api/analyses/{id}/export", evidence.export)
+	}
+	if impactService != nil {
+		impacts := impactHandler{service: impactService}
+		mux.HandleFunc("GET /api/analyses/{id}/impact", impacts.get)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)

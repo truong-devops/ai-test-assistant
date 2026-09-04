@@ -53,3 +53,12 @@
   the current index. Historical prompt context is available separately from the
   immutable Phase 12 evidence endpoint/export and must not be conflated with the
   current-index panel.
+- Phase 13 impact analysis fetches Go source and module metadata at the exact
+  analysis source SHA. Package loading uses `GOPROXY=off`, `GOSUMDB=off`,
+  `GOWORK=off`, and `CGO_ENABLED=0`; missing external dependencies produce an
+  explicit AST fallback rather than network access.
+- Default impact limits are depth 3, 250 selected nodes, 2,000 source files,
+  1 MiB per file, 64 MiB total materialized source, and two minutes wall time.
+- The worker runtime image includes the same pinned Go toolchain used by its
+  build stage because `go/packages` invokes `go list`; `GOTOOLCHAIN=local`
+  prevents runtime toolchain downloads.

@@ -12,6 +12,7 @@ import type {
   EvaluationRun,
   StoredEvaluation,
   ProvenanceBundle,
+  ImpactBundle,
 } from "@/lib/types";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
@@ -108,4 +109,8 @@ export async function getEvaluation(id: string): Promise<StoredEvaluation> {
 
 export async function getEvidence(id: string): Promise<ProvenanceBundle> {
   return (await request<{ evidence: ProvenanceBundle }>(`/api/analyses/${encodeURIComponent(id)}/evidence`)).evidence;
+}
+
+export async function getImpact(id: string): Promise<ImpactBundle> {
+  return (await request<{ impact: ImpactBundle }>(`/api/analyses/${encodeURIComponent(id)}/impact`)).impact;
 }

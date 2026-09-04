@@ -13,7 +13,10 @@ ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="AI Test Assistant Worker" \
       org.opencontainers.image.version="$BUILD_VERSION" \
       org.opencontainers.image.revision="$VCS_REF"
-ENV HOME=/tmp
+ENV HOME=/tmp \
+    GOTOOLCHAIN=local \
+    PATH=/usr/local/go/bin:$PATH
+COPY --from=build /usr/local/go /usr/local/go
 COPY --from=build --chown=65532:65532 /out/worker /worker
 USER 65532:65532
 ENTRYPOINT ["/worker"]

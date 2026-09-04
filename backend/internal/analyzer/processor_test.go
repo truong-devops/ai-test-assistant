@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/impact"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
@@ -50,6 +51,31 @@ func (s *symbolCapture) SaveSymbols(_ context.Context, _ int64, _ int, symbols [
 	return nil
 }
 
+type impactAnalyzerStub struct {
+	result impact.Result
+	direct []impact.DirectSymbol
+}
+
+func (s *impactAnalyzerStub) AnalyzeRepository(_ context.Context, _ scm.Client, _ scm.Repository,
+	_ string, direct []impact.DirectSymbol,
+) (impact.Result, error) {
+	s.direct = direct
+	return s.result, nil
+}
+
+type impactCapture struct {
+	analysisID, projectID int64
+	symbols               []job.ChangedSymbol
+	graph                 impact.Result
+}
+
+func (s *impactCapture) SaveAnalysis(_ context.Context, analysisID, projectID int64, _ int,
+	symbols []job.ChangedSymbol, graph impact.Result,
+) error {
+	s.analysisID, s.projectID, s.symbols, s.graph = analysisID, projectID, symbols, graph
+	return nil
+}
+
 func TestProcessorMapsBothFileVersions(t *testing.T) {
 	oldSource := []byte("package service\n\nfunc Keep() {\n\tprintln(\"old\")\n}\n\nfunc Remove() {}\n")
 	newSource := []byte("package service\n\nfunc Keep() {\n\tprintln(\"new\")\n}\n\nfunc Add() {}\n")
@@ -72,6 +98,26 @@ func TestProcessorMapsBothFileVersions(t *testing.T) {
 		if symbol.ChangedFileID != 11 || want[symbol.SymbolName] != symbol.ChangeType {
 			t.Errorf("unexpected symbol: %#v", symbol)
 		}
+	}
+}
+
+func TestProcessorBuildsAndSavesImpactGraph(t *testing.T) {
+	oldSource := []byte("package service\n\nfunc Load() { println(\"old\") }\n")
+	newSource := []byte("package service\n\nfunc Load() { println(\"new\") }\n")
+	files := []job.ChangedFile{{ID: 11, OldPath: "service.go", NewPath: "service.go",
+		Diff: "@@ -3 +3 @@\n-func Load() { println(\"old\") }\n+func Load() { println(\"new\") }"}}
+	engine := &impactAnalyzerStub{result: impact.Result{SourceSHA: "source", Mode: impact.ModeSSA,
+		Algorithm: ImpactAlgorithm, MaxDepth: 3, MaxNodes: 250}}
+	capture := &impactCapture{}
+	processor := NewProcessorWithImpact(fakeProjects{project.Project{GitLabProjectID: 99}},
+		fakeGitLab{map[string][]byte{"target:service.go": oldSource, "source:service.go": newSource}},
+		fakeAnalyses{job.AnalysisJob{SourceSHA: "source", TargetSHA: "target"}, files}, engine, capture)
+	if err := processor.Process(context.Background(), job.AnalysisJob{ID: 7, ProjectID: 2, AttemptCount: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if capture.analysisID != 7 || capture.projectID != 2 || len(capture.symbols) != 1 ||
+		len(engine.direct) != 1 || engine.direct[0].FilePath != "service.go" || capture.graph.Mode != impact.ModeSSA {
+		t.Fatalf("capture=%#v direct=%#v", capture, engine.direct)
 	}
 }
 

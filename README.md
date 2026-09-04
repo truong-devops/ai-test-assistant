@@ -4,7 +4,7 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request and GitHub Pull Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository implements Phases 0-12: the backend foundation, GitLab capture
+This repository implements Phases 0-13: the backend foundation, GitLab capture
 pipeline, deterministic Go changed-symbol analyzer, project-isolated
 knowledge/RAG index, structured AI test recommendations and generated Go test
 candidates, isolated Docker validation, a bounded repair loop, and the human
@@ -87,6 +87,7 @@ application-level user authentication/RBAC remains a tracked backlog item.
 - `GET /api/analyses/{id}/context`
 - `GET /api/analyses/{id}/evidence`
 - `GET /api/analyses/{id}/export`
+- `GET /api/analyses/{id}/impact`
 - `GET /api/evaluations`
 - `GET /api/evaluations/{id}`
 - `POST /api/generated-tests/{id}/accept`
@@ -154,6 +155,12 @@ returns the exact prompt, response, safe configuration hashes, token usage,
 latency, source/target SHA, index generation, and denormalized context snapshot.
 Set the optional per-million-token cost variables to include an estimated USD
 cost without storing provider credentials in evidence.
+
+Phase 13 materializes the repository at the analysis source SHA and builds a
+bounded, explainable change-impact graph with `go/packages`, `go/types`, SSA,
+and pinned CHA. It links callers, callees, type usage, interface
+implementations, and existing tests. Repositories that do not type-check retain
+their direct AST evidence through an explicit fallback result.
 
 Phase 10 compares context impact, repair impact, and human effort with paired
 scenario observations. Generate portable artifacts with `make evaluate`, or

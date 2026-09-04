@@ -11,6 +11,7 @@ import {
   getContext,
   getEvidence,
   getGeneratedTests,
+  getImpact,
   getRecommendations,
   getRepairs,
   getReviews,
@@ -18,7 +19,7 @@ import {
   optional,
 } from "@/lib/api";
 import { formatDate, formatDuration, latestGeneratedTests, shortSHA } from "@/lib/presentation";
-import type { GeneratedTest, ProvenanceCall, Recommendation, RepairAttempt, Review, ValidationRun } from "@/lib/types";
+import type { GeneratedTest, ImpactBundle, ProvenanceCall, Recommendation, RepairAttempt, Review, ValidationRun } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,23 @@ function ProvenanceEvidence({ calls, analysisID }: { calls: ProvenanceCall[]; an
       </div>
     </details>)}</div> : <p className="table-subtitle" style={{ marginTop: 12 }}>No AI calls have been recorded for this analysis yet.</p>}
     <a className="button secondary" style={{ marginTop: 16 }} href={`/api/backend/api/analyses/${analysisID}/export`}>Download evidence JSON</a>
+  </section>;
+}
+
+function ImpactEvidence({ impact }: { impact: ImpactBundle | null }) {
+  if (!impact) return null;
+  const direct = impact.nodes.filter((node) => node.direct_change).length;
+  const inferred = impact.nodes.length - direct;
+  return <section className="panel side-section">
+    <p className="eyebrow">Change impact</p>
+    <h2>{direct} direct · {inferred} inferred</h2>
+    <p className="page-description">{impact.run.mode} via {impact.run.algorithm} across {impact.run.package_count} packages. Traversal is capped at depth {impact.run.max_depth} and {impact.run.max_nodes} nodes.</p>
+    {impact.run.fallback_reason ? <p className="notice"><strong>AST fallback</strong>{impact.run.fallback_reason}</p> : null}
+    <div className="symbol-list" style={{ marginTop: 14 }}>{impact.nodes.slice(0, 12).map((node) => <div className="symbol-row" key={node.id}>
+      <div><strong>{node.receiver_name ? `${node.receiver_name}.` : ""}{node.symbol_name}</strong><p>{node.reason_codes.join(" · ")}</p></div>
+      <span>{node.direct_change ? "DIRECT" : `${Math.round(node.score * 100)}% · d${node.depth}`}</span>
+    </div>)}</div>
+    {impact.nodes.length > 12 ? <p className="table-subtitle">Showing the 12 highest-ranked of {impact.nodes.length} impacted symbols.</p> : null}
   </section>;
 }
 
@@ -158,7 +176,7 @@ export default async function AnalysisReviewPage({ params }: { params: Promise<{
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const [recommendations, generatedTests, validations, repairs, reviews, context, evidence] = await Promise.all([
+  const [recommendations, generatedTests, validations, repairs, reviews, context, evidence, impact] = await Promise.all([
     optional<Recommendation[]>(() => getRecommendations(id), []),
     optional<GeneratedTest[]>(() => getGeneratedTests(id), []),
     optional<ValidationRun[]>(() => getValidations(id), []),
@@ -166,6 +184,7 @@ export default async function AnalysisReviewPage({ params }: { params: Promise<{
     optional<Review[]>(() => getReviews(id), []),
     optional(() => getContext(id), []),
     optional(() => getEvidence(id), null),
+    optional(() => getImpact(id), null),
   ]);
   const { analysis, changed_files: changedFiles, changed_symbols: changedSymbols } = detail;
   const latestCandidates = latestGeneratedTests(generatedTests);
@@ -206,6 +225,7 @@ export default async function AnalysisReviewPage({ params }: { params: Promise<{
           <div className="summary-grid" style={{ gridTemplateColumns: "1fr 1fr", margin: "14px 0 0" }}><Stat label="Passes" value={passed} detail="Stored sandbox runs" /><Stat label="Repairs" value={repairs.length} detail="Bounded attempts" /></div>
         </section>
         <ProvenanceEvidence calls={evidence?.llm_calls ?? []} analysisID={analysis.id} />
+        <ImpactEvidence impact={impact} />
         <section className="panel side-section">
           <p className="eyebrow">Changed symbols</p><h2>Review scope</h2>
           {changedSymbols.length ? <div className="symbol-list">{changedSymbols.map((symbol) => <div className="symbol-row" key={symbol.id}><div><strong>{symbol.receiver_name ? `${symbol.receiver_name}.` : ""}{symbol.symbol_name}</strong><p>{symbol.change_summary}</p></div><span>{symbol.package_name}:{symbol.start_line}–{symbol.end_line}</span></div>)}</div> : <p className="table-subtitle">No Go symbols were mapped from this change.</p>}

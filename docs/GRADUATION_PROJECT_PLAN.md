@@ -277,20 +277,22 @@ Checklist:
 
 #### Phase 13 - Change Impact Analysis
 
+**Trạng thái:** Hoàn thành ngày 2026-09-04.
+
 **Mục tiêu:** Nâng analyzer từ changed-line overlap thành phân tích phạm vi tác
 động xuyên symbol và package.
 
 Checklist:
 
-- [ ] Load package tại source SHA bằng `go/packages`.
-- [ ] Type-check bằng `go/types`.
-- [ ] Xây SSA và call graph với thuật toán được pin.
-- [ ] Phát hiện callers, callees, interface implementations và type usage.
-- [ ] Liên kết impacted symbols với test hiện có.
-- [ ] Thêm impact relation, reason code và score.
-- [ ] Giới hạn traversal depth và số node.
-- [ ] Có fallback AST-only khi repository không type-check.
-- [ ] Tạo corpus được gán nhãn và đo precision/recall.
+- [x] Load package tại source SHA bằng `go/packages`.
+- [x] Type-check bằng `go/types`.
+- [x] Xây SSA và call graph với thuật toán được pin.
+- [x] Phát hiện callers, callees, interface implementations và type usage.
+- [x] Liên kết impacted symbols với test hiện có.
+- [x] Thêm impact relation, reason code và score.
+- [x] Giới hạn traversal depth và số node.
+- [x] Có fallback AST-only khi repository không type-check.
+- [x] Tạo corpus được gán nhãn và đo precision/recall.
 
 Đầu ra:
 

@@ -18,6 +18,16 @@ snapshots. The response uses an attachment filename. Until Phase 18 adds
 application authentication/RBAC, this endpoint must remain behind the same
 trusted private boundary as the rest of the MVP.
 
+## Phase 13 change impact
+
+### `GET /api/analyses/{id}/impact`
+
+Returns the source-SHA-bound impact run, ranked nodes, and explainable edges.
+Every inferred node has one or more reason codes: `CALLER`, `CALLEE`,
+`INTERFACE_IMPLEMENTATION`, `TYPE_USAGE`, or `EXISTING_TEST`. The run reports
+`SSA` or `AST_FALLBACK`, the pinned algorithm, traversal limits, and any
+fallback reason.
+
 ## Evaluations
 
 - `GET /api/evaluations` returns `{"evaluation_runs": [...]}` ordered newest first.

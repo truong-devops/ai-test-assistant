@@ -4,7 +4,7 @@
 **Primary goal:** Use AI + project-aware RAG to recommend, generate, validate, repair, and review automation tests when source code changes.  
 **Primary language for MVP:** Go  
 **Primary Git providers:** GitLab and GitHub
-**Document version:** 1.1 (Phase 12 provenance update)
+**Document version:** 1.2 (Phase 13 impact-analysis update)
 **Intended readers:** Project team, mentor, Codex / coding agents, reviewers
 
 ---
@@ -1837,9 +1837,40 @@ analysis or quality experiments.
 - Recommendation, generation, and repair processors use the recorder in the
   production worker.
 
-The remaining graduation roadmap continues with Phases 13-19 in
+The remaining graduation roadmap continues with Phases 14-19 in
 `docs/GRADUATION_PROJECT_PLAN.md`. Kubernetes, multi-language support, automatic
 merge, and additional providers remain outside the thesis-critical path.
+
+---
+
+## Phase 13 - Change Impact Analysis
+
+### Objective
+
+Extend direct changed-line overlap into an explainable, source-SHA-bound graph
+of impacted Go symbols without losing basic AST evidence when type-checking is
+not possible.
+
+### Implemented scope
+
+- Bounded repository materialization from GitHub/GitLab at `source_sha`.
+- `go/packages` loading and `go/types` type checking with network disabled.
+- SSA construction and CHA pinned as `cha-v1+x-tools-v0.49.0`.
+- Caller, callee, interface implementation, type usage, generic usage, and
+  existing-test relations.
+- Traversal capped by depth and selected-node count with deterministic ranking.
+- AST-only fallback with the type-check failure retained as evidence.
+- Atomic impact-run/node/edge persistence alongside direct changed symbols.
+- Read-only impact API and compact analysis-page impact evidence.
+- Labelled controlled corpus and repeatable precision/recall + runtime benchmark.
+
+### DoD
+
+- Direct changes and inferred impacts are explicitly distinguishable.
+- Every persisted edge has a relation, reason code, depth, and score.
+- Broken or dependency-incomplete repositories preserve direct AST results.
+- The controlled corpus covers direct, cross-package, interface, generic, and
+  existing-test impact. It is a development baseline, not thesis evidence.
 
 ---
 

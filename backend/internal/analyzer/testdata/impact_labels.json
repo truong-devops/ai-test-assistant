@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "name": "cross-package-callers-and-tests",
+      "file_path": "contract/types.go",
+      "package_name": "contract",
+      "symbol_name": "Normalize",
+      "symbol_kind": "function",
+      "expected_symbols": ["ID", "Load", "Read", "Reader", "Store", "TestLoad"]
+    },
+    {
+      "name": "interface-implementation",
+      "file_path": "contract/types.go",
+      "package_name": "contract",
+      "symbol_name": "Reader",
+      "symbol_kind": "interface",
+      "expected_symbols": ["ID", "Load", "Normalize", "Read", "Store", "TestLoad"]
+    },
+    {
+      "name": "generic-type-usage",
+      "file_path": "contract/types.go",
+      "package_name": "contract",
+      "symbol_name": "Box",
+      "symbol_kind": "struct",
+      "expected_symbols": ["Wrap"]
+    }
+  ]
+}

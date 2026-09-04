@@ -62,3 +62,12 @@ for thesis reproducibility and therefore remain sensitive project data. The
 full `/api/analyses/{id}/export` endpoint must remain behind the authenticated
 private reverse proxy until Phase 18 implements application-level RBAC. A
 retention/archive policy is still required before long-term production use.
+
+## Phase 13 impact-analysis findings
+
+The worker materializes only bounded Go/module files from the exact source SHA.
+Paths must be safe relative paths, file/count/total-size caps are enforced, SCM
+access remains project-scoped, dependency downloads are disabled, and the
+module cache is temporary. A `go.mod` local replacement may resolve only inside
+the materialized snapshot; an escaping or absolute replacement forces the
+non-executing AST fallback.

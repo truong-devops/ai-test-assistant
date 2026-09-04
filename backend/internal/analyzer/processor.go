@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/impact"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
@@ -25,11 +26,30 @@ type SymbolSaver interface {
 	SaveSymbols(ctx context.Context, analysisID int64, expectedAttempt int, symbols []job.ChangedSymbol) error
 }
 
+type ImpactAnalyzer interface {
+	AnalyzeRepository(ctx context.Context, source scm.Client, repository scm.Repository,
+		sourceSHA string, direct []impact.DirectSymbol) (impact.Result, error)
+}
+
+type ImpactSaver interface {
+	SaveAnalysis(ctx context.Context, analysisID, projectID int64, expectedAttempt int,
+		symbols []job.ChangedSymbol, graph impact.Result) error
+}
+
 type Processor struct {
-	projects ProjectGetter
-	source   scm.Client
-	analyses AnalysisReader
-	results  SymbolSaver
+	projects       ProjectGetter
+	source         scm.Client
+	analyses       AnalysisReader
+	results        SymbolSaver
+	impactAnalyzer ImpactAnalyzer
+	impactResults  ImpactSaver
+}
+
+func NewProcessorWithImpact(projects ProjectGetter, source scm.Client, analyses AnalysisReader,
+	impactAnalyzer ImpactAnalyzer, results ImpactSaver,
+) *Processor {
+	return &Processor{projects: projects, source: source, analyses: analyses,
+		impactAnalyzer: impactAnalyzer, impactResults: results}
 }
 
 func NewProcessor(projects ProjectGetter, source scm.Client, analyses AnalysisReader, results SymbolSaver) *Processor {
@@ -46,6 +66,7 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		return fmt.Errorf("get fetched analysis: %w", err)
 	}
 	symbols := make([]job.ChangedSymbol, 0)
+	direct := make([]impact.DirectSymbol, 0)
 	for _, file := range files {
 		if !isGoFile(file) {
 			continue
@@ -68,13 +89,24 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 			return fmt.Errorf("load source version of %q: %w", file.NewPath, err)
 		}
 		for _, change := range MapChangedSymbols(oldFile, newFile, lines) {
-			symbols = append(symbols, job.ChangedSymbol{
+			symbol := job.ChangedSymbol{
 				ChangedFileID: file.ID, SymbolName: change.Name, SymbolKind: change.Kind,
 				ReceiverName: change.Receiver, PackageName: change.PackageName,
 				StartLine: change.StartLine, EndLine: change.EndLine,
 				ChangeType: change.ChangeType, ChangeSummary: change.Summary,
-			})
+			}
+			symbols = append(symbols, symbol)
+			direct = append(direct, impact.DirectSymbol{FilePath: displayPath(file), Symbol: symbol})
 		}
+	}
+	if p.impactAnalyzer != nil && p.impactResults != nil {
+		graph, err := p.impactAnalyzer.AnalyzeRepository(ctx, p.source,
+			registeredProject.RepositoryRef(), analysisJob.SourceSHA, direct)
+		if err != nil {
+			return fmt.Errorf("analyze change impact: %w", err)
+		}
+		return p.impactResults.SaveAnalysis(ctx, claimed.ID, claimed.ProjectID,
+			claimed.AttemptCount, symbols, graph)
 	}
 	return p.results.SaveSymbols(ctx, claimed.ID, claimed.AttemptCount, symbols)
 }

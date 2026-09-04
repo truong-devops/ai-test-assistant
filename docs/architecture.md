@@ -72,6 +72,13 @@ every LLM call -> immutable llm_calls record
                -> exact prompt/schema/response + usage/latency/config hashes
                -> immutable context snapshot + denormalized chunk contents
                -> lightweight evidence UI / complete JSON audit export
+
+source SHA -> bounded source materializer
+           -> go/packages + go/types -> SSA + pinned CHA
+           -> calls / implementations / type-usage graph
+           -> bounded traversal from direct changed symbols
+           -> impact nodes + explainable edges + existing-test links
+           -> AST_FALLBACK when the repository cannot type-check
 ```
 
 Worker claims use a bounded lease. Temporary SCM/preparation failures are
@@ -79,6 +86,10 @@ retried with a delay up to `WORKER_MAX_ATTEMPTS`; an expired lease makes a job
 recoverable after a worker crash. Retry counts reset at each phase handoff, so a
 temporary source-fetch failure does not consume the analyzer retry budget. AI
 repair attempts in later phases remain a separate counter.
+
+Direct diff overlap remains authoritative in Phase 13. Inferred impact is
+separately labelled and scored; failure to type-check never discards direct AST
+results.
 
 The analyzer parses both target and source versions of modified or renamed Go
 files. This lets it detect fully deleted symbols as well as additions and body
