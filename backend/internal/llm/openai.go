@@ -159,7 +159,11 @@ func providerErrorSnippet(body []byte) string {
 	if len(body) > maxErrorBytes {
 		body = append(append([]byte(nil), body[:maxErrorBytes]...), []byte("...[truncated]")...)
 	}
-	return strings.TrimSpace(string(body))
+	snippet := strings.TrimSpace(string(body))
+	if snippet == "" {
+		return "empty response body"
+	}
+	return snippet
 }
 
 var _ Provider = (*OpenAIProvider)(nil)
