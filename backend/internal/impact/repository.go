@@ -154,7 +154,10 @@ func (r *Repository) Get(ctx context.Context, analysisID int64) (Bundle, error) 
 	const runQuery = `SELECT id, analysis_job_id, project_id, source_sha, mode,
 		algorithm, max_depth, max_nodes, package_count, fallback_reason, created_at
 		FROM impact_analysis_runs WHERE analysis_job_id=$1`
-	var bundle Bundle
+	bundle := Bundle{
+		Nodes: make([]Node, 0),
+		Edges: make([]Edge, 0),
+	}
 	if err := r.pool.QueryRow(ctx, runQuery, analysisID).Scan(&bundle.Run.ID,
 		&bundle.Run.AnalysisJobID, &bundle.Run.ProjectID, &bundle.Run.SourceSHA,
 		&bundle.Run.Mode, &bundle.Run.Algorithm, &bundle.Run.MaxDepth,

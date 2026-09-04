@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -38,5 +39,24 @@ func TestImpactHandlerNotFound(t *testing.T) {
 	impactHandler{service: impactServiceStub{err: impact.ErrNotFound}}.get(response, request)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status=%d", response.Code)
+	}
+}
+
+func TestImpactHandlerEncodesEmptyCollectionsAsArrays(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/analyses/4/impact", nil)
+	request.SetPathValue("id", "4")
+	response := httptest.NewRecorder()
+	impactHandler{service: impactServiceStub{result: impact.Bundle{Run: impact.Run{
+		ID: 2, AnalysisJobID: 4, Mode: impact.ModeASTFallback, Algorithm: "ast-v1",
+	}}}}.get(response, request)
+
+	var body struct {
+		Impact impact.Bundle `json:"impact"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || body.Impact.Nodes == nil || body.Impact.Edges == nil {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

@@ -29,5 +29,14 @@ func (h impactHandler) get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load change impact")
 		return
 	}
+	// Preserve the API contract for analyses without impacted Go symbols. A nil
+	// slice is encoded as null and can break clients that correctly expect a
+	// collection from this endpoint.
+	if bundle.Nodes == nil {
+		bundle.Nodes = []impact.Node{}
+	}
+	if bundle.Edges == nil {
+		bundle.Edges = []impact.Edge{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"impact": bundle})
 }

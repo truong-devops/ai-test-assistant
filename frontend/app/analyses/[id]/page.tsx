@@ -91,18 +91,21 @@ function ProvenanceEvidence({ calls, analysisID }: { calls: ProvenanceCall[]; an
 
 function ImpactEvidence({ impact }: { impact: ImpactBundle | null }) {
   if (!impact) return null;
-  const direct = impact.nodes.filter((node) => node.direct_change).length;
-  const inferred = impact.nodes.length - direct;
+  // Stay compatible with impact records produced before empty collections were
+  // normalized by the API.
+  const nodes = impact.nodes ?? [];
+  const direct = nodes.filter((node) => node.direct_change).length;
+  const inferred = nodes.length - direct;
   return <section className="panel side-section">
     <p className="eyebrow">Change impact</p>
     <h2>{direct} direct · {inferred} inferred</h2>
     <p className="page-description">{impact.run.mode} via {impact.run.algorithm} across {impact.run.package_count} packages. Traversal is capped at depth {impact.run.max_depth} and {impact.run.max_nodes} nodes.</p>
     {impact.run.fallback_reason ? <p className="notice"><strong>AST fallback</strong>{impact.run.fallback_reason}</p> : null}
-    <div className="symbol-list" style={{ marginTop: 14 }}>{impact.nodes.slice(0, 12).map((node) => <div className="symbol-row" key={node.id}>
+    <div className="symbol-list" style={{ marginTop: 14 }}>{nodes.slice(0, 12).map((node) => <div className="symbol-row" key={node.id}>
       <div><strong>{node.receiver_name ? `${node.receiver_name}.` : ""}{node.symbol_name}</strong><p>{node.reason_codes.join(" · ")}</p></div>
       <span>{node.direct_change ? "DIRECT" : `${Math.round(node.score * 100)}% · d${node.depth}`}</span>
     </div>)}</div>
-    {impact.nodes.length > 12 ? <p className="table-subtitle">Showing the 12 highest-ranked of {impact.nodes.length} impacted symbols.</p> : null}
+    {nodes.length > 12 ? <p className="table-subtitle">Showing the 12 highest-ranked of {nodes.length} impacted symbols.</p> : null}
   </section>;
 }
 
