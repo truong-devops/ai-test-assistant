@@ -51,7 +51,7 @@ key. The same generic secret file is used for every LLM provider:
 
 ```dotenv
 LLM_PROVIDER=gemini
-LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta2
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 LLM_MODEL=gemini-3.6-flash
 LLM_FALLBACK_MODELS=gemini-3.5-flash-lite,gemini-2.5-flash-lite
 LLM_REQUEST_TIMEOUT=45s

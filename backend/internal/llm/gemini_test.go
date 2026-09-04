@@ -14,7 +14,7 @@ import (
 
 func TestGeminiProviderGenerateUsesStructuredInteractionsAPI(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1beta2/interactions" {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1beta/interactions" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		if apiKey := r.Header.Get("x-goog-api-key"); apiKey != "test-key" {
@@ -40,7 +40,7 @@ func TestGeminiProviderGenerateUsesStructuredInteractionsAPI(t *testing.T) {
 			`"usage":{"total_input_tokens":12,"total_output_tokens":7,"total_tokens":25}}`)
 	}))
 	defer server.Close()
-	provider, err := NewGeminiProvider(server.URL+"/v1beta2", "test-key", "test-model", time.Second, 900)
+	provider, err := NewGeminiProvider(server.URL+"/v1beta", "test-key", "test-model", time.Second, 900)
 	if err != nil {
 		t.Fatal(err)
 	}

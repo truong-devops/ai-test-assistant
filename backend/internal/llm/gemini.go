@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultGeminiBaseURL = "https://generativelanguage.googleapis.com/v1beta2"
+	defaultGeminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
 	geminiRetryBaseDelay = 500 * time.Millisecond
 	maxGeminiModels      = 4
 )

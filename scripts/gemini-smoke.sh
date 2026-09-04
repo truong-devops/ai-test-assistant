@@ -26,7 +26,7 @@ base_url="${GEMINI_SMOKE_BASE_URL:-$(env_value LLM_BASE_URL)}"
 model="${GEMINI_SMOKE_MODEL:-$(env_value LLM_MODEL)}"
 base_url="${base_url%/}"
 
-if [[ ! "$base_url" =~ ^https://generativelanguage\.googleapis\.com/v1(beta2)?$ ]]; then
+if [[ ! "$base_url" =~ ^https://generativelanguage\.googleapis\.com/v1beta$ ]]; then
 	echo "unexpected Gemini base URL: $base_url" >&2
 	exit 1
 fi
@@ -36,8 +36,8 @@ if [[ ! "$model" =~ ^[a-zA-Z0-9._-]+$ ]]; then
 fi
 
 api_key="$(tr -d '\r\n' < "$key_file")"
-if [[ ! "$api_key" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-	echo "Gemini key file has an unexpected format" >&2
+if [[ ! "$api_key" =~ ^[a-zA-Z0-9._-]{20,4096}$ ]]; then
+	echo "Gemini key file has an unexpected format (AIza and AQ auth keys are supported)" >&2
 	exit 1
 fi
 
