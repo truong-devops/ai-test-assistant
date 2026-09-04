@@ -117,8 +117,9 @@ The recommendation worker retrieves a compact project-specific context for
 each changed symbol, renders the versioned `recommend-test-v1` prompt, validates
 strict structured output, stores the result, and advances the analysis to
 `GENERATING_TESTS` for the Phase 6 handoff. LLM access is disabled by default.
-Set `LLM_PROVIDER=openai`, `LLM_API_KEY`, and `LLM_MODEL` in a private `.env` or
-secret manager to enable the real OpenAI provider.
+Set `LLM_PROVIDER` to `openai` or `gemini`, then provide `LLM_API_KEY` and an
+explicit `LLM_MODEL` in a private `.env` or secret manager to enable it. Gemini
+uses the Interactions API; OpenAI uses the Responses API.
 
 The generation worker uses each stored recommendation with the exact retrieved
 interfaces, implementation, mocks, and closest tests. It validates the target

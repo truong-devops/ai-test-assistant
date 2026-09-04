@@ -31,7 +31,10 @@ openssl rand -hex 32 > secrets/gitlab_webhook_secret
 printf '%s\n' 'glpat-replace-with-real-token' > secrets/gitlab_token
 openssl rand -hex 32 > secrets/github_webhook_secret
 printf '%s\n' 'github_pat_replace-with-real-token' > secrets/github_token
-printf '%s\n' 'replace-with-real-key' > secrets/llm_api_key
+read -rsp "LLM API key: " LLM_KEY
+printf '%s' "$LLM_KEY" > secrets/llm_api_key
+unset LLM_KEY
+echo
 ```
 
 Use the generated PostgreSQL password to create `secrets/database_url`. Because
@@ -43,6 +46,15 @@ postgres://ai_test_assistant:<password>@postgres:5432/ai_test_assistant?sslmode=
 
 If GitHub private repositories are not used, `secrets/github_token` may be an
 empty file. If `LLM_PROVIDER=disabled`, `secrets/llm_api_key` may be an empty file.
+To use Gemini, set the following values in `.env.production` after writing the
+key. The same generic secret file is used for every LLM provider:
+
+```dotenv
+LLM_PROVIDER=gemini
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+LLM_MODEL=gemini-3.8-flash
+```
+
 The API and worker run as UID/GID `65532`, so file-backed Compose secrets must be
 group-readable by GID `65532` while remaining private from other host users:
 
