@@ -5,7 +5,7 @@ LOG_TAIL ?= 100
 READY_URL ?= http://127.0.0.1:8080/ready
 PROD_COMPOSE = docker compose --env-file "$(ENV_FILE)" -f "$(COMPOSE_FILE)"
 
-.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test sandbox-security-check frontend-install frontend-typecheck frontend-build evaluate evaluate-import rebuild rebuild-be rebuild-fe rebuild-worker rebuild-all prod-help prod-config prod-up prod-migrate prod-gemini-setup prod-gemini-up prod-rebuild-api prod-rebuild-worker prod-rebuild-backend prod-rebuild-frontend prod-rebuild-app prod-rebuild-all prod-worker-restart prod-status prod-logs prod-worker-logs prod-worker-logs-follow backup restore
+.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test sandbox-security-check frontend-install frontend-typecheck frontend-build evaluate evaluate-import rebuild rebuild-be rebuild-fe rebuild-worker rebuild-all prod-help prod-config prod-up prod-migrate prod-gemini-setup prod-gemini-up prod-gemini-smoke prod-rebuild-api prod-rebuild-worker prod-rebuild-backend prod-rebuild-frontend prod-rebuild-app prod-rebuild-all prod-worker-restart prod-status prod-logs prod-worker-logs prod-worker-logs-follow backup restore
 
 EVALUATION_DATASET ?= evaluation/datasets/controlled-v1.json
 EVALUATION_OUTPUT ?= evaluation/results/controlled-v1
@@ -57,6 +57,7 @@ prod-help:
 	@echo "  make prod-up                  Build and start the complete production stack"
 	@echo "  make prod-gemini-setup        Store the Gemini key and update .env.production"
 	@echo "  make prod-gemini-up           Configure Gemini, rebuild and restart the worker"
+	@echo "  make prod-gemini-smoke        Call Gemini directly without creating an analysis"
 	@echo "  make prod-rebuild-api         Rebuild only the API after API-only changes"
 	@echo "  make prod-rebuild-worker      Rebuild only the worker after worker/LLM changes"
 	@echo "  make prod-rebuild-backend     Run migrations and rebuild API plus worker"
@@ -89,6 +90,9 @@ prod-gemini-up:
 	$(PROD_COMPOSE) config --quiet
 	$(PROD_COMPOSE) up -d --build --no-deps --wait --wait-timeout 120 worker
 	$(PROD_COMPOSE) ps worker
+
+prod-gemini-smoke:
+	ENV_FILE="$(ENV_FILE)" ./scripts/gemini-smoke.sh
 
 prod-rebuild-api: prod-config
 	$(PROD_COMPOSE) up -d --build --no-deps --wait --wait-timeout 120 api

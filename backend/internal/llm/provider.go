@@ -11,6 +11,7 @@ type Config struct {
 	BaseURL         string
 	APIKey          string
 	Model           string
+	FallbackModels  []string
 	RequestTimeout  time.Duration
 	MaxOutputTokens int
 }
@@ -35,8 +36,8 @@ func NewProvider(config Config) (Provider, error) {
 		if strings.TrimSpace(config.Model) == "" {
 			return nil, fmt.Errorf("LLM_MODEL is required when LLM_PROVIDER=gemini")
 		}
-		return NewGeminiProvider(config.BaseURL, config.APIKey, config.Model,
-			config.RequestTimeout, config.MaxOutputTokens)
+		return NewGeminiProviderWithFallback(config.BaseURL, config.APIKey, config.Model,
+			config.FallbackModels, config.RequestTimeout, config.MaxOutputTokens)
 	default:
 		return nil, fmt.Errorf("unsupported LLM provider %q", config.Provider)
 	}

@@ -76,6 +76,7 @@ type LLMConfig struct {
 	BaseURL                 string
 	APIKey                  string
 	Model                   string
+	FallbackModels          []string
 	RequestTimeout          time.Duration
 	MaxOutputTokens         int
 	InputCostPerMillionUSD  float64
@@ -149,6 +150,7 @@ func Load() (Config, error) {
 			Provider: envOrDefault("LLM_PROVIDER", "disabled"),
 			BaseURL:  os.Getenv("LLM_BASE_URL"),
 			APIKey:   llmAPIKey, Model: os.Getenv("LLM_MODEL"),
+			FallbackModels: commaSeparatedValues(os.Getenv("LLM_FALLBACK_MODELS")),
 			RequestTimeout: 60 * time.Second, MaxOutputTokens: 6000,
 			InputCostPerMillionUSD: 0, OutputCostPerMillionUSD: 0,
 		},
@@ -334,6 +336,16 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func commaSeparatedValues(value string) []string {
+	values := make([]string, 0)
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			values = append(values, item)
+		}
+	}
+	return values
 }
 
 func positiveDuration(name, value string) (time.Duration, error) {
