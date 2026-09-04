@@ -56,7 +56,13 @@ func (p *Processor) Process(ctx context.Context, analysisJob job.AnalysisJob) er
 	if err != nil {
 		return err
 	}
-	if len(diffs) == 0 {
+	// GitHub can legitimately return no changed files for a pull request whose
+	// head only contains empty commits. Its pull-request response already gives
+	// us authoritative diff refs, so let the pipeline record the metadata and
+	// complete with zero candidates instead of retrying a permanent condition.
+	// GitLab may briefly expose diff refs before its asynchronous diff is ready,
+	// so an empty GitLab response must remain retryable.
+	if len(diffs) == 0 && repository.Provider != scm.ProviderGitHub {
 		return ErrMergeRequestNotReady
 	}
 
