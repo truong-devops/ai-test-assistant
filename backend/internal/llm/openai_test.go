@@ -86,6 +86,17 @@ func TestOpenAIProviderRejectsProviderFailuresAndMalformedResponses(t *testing.T
 	}
 }
 
+func TestProviderErrorSnippetDescribesEmptyResponses(t *testing.T) {
+	for _, body := range [][]byte{nil, {}, []byte(" \n\t ")} {
+		if got := providerErrorSnippet(body); got != "empty response body" {
+			t.Fatalf("providerErrorSnippet(%q) = %q", body, got)
+		}
+	}
+	if got := providerErrorSnippet([]byte("  quota exceeded\n")); got != "quota exceeded" {
+		t.Fatalf("providerErrorSnippet() = %q", got)
+	}
+}
+
 func TestNewProviderConfiguration(t *testing.T) {
 	provider, err := NewProvider(Config{Provider: "disabled"})
 	if err != nil {
