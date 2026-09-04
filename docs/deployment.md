@@ -42,10 +42,18 @@ postgres://ai_test_assistant:<password>@postgres:5432/ai_test_assistant?sslmode=
 ```
 
 If GitHub private repositories are not used, `secrets/github_token` may be an
-empty file. If `LLM_PROVIDER=disabled`, `secrets/llm_api_key` may be an empty file. Set every
-secret file to mode `0600`. Set `DOCKER_GID` in `.env.production` to the group ID
-that owns `/var/run/docker.sock` on the deployment host; Docker Desktop commonly
-works with `0`, while Linux hosts often require the `docker` group ID.
+empty file. If `LLM_PROVIDER=disabled`, `secrets/llm_api_key` may be an empty file.
+The API and worker run as UID/GID `65532`, so file-backed Compose secrets must be
+group-readable by GID `65532` while remaining private from other host users:
+
+```bash
+sudo chgrp 65532 secrets/*
+chmod 0640 secrets/*
+```
+
+Set `DOCKER_GID` in `.env.production` to the group ID that owns
+`/var/run/docker.sock`; Docker Desktop commonly works with `0`, while Linux hosts
+often require the `docker` group ID.
 
 Validate and deploy:
 
