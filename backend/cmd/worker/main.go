@@ -20,6 +20,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/logging"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
@@ -83,11 +84,18 @@ func main() {
 	changeProcessor := analyzer.NewProcessor(projectRepository, sourceClient, jobRepository, jobRepository)
 	indexProcessor := knowledge.NewIndexer(projectRepository, sourceClient, embedder, knowledgeRepository)
 	recommendationRepository := recommendation.NewRepository(database.Pool())
-	recommendationProcessor := recommendation.NewProcessor(jobRepository,
-		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, recommendationRepository)
+	provenanceRepository := provenance.NewRepository(database.Pool(), provenance.RuntimeConfig{
+		Provider: cfg.LLM.Provider, Model: cfg.LLM.Model,
+		InputCostPerMillionUSD:  cfg.LLM.InputCostPerMillionUSD,
+		OutputCostPerMillionUSD: cfg.LLM.OutputCostPerMillionUSD,
+	})
+	recommendationProcessor := recommendation.NewProcessorWithProvenance(jobRepository,
+		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider,
+		recommendationRepository, provenanceRepository)
 	generationRepository := generation.NewRepository(database.Pool())
-	generationProcessor := generation.NewProcessor(jobRepository, recommendationRepository,
-		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, generationRepository)
+	generationProcessor := generation.NewProcessorWithProvenance(jobRepository, recommendationRepository,
+		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider,
+		generationRepository, provenanceRepository)
 	sandboxRunner, err := validation.NewDockerRunner(validation.DockerConfig{
 		Image: cfg.Sandbox.Image, Timeout: cfg.Sandbox.Timeout, MemoryMB: cfg.Sandbox.MemoryMB,
 		CPUs: cfg.Sandbox.CPULimit, PIDsLimit: cfg.Sandbox.PIDsLimit,
@@ -101,10 +109,10 @@ func main() {
 		validation.NewWorkspaceManager(sourceClient, validation.WorkspaceOptions{}),
 		sandboxRunner, validationRepository, cfg.Sandbox.Timeout)
 	repairRepository := repair.NewRepository(database.Pool())
-	repairProcessor := repair.NewProcessor(jobRepository, recommendationRepository,
+	repairProcessor := repair.NewProcessorWithProvenance(jobRepository, recommendationRepository,
 		generationRepository, validationRepository,
 		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider,
-		repairRepository, cfg.Repair.MaxAttempts)
+		repairRepository, cfg.Repair.MaxAttempts, provenanceRepository)
 	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,

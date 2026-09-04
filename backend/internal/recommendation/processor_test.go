@@ -9,6 +9,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 )
 
 type analysisReaderStub struct {
@@ -55,6 +56,18 @@ type saverStub struct {
 	calls   int
 }
 
+type provenanceRecorderStub struct {
+	inputs []provenance.RecordInput
+	err    error
+}
+
+func (s *provenanceRecorderStub) Record(_ context.Context,
+	input provenance.RecordInput,
+) (provenance.Call, error) {
+	s.inputs = append(s.inputs, input)
+	return provenance.Call{ID: int64(len(s.inputs))}, s.err
+}
+
 func (s *saverStub) Save(_ context.Context, claimed job.AnalysisJob, items []Recommendation) error {
 	s.calls++
 	s.claimed, s.items = claimed, items
@@ -82,7 +95,8 @@ func TestProcessorRetrievesValidatesAndSavesRecommendations(t *testing.T) {
 	}}}
 	provider := &providerStub{result: llm.Response{ID: "resp-1", Model: "fixture-model", Output: validProviderOutput}}
 	saver := &saverStub{}
-	processor := NewProcessor(reader, retriever, provider, saver)
+	recorder := &provenanceRecorderStub{}
+	processor := NewProcessorWithProvenance(reader, retriever, provider, saver, recorder)
 	if err := processor.Process(context.Background(), claimed); err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +109,11 @@ func TestProcessorRetrievesValidatesAndSavesRecommendations(t *testing.T) {
 		saver.items[0].ModelName != "fixture-model" {
 		t.Fatalf("saved = %#v", saver.items)
 	}
+	if len(recorder.inputs) != 1 || recorder.inputs[0].Phase != provenance.PhaseRecommendation ||
+		recorder.inputs[0].SubjectID != 41 || recorder.inputs[0].Status != provenance.StatusCompleted ||
+		recorder.inputs[0].Request.Input == "" || len(recorder.inputs[0].Contexts) != 1 {
+		t.Fatalf("provenance=%#v", recorder.inputs)
+	}
 }
 
 func TestProcessorRejectsMalformedProviderOutputWithoutPartialSave(t *testing.T) {
@@ -102,9 +121,14 @@ func TestProcessorRejectsMalformedProviderOutputWithoutPartialSave(t *testing.T)
 	retriever := &retrieverStub{results: []knowledge.KnowledgeChunk{{Content: "context"}}}
 	provider := &providerStub{result: llm.Response{Model: "fixture", Output: `{"recommendations":[]}`}}
 	saver := &saverStub{}
-	err := NewProcessor(reader, retriever, provider, saver).Process(context.Background(), claimed)
+	recorder := &provenanceRecorderStub{}
+	err := NewProcessorWithProvenance(reader, retriever, provider, saver, recorder).
+		Process(context.Background(), claimed)
 	if !errors.Is(err, ErrInvalidProviderOutput) || saver.calls != 0 {
 		t.Fatalf("Process() error=%v saves=%d", err, saver.calls)
+	}
+	if len(recorder.inputs) != 1 || recorder.inputs[0].Status != provenance.StatusInvalidOutput {
+		t.Fatalf("invalid output provenance=%#v", recorder.inputs)
 	}
 }
 

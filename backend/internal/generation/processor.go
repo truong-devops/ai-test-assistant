@@ -2,12 +2,15 @@ package generation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 )
 
@@ -34,6 +37,7 @@ type Processor struct {
 	retriever       ContextRetriever
 	provider        llm.Provider
 	results         ResultSaver
+	recorder        provenance.Recorder
 }
 
 func NewProcessor(analyses AnalysisReader, recommendations RecommendationReader,
@@ -41,6 +45,15 @@ func NewProcessor(analyses AnalysisReader, recommendations RecommendationReader,
 ) *Processor {
 	return &Processor{analyses: analyses, recommendations: recommendations,
 		retriever: retriever, provider: provider, results: results}
+}
+
+func NewProcessorWithProvenance(analyses AnalysisReader, recommendations RecommendationReader,
+	retriever ContextRetriever, provider llm.Provider, results ResultSaver,
+	recorder provenance.Recorder,
+) *Processor {
+	processor := NewProcessor(analyses, recommendations, retriever, provider, results)
+	processor.recorder = recorder
+	return processor
 }
 
 func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error {
@@ -85,14 +98,15 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		if file.DeletedFile {
 			filePath = file.OldPath
 		}
-		contexts, err := p.retriever.RetrieveContext(ctx, knowledge.RetrievalQuery{
+		retrievalQuery := knowledge.RetrievalQuery{
 			ProjectID: claimed.ProjectID,
 			Query: strings.Join([]string{symbol.SymbolName, symbol.ReceiverName, symbol.PackageName,
 				recommendationItem.Title, recommendationItem.Scenario,
 				recommendationItem.ExpectedBehavior, "tests mocks interfaces signatures"}, " "),
 			PackageName: symbol.PackageName, SymbolName: symbol.SymbolName,
 			FilePath: filePath, PreferTests: true, Limit: 12,
-		})
+		}
+		contexts, err := p.retriever.RetrieveContext(ctx, retrievalQuery)
 		if err != nil {
 			return fmt.Errorf("retrieve generation context for %s: %w", symbol.SymbolName, err)
 		}
@@ -107,19 +121,45 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		if err != nil {
 			return err
 		}
-		response, err := p.provider.Generate(ctx, llm.Request{
+		request := llm.Request{
 			Instructions: Instructions, Input: prompt, SchemaName: "generated_go_test",
 			Schema: ResponseSchema(), MaxOutputTokens: 6000,
-		})
+		}
+		started := time.Now()
+		response, err := p.provider.Generate(ctx, request)
+		latency := time.Since(started)
 		if err != nil {
-			return fmt.Errorf("generate test for recommendation %d: %w", recommendationItem.ID, err)
+			processErr := fmt.Errorf("generate test for recommendation %d: %w", recommendationItem.ID, err)
+			if recordErr := p.recordCall(ctx, analysisJob, claimed.AttemptCount,
+				recommendationItem.ID, retrievalQuery, contexts, request, response,
+				provenance.StatusFailed, processErr.Error(), latency); recordErr != nil {
+				return errors.Join(processErr, recordErr)
+			}
+			return processErr
 		}
 		if strings.TrimSpace(response.Model) == "" {
-			return fmt.Errorf("generate test for recommendation %d: provider model is missing", recommendationItem.ID)
+			processErr := fmt.Errorf("generate test for recommendation %d: provider model is missing", recommendationItem.ID)
+			if recordErr := p.recordCall(ctx, analysisJob, claimed.AttemptCount,
+				recommendationItem.ID, retrievalQuery, contexts, request, response,
+				provenance.StatusInvalidOutput, processErr.Error(), latency); recordErr != nil {
+				return errors.Join(processErr, recordErr)
+			}
+			return processErr
 		}
 		proposed, err := ParseResponse(response.Output, filePath, symbol.PackageName)
 		if err != nil {
-			return fmt.Errorf("generate test for recommendation %d: %w", recommendationItem.ID, err)
+			processErr := fmt.Errorf("generate test for recommendation %d: %w", recommendationItem.ID, err)
+			if recordErr := p.recordCall(ctx, analysisJob, claimed.AttemptCount,
+				recommendationItem.ID, retrievalQuery, contexts, request, response,
+				provenance.StatusInvalidOutput, processErr.Error(), latency); recordErr != nil {
+				return errors.Join(processErr, recordErr)
+			}
+			return processErr
+		}
+		if err := p.recordCall(ctx, analysisJob, claimed.AttemptCount, recommendationItem.ID,
+			retrievalQuery, contexts, request, response, provenance.StatusCompleted,
+			"", latency); err != nil {
+			return err
 		}
 		generated = append(generated, GeneratedTest{
 			AnalysisJobID: claimed.ID, RecommendationID: recommendationItem.ID,
@@ -130,4 +170,28 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		})
 	}
 	return p.results.Save(ctx, claimed, generated)
+}
+
+func (p *Processor) recordCall(ctx context.Context, analysisJob job.AnalysisJob,
+	attemptNumber int, recommendationID int64, query knowledge.RetrievalQuery,
+	contexts []knowledge.KnowledgeChunk, request llm.Request, response llm.Response,
+	status, errorMessage string, latency time.Duration,
+) error {
+	if p.recorder == nil {
+		return nil
+	}
+	if attemptNumber <= 0 {
+		attemptNumber = 1
+	}
+	_, err := p.recorder.Record(ctx, provenance.RecordInput{
+		Analysis: analysisJob, Phase: provenance.PhaseGeneration, SubjectID: recommendationID,
+		AttemptNumber: attemptNumber, PromptVersion: PromptVersion,
+		RetrievalQuery: query, Contexts: contexts, Request: request, Response: response,
+		Status: status, ErrorMessage: errorMessage, Latency: latency,
+	})
+	if err != nil {
+		return fmt.Errorf("record generation provenance for recommendation %d: %w",
+			recommendationID, err)
+	}
+	return nil
 }

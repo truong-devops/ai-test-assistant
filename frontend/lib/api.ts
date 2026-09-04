@@ -11,6 +11,7 @@ import type {
   ValidationRun,
   EvaluationRun,
   StoredEvaluation,
+  ProvenanceBundle,
 } from "@/lib/types";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
@@ -103,4 +104,8 @@ export async function getEvaluations(): Promise<EvaluationRun[]> {
 
 export async function getEvaluation(id: string): Promise<StoredEvaluation> {
   return request<StoredEvaluation>(`/api/evaluations/${encodeURIComponent(id)}`);
+}
+
+export async function getEvidence(id: string): Promise<ProvenanceBundle> {
+  return (await request<{ evidence: ProvenanceBundle }>(`/api/analyses/${encodeURIComponent(id)}/evidence`)).evidence;
 }

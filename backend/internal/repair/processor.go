@@ -2,13 +2,16 @@ package repair
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
@@ -46,6 +49,7 @@ type Processor struct {
 	retriever         ContextRetriever
 	provider          llm.Provider
 	results           ResultSaver
+	recorder          provenance.Recorder
 	maxRepairAttempts int
 }
 
@@ -56,6 +60,17 @@ func NewProcessor(analyses AnalysisReader, recommendations RecommendationReader,
 	return &Processor{analyses: analyses, recommendations: recommendations,
 		generated: generated, validations: validations, retriever: retriever,
 		provider: provider, results: results, maxRepairAttempts: maxRepairAttempts}
+}
+
+func NewProcessorWithProvenance(analyses AnalysisReader, recommendations RecommendationReader,
+	generated GeneratedTestReader, validations ValidationReader, retriever ContextRetriever,
+	provider llm.Provider, results ResultSaver, maxRepairAttempts int,
+	recorder provenance.Recorder,
+) *Processor {
+	processor := NewProcessor(analyses, recommendations, generated, validations, retriever,
+		provider, results, maxRepairAttempts)
+	processor.recorder = recorder
+	return processor
 }
 
 func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error {
@@ -137,14 +152,15 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		if file.DeletedFile {
 			changedFilePath = file.OldPath
 		}
-		contexts, err := p.retriever.RetrieveContext(ctx, knowledge.RetrievalQuery{
+		retrievalQuery := knowledge.RetrievalQuery{
 			ProjectID: claimed.ProjectID,
 			Query: strings.Join([]string{symbol.SymbolName, symbol.ReceiverName, symbol.PackageName,
 				recommendationItem.Title, recommendationItem.Scenario,
 				"repair compiler assertion timeout interfaces signatures tests mocks"}, " "),
 			PackageName: symbol.PackageName, SymbolName: symbol.SymbolName,
 			FilePath: changedFilePath, PreferTests: true, Limit: 12,
-		})
+		}
+		contexts, err := p.retriever.RetrieveContext(ctx, retrievalQuery)
 		if err != nil {
 			return fmt.Errorf("retrieve repair context for generated test %d: %w", previous.ID, err)
 		}
@@ -160,26 +176,64 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		if err != nil {
 			return err
 		}
-		response, err := p.provider.Generate(ctx, llm.Request{
+		request := llm.Request{
 			Instructions: Instructions, Input: prompt, SchemaName: "repaired_go_test",
 			Schema: generation.ResponseSchema(), MaxOutputTokens: 6000,
-		})
+		}
+		started := time.Now()
+		response, err := p.provider.Generate(ctx, request)
+		latency := time.Since(started)
 		if err != nil {
-			return fmt.Errorf("repair generated test %d: %w", previous.ID, err)
+			processErr := fmt.Errorf("repair generated test %d: %w", previous.ID, err)
+			if recordErr := p.recordCall(ctx, analysisJob, repairAttempt, previous.ID,
+				retrievalQuery, contexts, request, response, provenance.StatusFailed,
+				processErr.Error(), latency); recordErr != nil {
+				return errors.Join(processErr, recordErr)
+			}
+			return processErr
 		}
 		if strings.TrimSpace(response.Model) == "" {
-			return fmt.Errorf("repair generated test %d: provider model is missing", previous.ID)
+			processErr := fmt.Errorf("repair generated test %d: provider model is missing", previous.ID)
+			if recordErr := p.recordCall(ctx, analysisJob, repairAttempt, previous.ID,
+				retrievalQuery, contexts, request, response, provenance.StatusInvalidOutput,
+				processErr.Error(), latency); recordErr != nil {
+				return errors.Join(processErr, recordErr)
+			}
+			return processErr
 		}
 		repaired, err := generation.ParseResponse(response.Output, changedFilePath, symbol.PackageName)
 		if err != nil {
-			return fmt.Errorf("repair generated test %d: %w", previous.ID, err)
+			processErr := fmt.Errorf("repair generated test %d: %w", previous.ID, err)
+			if recordErr := p.recordCall(ctx, analysisJob, repairAttempt, previous.ID,
+				retrievalQuery, contexts, request, response, provenance.StatusInvalidOutput,
+				processErr.Error(), latency); recordErr != nil {
+				return errors.Join(processErr, recordErr)
+			}
+			return processErr
 		}
 		if repaired.TargetFile != previous.FilePath {
-			return fmt.Errorf("repair generated test %d: target file must remain unchanged", previous.ID)
+			processErr := fmt.Errorf("repair generated test %d: target file must remain unchanged", previous.ID)
+			if recordErr := p.recordCall(ctx, analysisJob, repairAttempt, previous.ID,
+				retrievalQuery, contexts, request, response, provenance.StatusInvalidOutput,
+				processErr.Error(), latency); recordErr != nil {
+				return errors.Join(processErr, recordErr)
+			}
+			return processErr
 		}
 		repairedHash := generation.CodeHash(repaired.Code)
 		if repairedHash == previous.CodeHash {
-			return fmt.Errorf("repair generated test %d: provider returned unchanged code", previous.ID)
+			processErr := fmt.Errorf("repair generated test %d: provider returned unchanged code", previous.ID)
+			if recordErr := p.recordCall(ctx, analysisJob, repairAttempt, previous.ID,
+				retrievalQuery, contexts, request, response, provenance.StatusInvalidOutput,
+				processErr.Error(), latency); recordErr != nil {
+				return errors.Join(processErr, recordErr)
+			}
+			return processErr
+		}
+		if err := p.recordCall(ctx, analysisJob, repairAttempt, previous.ID,
+			retrievalQuery, contexts, request, response, provenance.StatusCompleted,
+			"", latency); err != nil {
+			return err
 		}
 		repairs = append(repairs, ProposedRepair{
 			SourceGeneratedTestID: previous.ID, ValidationRunID: failedValidation.ID,
@@ -193,6 +247,27 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		})
 	}
 	return p.results.SaveRepairs(ctx, claimed, repairs)
+}
+
+func (p *Processor) recordCall(ctx context.Context, analysisJob job.AnalysisJob,
+	attemptNumber int, generatedTestID int64, query knowledge.RetrievalQuery,
+	contexts []knowledge.KnowledgeChunk, request llm.Request, response llm.Response,
+	status, errorMessage string, latency time.Duration,
+) error {
+	if p.recorder == nil {
+		return nil
+	}
+	_, err := p.recorder.Record(ctx, provenance.RecordInput{
+		Analysis: analysisJob, Phase: provenance.PhaseRepair, SubjectID: generatedTestID,
+		AttemptNumber: attemptNumber, PromptVersion: PromptVersion,
+		RetrievalQuery: query, Contexts: contexts, Request: request, Response: response,
+		Status: status, ErrorMessage: errorMessage, Latency: latency,
+	})
+	if err != nil {
+		return fmt.Errorf("record repair provenance for generated test %d: %w",
+			generatedTestID, err)
+	}
+	return nil
 }
 
 func repairReason(run validation.Run) string {

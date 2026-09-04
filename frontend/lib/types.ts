@@ -228,3 +228,41 @@ export type EvaluationReport = {
 };
 
 export type StoredEvaluation = { run: EvaluationRun; report: EvaluationReport };
+
+export type ProvenanceContext = {
+  id: number;
+  query_text: string;
+  index_ref: string;
+  index_generation: number;
+  embedding_model: string;
+  item_count: number;
+};
+
+export type ProvenanceCall = {
+  id: number;
+  phase: "recommendation" | "generation" | "repair";
+  attempt_number: number;
+  source_sha: string;
+  target_sha: string;
+  provider: string;
+  model_name: string;
+  prompt_version: string;
+  prompt_hash: string;
+  configuration_hash: string;
+  provider_response_id?: string;
+  status: "COMPLETED" | "FAILED" | "INVALID_OUTPUT";
+  error_message?: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  latency_ms: number;
+  estimated_cost_usd: number;
+  created_at: string;
+  context?: ProvenanceContext;
+};
+
+export type ProvenanceBundle = {
+  schema_version: string;
+  analysis: Analysis;
+  llm_calls: ProvenanceCall[];
+};

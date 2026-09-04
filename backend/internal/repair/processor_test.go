@@ -10,6 +10,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
@@ -90,6 +91,17 @@ type saverStub struct {
 	calls   int
 }
 
+type provenanceRecorderStub struct {
+	inputs []provenance.RecordInput
+}
+
+func (s *provenanceRecorderStub) Record(_ context.Context,
+	input provenance.RecordInput,
+) (provenance.Call, error) {
+	s.inputs = append(s.inputs, input)
+	return provenance.Call{ID: int64(len(s.inputs))}, nil
+}
+
 func (s *saverStub) SaveRepairs(_ context.Context, claimed job.AnalysisJob,
 	repairs []ProposedRepair,
 ) error {
@@ -137,8 +149,9 @@ func TestProcessorRepairsFailedLatestVersionAndSavesAuditData(t *testing.T) {
 	provider := &providerStub{result: llm.Response{ID: "resp-repair-1",
 		Model: "fixture-model", Output: repairedOutput}}
 	saver := &saverStub{}
-	processor := NewProcessor(analyses, recommendations, generatedTests, validations,
-		retriever, provider, saver, 2)
+	recorder := &provenanceRecorderStub{}
+	processor := NewProcessorWithProvenance(analyses, recommendations, generatedTests, validations,
+		retriever, provider, saver, 2, recorder)
 	if err := processor.Process(context.Background(), claimed); err != nil {
 		t.Fatal(err)
 	}
@@ -158,6 +171,12 @@ func TestProcessorRepairsFailedLatestVersionAndSavesAuditData(t *testing.T) {
 		repair.Generated.CodeHash == generatedTests.items[0].CodeHash ||
 		!strings.Contains(repair.Reason, "undefined: missingRepository") {
 		t.Fatalf("repair=%#v", repair)
+	}
+	if len(recorder.inputs) != 1 || recorder.inputs[0].Phase != provenance.PhaseRepair ||
+		recorder.inputs[0].SubjectID != 61 || recorder.inputs[0].AttemptNumber != 1 ||
+		recorder.inputs[0].Status != provenance.StatusCompleted ||
+		len(recorder.inputs[0].Contexts) != 1 {
+		t.Fatalf("provenance=%#v", recorder.inputs)
 	}
 }
 

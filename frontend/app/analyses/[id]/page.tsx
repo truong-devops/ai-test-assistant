@@ -9,6 +9,7 @@ import {
   ApiError,
   getAnalysis,
   getContext,
+  getEvidence,
   getGeneratedTests,
   getRecommendations,
   getRepairs,
@@ -17,7 +18,7 @@ import {
   optional,
 } from "@/lib/api";
 import { formatDate, formatDuration, latestGeneratedTests, shortSHA } from "@/lib/presentation";
-import type { GeneratedTest, Recommendation, RepairAttempt, Review, ValidationRun } from "@/lib/types";
+import type { GeneratedTest, ProvenanceCall, Recommendation, RepairAttempt, Review, ValidationRun } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,31 @@ function RepairEvidence({ attempts }: { attempts: RepairAttempt[] }) {
       </div>
     </details>
   </li>)}</ol>;
+}
+
+function ProvenanceEvidence({ calls, analysisID }: { calls: ProvenanceCall[]; analysisID: number }) {
+  const tokens = calls.reduce((total, call) => total + call.total_tokens, 0);
+  const cost = calls.reduce((total, call) => total + call.estimated_cost_usd, 0);
+  return <section className="panel side-section">
+    <p className="eyebrow">AI provenance</p>
+    <h2>Reproducible evidence</h2>
+    <p className="page-description">Immutable prompt, model, usage and retrieved-context snapshots recorded when each AI call ran.</p>
+    <div className="summary-grid" style={{ gridTemplateColumns: "1fr 1fr", margin: "14px 0" }}>
+      <Stat label="AI calls" value={calls.length} detail={`${tokens.toLocaleString()} tokens`} />
+      <Stat label="Estimated cost" value={`$${cost.toFixed(4)}`} detail="Configured token rates" />
+    </div>
+    {calls.length ? <div className="evidence-list">{calls.map((call) => <details className="evidence-card" key={call.id}>
+      <summary><div><strong>{call.phase} · {call.model_name || "model unavailable"}</strong><span>{call.prompt_version} · {formatDuration(call.latency_ms)} · {call.total_tokens} tokens</span></div><small>{call.status}</small></summary>
+      <div className="evidence-content">
+        <p><strong>Prompt hash:</strong> <span className="mono">{call.prompt_hash}</span></p>
+        <p><strong>Configuration:</strong> <span className="mono">{call.configuration_hash}</span></p>
+        <p><strong>Source:</strong> <span className="mono">{shortSHA(call.source_sha)}</span> · <strong>Target:</strong> <span className="mono">{shortSHA(call.target_sha)}</span></p>
+        <p><strong>Historical context:</strong> {call.context?.item_count ?? 0} chunks · {call.context?.index_ref || "unversioned"} generation {call.context?.index_generation ?? 0}</p>
+        {call.error_message ? <p className="form-error">{call.error_message}</p> : null}
+      </div>
+    </details>)}</div> : <p className="table-subtitle" style={{ marginTop: 12 }}>No AI calls have been recorded for this analysis yet.</p>}
+    <a className="button secondary" style={{ marginTop: 16 }} href={`/api/backend/api/analyses/${analysisID}/export`}>Download evidence JSON</a>
+  </section>;
 }
 
 function CandidateCard({
@@ -132,13 +158,14 @@ export default async function AnalysisReviewPage({ params }: { params: Promise<{
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const [recommendations, generatedTests, validations, repairs, reviews, context] = await Promise.all([
+  const [recommendations, generatedTests, validations, repairs, reviews, context, evidence] = await Promise.all([
     optional<Recommendation[]>(() => getRecommendations(id), []),
     optional<GeneratedTest[]>(() => getGeneratedTests(id), []),
     optional<ValidationRun[]>(() => getValidations(id), []),
     optional<RepairAttempt[]>(() => getRepairs(id), []),
     optional<Review[]>(() => getReviews(id), []),
     optional(() => getContext(id), []),
+    optional(() => getEvidence(id), null),
   ]);
   const { analysis, changed_files: changedFiles, changed_symbols: changedSymbols } = detail;
   const latestCandidates = latestGeneratedTests(generatedTests);
@@ -178,6 +205,7 @@ export default async function AnalysisReviewPage({ params }: { params: Promise<{
           <p className="eyebrow">Sandbox summary</p><h2>Validation signal</h2>
           <div className="summary-grid" style={{ gridTemplateColumns: "1fr 1fr", margin: "14px 0 0" }}><Stat label="Passes" value={passed} detail="Stored sandbox runs" /><Stat label="Repairs" value={repairs.length} detail="Bounded attempts" /></div>
         </section>
+        <ProvenanceEvidence calls={evidence?.llm_calls ?? []} analysisID={analysis.id} />
         <section className="panel side-section">
           <p className="eyebrow">Changed symbols</p><h2>Review scope</h2>
           {changedSymbols.length ? <div className="symbol-list">{changedSymbols.map((symbol) => <div className="symbol-row" key={symbol.id}><div><strong>{symbol.receiver_name ? `${symbol.receiver_name}.` : ""}{symbol.symbol_name}</strong><p>{symbol.change_summary}</p></div><span>{symbol.package_name}:{symbol.start_line}–{symbol.end_line}</span></div>)}</div> : <p className="table-subtitle">No Go symbols were mapped from this change.</p>}

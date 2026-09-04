@@ -39,6 +39,8 @@ func TestLoad(t *testing.T) {
 	t.Setenv("LLM_MODEL", "fixture-model")
 	t.Setenv("LLM_REQUEST_TIMEOUT", "45s")
 	t.Setenv("LLM_MAX_OUTPUT_TOKENS", "1500")
+	t.Setenv("LLM_INPUT_COST_PER_MTOK_USD", "2.5")
+	t.Setenv("LLM_OUTPUT_COST_PER_MTOK_USD", "10")
 	t.Setenv("SANDBOX_IMAGE", "sandbox:test")
 	t.Setenv("SANDBOX_TIMEOUT_SECONDS", "45")
 	t.Setenv("SANDBOX_MEMORY_MB", "768")
@@ -72,7 +74,8 @@ func TestLoad(t *testing.T) {
 	}
 	if cfg.LLM.Provider != "openai" || cfg.LLM.BaseURL != "https://llm.example.com/v1" ||
 		cfg.LLM.APIKey != "llm-key" || cfg.LLM.Model != "fixture-model" ||
-		cfg.LLM.RequestTimeout != 45*time.Second || cfg.LLM.MaxOutputTokens != 1500 {
+		cfg.LLM.RequestTimeout != 45*time.Second || cfg.LLM.MaxOutputTokens != 1500 ||
+		cfg.LLM.InputCostPerMillionUSD != 2.5 || cfg.LLM.OutputCostPerMillionUSD != 10 {
 		t.Fatalf("Load() LLM config = %+v", cfg.LLM)
 	}
 	if cfg.Sandbox.Image != "sandbox:test" || cfg.Sandbox.Timeout != 45*time.Second ||
@@ -154,6 +157,22 @@ func TestLoadRejectsInvalidLLMConfiguration(t *testing.T) {
 	t.Setenv("LLM_MAX_OUTPUT_TOKENS", "99")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want LLM validation error")
+	}
+}
+
+func TestLoadRejectsInvalidLLMCostConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("LLM_INPUT_COST_PER_MTOK_USD", "-1")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error=nil, want LLM cost validation error")
+	}
+}
+
+func TestLoadRejectsNonFiniteLLMCostConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("LLM_INPUT_COST_PER_MTOK_USD", "NaN")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error=nil, want non-finite LLM cost validation error")
 	}
 }
 

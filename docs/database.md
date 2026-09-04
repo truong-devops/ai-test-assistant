@@ -1,6 +1,23 @@
 # Database
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
+
+## Phase 12 AI provenance
+
+`llm_calls` stores every actual recommendation, generation, and repair provider
+call, including failed calls and invalid structured output. A phase check ensures
+that each row references one historical subject ID. Ownership is validated at
+insert time, while the IDs intentionally remain snapshot references so retry or
+result replacement cannot cascade-delete evidence.
+
+`context_snapshots` stores the retrieval query, configuration, index ref,
+generation, and embedding model. `context_snapshot_items` denormalizes the
+retrieved chunk content and content hash. It does not reference live
+`knowledge_chunks`, because re-indexing is allowed to replace those rows.
+
+All three tables reject `UPDATE` through a database trigger. They can only be
+appended during normal operation. Parent deletion remains available for a future
+explicit retention policy.
 Phase 1 defines `projects`, `gitlab_connections`, and `analysis_jobs`. Phase 2
 adds auditable webhook metadata to analysis jobs plus normalized `changed_files`
 with raw unified diff text, size flags, and addition/deletion counts. Phase 3

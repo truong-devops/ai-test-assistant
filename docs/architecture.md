@@ -67,6 +67,11 @@ evaluation-v1 dataset -> strict paired-metric validation -> SHA-256 identity
                       -> JSON + CSV + Markdown + SVG artifacts
                       -> optional immutable PostgreSQL run
                       -> read-only API + Next.js evaluation ledger
+
+every LLM call -> immutable llm_calls record
+               -> exact prompt/schema/response + usage/latency/config hashes
+               -> immutable context snapshot + denormalized chunk contents
+               -> lightweight evidence UI / complete JSON audit export
 ```
 
 Worker claims use a bounded lease. Temporary SCM/preparation failures are
@@ -135,3 +140,6 @@ read-only evaluation UI after import.
   acceptance keep separate numerators and denominators.
 - The sample project is isolated in its own Go module so it can later be
   checked out and analyzed as a target repository.
+- Phase 12 snapshots context content instead of retaining foreign keys to live
+  knowledge chunks. Index refresh can replace live chunks without changing the
+  historical prompt evidence associated with an LLM call.

@@ -4,7 +4,7 @@ AI Test Assistant is a graduation engineering project that turns GitLab Merge
 Request and GitHub Pull Request changes into project-aware Go test recommendations and generated tests.
 The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
 
-This repository implements Phases 0-11: the backend foundation, GitLab capture
+This repository implements Phases 0-12: the backend foundation, GitLab capture
 pipeline, deterministic Go changed-symbol analyzer, project-isolated
 knowledge/RAG index, structured AI test recommendations and generated Go test
 candidates, isolated Docker validation, a bounded repair loop, and the human
@@ -85,6 +85,8 @@ application-level user authentication/RBAC remains a tracked backlog item.
 - `GET /api/analyses/{id}/repairs`
 - `GET /api/analyses/{id}/reviews`
 - `GET /api/analyses/{id}/context`
+- `GET /api/analyses/{id}/evidence`
+- `GET /api/analyses/{id}/export`
 - `GET /api/evaluations`
 - `GET /api/evaluations/{id}`
 - `POST /api/generated-tests/{id}/accept`
@@ -144,6 +146,14 @@ the final analysis status `REJECTED` after every current candidate has been
 reviewed. The context panel deliberately identifies itself as the current
 project-index retrieval; it is re-evaluated with the analysis project filter
 and never mixes chunks from another project.
+
+Phase 12 records an immutable provenance bundle for every recommendation,
+generation, and repair LLM call, including failures and invalid structured
+output. The review UI reads lightweight evidence metadata; the export endpoint
+returns the exact prompt, response, safe configuration hashes, token usage,
+latency, source/target SHA, index generation, and denormalized context snapshot.
+Set the optional per-million-token cost variables to include an estimated USD
+cost without storing provider credentials in evidence.
 
 Phase 10 compares context impact, repair impact, and human effort with paired
 scenario observations. Generate portable artifacts with `make evaluate`, or

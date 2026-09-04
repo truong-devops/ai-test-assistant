@@ -257,9 +257,12 @@ func (r *Repository) Retrieve(ctx context.Context, query RetrievalQuery, embeddi
 	}
 	const statement = `
 		WITH scored AS (
-			SELECT id, project_id, chunk_key, file_path, package_name, symbol_name,
-				chunk_type, content, content_hash, start_line, end_line, embedding_model,
-				metadata, created_at, updated_at,
+			SELECT knowledge_chunks.id, knowledge_chunks.project_id, chunk_key, file_path,
+				package_name, symbol_name, chunk_type, content, content_hash, start_line,
+				end_line, knowledge_chunks.embedding_model,
+				COALESCE(indexes.ref, '') AS index_ref,
+				COALESCE(indexes.generation, 0) AS index_generation,
+				metadata, created_at, knowledge_chunks.updated_at,
 				CASE WHEN $3<>'' AND lower(symbol_name)=lower($3) THEN 5.0 ELSE 0.0 END +
 				CASE WHEN $4<>'' AND lower(package_name)=lower($4) THEN 3.0 ELSE 0.0 END +
 				CASE WHEN $5<>'' AND file_path=$5 THEN 1.0 ELSE 0.0 END +
@@ -271,11 +274,13 @@ func (r *Repository) Retrieve(ctx context.Context, query RetrievalQuery, embeddi
 					ELSE GREATEST(0.0, 1.0 - (embedding <=> $8::vector)) * 2.0
 				END AS semantic_score
 			FROM knowledge_chunks
-			WHERE project_id=$1
+			LEFT JOIN project_indexes AS indexes ON indexes.project_id=knowledge_chunks.project_id
+			WHERE knowledge_chunks.project_id=$1
 		)
 		SELECT id, project_id, chunk_key, file_path, package_name, symbol_name,
 			chunk_type, content, content_hash, start_line, end_line, embedding_model,
-			metadata, structural_score + lexical_score + semantic_score AS score,
+			index_ref, index_generation, metadata,
+			structural_score + lexical_score + semantic_score AS score,
 			created_at, updated_at
 		FROM scored
 		ORDER BY score DESC, file_path, start_line, id
@@ -292,7 +297,8 @@ func (r *Repository) Retrieve(ctx context.Context, query RetrievalQuery, embeddi
 		if err := rows.Scan(&item.ID, &item.ProjectID, &item.ChunkKey, &item.FilePath,
 			&item.PackageName, &item.SymbolName, &item.ChunkType, &item.Content,
 			&item.ContentHash, &item.StartLine, &item.EndLine, &item.EmbeddingModel,
-			&item.Metadata, &item.Score, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			&item.IndexRef, &item.IndexGeneration, &item.Metadata, &item.Score,
+			&item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan retrieved knowledge chunk: %w", err)
 		}
 		results = append(results, item)

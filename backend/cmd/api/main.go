@@ -20,6 +20,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/logging"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/review"
@@ -87,6 +88,12 @@ func main() {
 	reviewService := review.NewService(jobRepository, reviewRepository)
 	contextService := review.NewContextService(jobRepository, knowledge.NewRetriever(knowledgeRepository, embedder))
 	evaluationService := evaluation.NewService(evaluation.NewRepository(database.Pool()))
+	provenanceRepository := provenance.NewRepository(database.Pool(), provenance.RuntimeConfig{
+		Provider: cfg.LLM.Provider, Model: cfg.LLM.Model,
+		InputCostPerMillionUSD:  cfg.LLM.InputCostPerMillionUSD,
+		OutputCostPerMillionUSD: cfg.LLM.OutputCostPerMillionUSD,
+	})
+	provenanceService := provenance.NewService(jobRepository, provenanceRepository)
 	webhookService := gitlab.NewWebhookService(projectRepository, jobRepository)
 	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
 	gitHubWebhookService := github.NewWebhookService(projectRepository, jobRepository)
@@ -96,9 +103,10 @@ func main() {
 	webhookHandler.Handle("POST /api/webhooks/github", gitHubWebhookHandler)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewRouterWithPhaseElevenServices(logger, database, projectService, analysisService,
+		Handler: httpapi.NewRouterWithPhaseTwelveServices(logger, database, projectService, analysisService,
 			webhookHandler, knowledgeService, recommendationService, generationService,
 			validationService, repairService, reviewService, contextService, evaluationService,
+			provenanceService,
 			httpapi.RouterOptions{RateLimitPerSecond: cfg.HTTP.RateLimitPerSecond,
 				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients}),
 		ReadHeaderTimeout: 5 * time.Second,

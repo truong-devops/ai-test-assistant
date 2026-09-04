@@ -2,6 +2,22 @@
 
 All responses use JSON. Errors have the shape `{"error":"message"}`.
 
+## Phase 12 evidence
+
+### `GET /api/analyses/{id}/evidence`
+
+Returns lightweight AI-call metadata for the review UI: phase, status, model,
+prompt/configuration hashes, tokens, latency, estimated cost, and historical
+index/chunk counts. Full prompt/source payloads are intentionally omitted.
+
+### `GET /api/analyses/{id}/export`
+
+Downloads an `ai-provenance-v1` JSON bundle containing the analysis plus exact
+instructions, prompts, schemas, provider responses, and denormalized context
+snapshots. The response uses an attachment filename. Until Phase 18 adds
+application authentication/RBAC, this endpoint must remain behind the same
+trusted private boundary as the rest of the MVP.
+
 ## Evaluations
 
 - `GET /api/evaluations` returns `{"evaluation_runs": [...]}` ordered newest first.

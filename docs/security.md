@@ -52,3 +52,13 @@ The limiter keys on the direct peer address and does not trust
 forwarded headers, enforce client-level limits, terminate TLS, and protect
 state-changing routes against CSRF. These controls do not replace the open
 authentication/RBAC backlog.
+
+## Phase 12 provenance findings
+
+LLM evidence hashes only safe runtime configuration and never includes provider
+API keys, SCM tokens, webhook secrets, or database credentials. Historical
+prompts, responses, and denormalized source chunks are intentionally retained
+for thesis reproducibility and therefore remain sensitive project data. The
+full `/api/analyses/{id}/export` endpoint must remain behind the authenticated
+private reverse proxy until Phase 18 implements application-level RBAC. A
+retention/archive policy is still required before long-term production use.

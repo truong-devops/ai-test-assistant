@@ -3,15 +3,34 @@
 **Project type:** Graduation thesis / engineering project  
 **Primary goal:** Use AI + project-aware RAG to recommend, generate, validate, repair, and review automation tests when source code changes.  
 **Primary language for MVP:** Go  
-**Primary Git provider:** GitLab  
-**Document version:** 1.0  
+**Primary Git providers:** GitLab and GitHub
+**Document version:** 1.1 (Phase 12 provenance update)
 **Intended readers:** Project team, mentor, Codex / coding agents, reviewers
 
 ---
 
 ## 1. Executive Summary
 
-The system is an AI-assisted automation testing platform that integrates with GitLab. When a Merge Request changes source code, the platform detects the changed files and symbols, retrieves project-specific context through RAG, asks an LLM to recommend missing test cases and generate Go tests, validates the generated tests in an isolated Docker sandbox, optionally repairs failed generated tests for a limited number of attempts, and finally presents the result to a Developer or Tester for human review.
+The system is an AI-assisted automation testing platform that integrates with
+GitLab and GitHub. When a Merge Request or Pull Request changes source code,
+the platform detects changed files and symbols, retrieves project-specific
+context through RAG, asks an LLM to recommend and generate Go tests, validates
+the generated tests in an isolated Docker sandbox, optionally repairs failures,
+and presents immutable evidence to a Developer or Tester for human review.
+
+Phase 12 adds reproducibility as a first-class requirement: every LLM call is
+linked to its analysis subject and stores the exact prompt, structured schema,
+response, model, token usage, latency, safe configuration hash, source/target
+SHA, project-index generation, and a denormalized snapshot of retrieved chunks.
+
+### 1.1 Research questions
+
+- **RQ1:** Does project- and change-aware RAG improve generated-test quality
+  compared with diff-only prompting?
+- **RQ2:** Does execution-feedback repair improve final success compared with
+  one-shot generation?
+- **RQ3:** Does AI-assisted generation and review reduce human effort without
+  reducing mutation score or human acceptance?
 
 The core research and engineering pipeline is:
 
@@ -36,9 +55,9 @@ The system is an assistant, not an autonomous replacement for Developers, Tester
 
 The first stable version MUST support:
 
-- GitLab project connection.
-- GitLab Merge Request webhook handling.
-- Fetching MR metadata, commits, and diffs through GitLab API.
+- GitLab and GitHub project connection.
+- GitLab Merge Request and GitHub Pull Request webhook handling.
+- Fetching change metadata, commits, and diffs through the provider API.
 - Go source analysis.
 - Detection of changed files and changed Go symbols.
 - Indexing project source code, tests, and selected documentation.
@@ -56,7 +75,7 @@ The first stable version MUST support:
 Do NOT include the following until the MVP is complete:
 
 - Multi-language source analysis.
-- GitHub / Bitbucket integration.
+- Bitbucket integration.
 - Automatic merge of generated code.
 - Release risk scoring.
 - Log Root Cause Analysis.
@@ -88,10 +107,10 @@ The project being analyzed may itself be a microservices project. The analysis p
 The project is considered functionally complete when the following end-to-end demo works:
 
 ```text
-1. Developer creates or updates a Merge Request in GitLab.
-2. GitLab sends a webhook to AI Test Assistant.
+1. Developer creates or updates a GitLab Merge Request or GitHub Pull Request.
+2. The source provider sends a webhook to AI Test Assistant.
 3. The system creates an analysis job.
-4. The system fetches the MR diff through GitLab API.
+4. The system fetches the MR/PR diff through the selected provider API.
 5. The Go analyzer detects changed functions/methods/types.
 6. RAG retrieves related implementation, interfaces, mocks, tests, and docs.
 7. AI recommends missing test cases.
@@ -121,7 +140,7 @@ Minimum quality metrics to report:
 
 ```mermaid
 flowchart TD
-    GL[GitLab Repository / Merge Request]
+    GL[GitLab MR / GitHub PR]
     WH[Webhook Receiver]
     API[Go Backend API]
     JOB[Job Manager]
@@ -161,7 +180,8 @@ flowchart TD
 
 | Module | Responsibility |
 |---|---|
-| GitLab Integration | Receive webhook, call API, fetch MR/diff/repository data |
+| SCM Integration | Receive GitLab/GitHub webhooks and fetch MR/PR/repository data |
+| AI Provenance | Persist immutable prompt, context, response, usage, latency and configuration evidence |
 | Change Analyzer | Detect changed files and Go symbols |
 | Project Indexer | Parse project files into retrievable knowledge chunks |
 | RAG Retriever | Retrieve project-specific context for a code change |
@@ -180,7 +200,7 @@ flowchart TD
 ### 5.1 Trigger Flow
 
 ```text
-GitLab MR event
+GitLab MR / GitHub PR event
   -> POST /api/webhooks/gitlab
   -> verify webhook secret
   -> extract project_id + merge_request_iid
@@ -406,7 +426,7 @@ ai-test-assistant/
 - Add unit tests near the package being implemented.
 - Update migrations for persistent model changes.
 - Update API docs when endpoints change.
-- Never commit `.env`, tokens, GitLab secrets, or LLM keys.
+- Never commit `.env`, SCM tokens/webhook secrets, or LLM keys.
 
 ---
 
@@ -417,7 +437,7 @@ ai-test-assistant/
 ```text
 User
 Project
-GitLabConnection
+SCMProjectBinding
 AnalysisJob
 ChangeSet
 ChangedFile
@@ -436,7 +456,7 @@ Review
 
 ```text
 Project
-  |-- GitLabConnection
+  |-- SCMProjectBinding
   |-- KnowledgeDocument
   |     `-- KnowledgeChunk
   |
@@ -460,7 +480,8 @@ Project
 ```text
 id
 name
-gitlab_project_id
+provider
+provider_project_id
 repository_url
 default_branch
 language
@@ -469,17 +490,16 @@ created_at
 updated_at
 ```
 
-#### gitlab_connections
+#### SCM credentials
 
 ```text
-id
-project_id
-base_url
-token_encrypted
-webhook_secret_hash
-created_at
-updated_at
+GITLAB_BASE_URL / GITLAB_TOKEN / GITLAB_WEBHOOK_SECRET
+GITHUB_API_BASE_URL / GITHUB_TOKEN / GITHUB_WEBHOOK_SECRET
 ```
+
+Phase 12 keeps provider credentials in environment/file-backed secrets rather
+than project rows. `projects.provider` and `projects.provider_project_id` select
+the provider-specific client through the shared `scm.Client` boundary.
 
 #### analysis_jobs
 
@@ -660,17 +680,18 @@ POST   /api/projects/:id/index
 GET    /api/projects/:id/index/status
 ```
 
-### 9.2 GitLab Webhook
+### 9.2 SCM Webhooks
 
 ```text
 POST /api/webhooks/gitlab
+POST /api/webhooks/github
 ```
 
 Responsibilities:
 
 - Verify shared secret.
-- Validate supported GitLab event.
-- Extract project and MR identifiers.
+- Validate the supported GitLab MR or GitHub PR event.
+- Extract project and MR/PR identifiers.
 - De-duplicate repeated events.
 - Create/enqueue analysis job.
 - Return quickly.
@@ -1074,7 +1095,7 @@ Do not remove meaningful assertions just to make the test pass.
 
 Display:
 
-- Connected GitLab projects.
+- Connected GitLab and GitHub projects.
 - Index status.
 - Last analysis status.
 
@@ -1082,7 +1103,7 @@ Display:
 
 Display/configure:
 
-- GitLab connection.
+- SCM provider and repository connection.
 - Branch.
 - Language.
 - Index statistics.
@@ -1092,7 +1113,7 @@ Display/configure:
 
 Display:
 
-- Merge Request.
+- Merge Request or Pull Request.
 - Commit SHA.
 - Status.
 - Created time.
@@ -1170,7 +1191,7 @@ LIMIT $3;
 
 Never perform cross-project retrieval unless explicitly designed and authorized later.
 
-### 16.4 GitLab Token Handling
+### 16.4 SCM Token Handling
 
 - Store token encrypted at rest where practical.
 - Never return tokens through API responses.
@@ -1287,7 +1308,7 @@ Build the minimum backend platform for later phases.
 - Add migrations.
 - Create initial entities:
   - Project
-  - GitLabConnection
+  - SCMProjectBinding
   - AnalysisJob
 - Add health/readiness endpoints.
 - Add repository/service separation.
@@ -1326,20 +1347,21 @@ starts backend + PostgreSQL and allows project CRUD through API.
 
 ---
 
-## Phase 2 - GitLab Integration
+## Phase 2 - GitLab/GitHub SCM Integration
 
 ### Objective
 
-Receive Merge Request events and fetch authoritative change data from GitLab.
+Receive GitLab Merge Request and GitHub Pull Request events and fetch
+authoritative change data from the selected provider.
 
 ### Tasks
 
-- Implement GitLab API client abstraction.
-- Implement token configuration.
-- Implement webhook secret verification.
-- Handle MR create/update events.
-- Fetch MR metadata.
-- Fetch MR diff.
+- Implement a shared SCM client abstraction with GitLab and GitHub adapters.
+- Implement provider-specific token configuration.
+- Implement GitLab token and GitHub HMAC webhook verification.
+- Handle MR/PR create and update events.
+- Fetch MR/PR metadata.
+- Fetch MR/PR diff.
 - Persist analysis job.
 - De-duplicate duplicate webhook deliveries.
 - Add local/manual trigger endpoint for development if useful.
@@ -1347,19 +1369,21 @@ Receive Merge Request events and fetch authoritative change data from GitLab.
 ### Core Interfaces
 
 ```go
-type GitLabClient interface {
-    GetMergeRequest(ctx context.Context, projectID int64, iid int64) (MergeRequest, error)
-    GetMergeRequestDiff(ctx context.Context, projectID int64, iid int64) ([]FileDiff, error)
+type Client interface {
+    GetMergeRequest(ctx context.Context, repository Repository, number int64) (MergeRequest, error)
+    GetMergeRequestDiff(ctx context.Context, repository Repository, number int64) ([]FileDiff, error)
+    GetFileRaw(ctx context.Context, repository Repository, path, ref string) ([]byte, error)
+    ListRepositoryTree(ctx context.Context, repository Repository, ref string) ([]RepositoryEntry, error)
 }
 ```
 
 ### DoD
 
-A real GitLab MR event produces an `analysis_job` containing:
+A real GitLab MR or GitHub PR event produces an `analysis_job` containing:
 
 ```text
 project
-MR IID
+MR/PR number
 source SHA
 target SHA
 changed file list
@@ -1371,7 +1395,7 @@ raw/normalized diff metadata
 - Webhook signature/secret test.
 - Unsupported event test.
 - Duplicate event test.
-- GitLab client mocked unit test.
+- GitLab/GitHub client mocked unit tests.
 
 ### Do Not Do Yet
 
@@ -1787,23 +1811,35 @@ A clean machine can deploy the platform using documented steps and the complete 
 
 ---
 
-## Phase 12 - Optional Extensions
+## Phase 12 - Thesis Foundation and AI Provenance
 
-Only start this phase if Phases 0-11 are stable.
+### Objective
 
-Possible extensions:
+Make every AI result auditable and reproducible before adding more advanced
+analysis or quality experiments.
 
-- Kubernetes deployment.
-- GitLab comment/bot feedback on MR.
-- Create a branch/MR containing accepted generated tests.
-- Multi-language support.
-- Multiple AI providers.
-- More advanced dependency graph retrieval.
-- Mutation testing.
-- Release risk scoring.
-- Log analysis / Root Cause Analysis.
+### Implemented scope
 
-These extensions MUST NOT reduce the quality of the core thesis experiment.
+- Immutable `llm_calls` records for recommendation, generation, and repair.
+- Immutable context snapshots with denormalized chunk content and hashes.
+- Source/target SHA and project-index generation provenance.
+- Prompt and safe runtime-configuration hashes.
+- Provider/model/response identity, token usage, latency, and configurable cost.
+- Evidence summary and downloadable full JSON evidence bundle.
+- Project/analysis ownership validation and isolation tests.
+
+### DoD
+
+- Re-indexing a project cannot change historical evidence.
+- Every actual LLM call, including provider and invalid-output failures, has a
+  trace record.
+- Evidence never stores provider API keys or SCM secrets.
+- Recommendation, generation, and repair processors use the recorder in the
+  production worker.
+
+The remaining graduation roadmap continues with Phases 13-19 in
+`docs/GRADUATION_PROJECT_PLAN.md`. Kubernetes, multi-language support, automatic
+merge, and additional providers remain outside the thesis-critical path.
 
 ---
 
@@ -1813,7 +1849,7 @@ These extensions MUST NOT reduce the quality of the core thesis experiment.
 |---|---|---|
 | 1 | Phase 0 | Scope, repo skeleton, sample Go project |
 | 2 | Phase 1 | Go API + PostgreSQL + migrations |
-| 3 | Phase 2 | GitLab MR webhook + diff |
+| 3 | Phase 2 | GitLab MR / GitHub PR webhook + diff |
 | 4 | Phase 3 | Go changed-symbol analyzer |
 | 5 | Phase 4A | Knowledge chunking + indexing |
 | 6 | Phase 4B | Retrieval + RAG evaluation fixture |
@@ -1830,12 +1866,12 @@ If the available duration is longer, spend extra time on evaluation quality, tes
 
 ## 20. Milestone Gates
 
-### Milestone M1 - GitLab Change Captured
+### Milestone M1 - SCM Change Captured
 
 Must show:
 
 ```text
-MR -> webhook -> analysis_job -> changed files
+MR/PR -> provider webhook -> analysis_job -> changed files
 ```
 
 ### Milestone M2 - Semantic Change Understood
@@ -1946,6 +1982,10 @@ GITLAB_BASE_URL=https://gitlab.com
 GITLAB_TOKEN=...
 GITLAB_WEBHOOK_SECRET=...
 
+GITHUB_API_BASE_URL=https://api.github.com
+GITHUB_TOKEN=...
+GITHUB_WEBHOOK_SECRET=...
+
 LLM_PROVIDER=...
 LLM_API_KEY=...
 LLM_MODEL=...
@@ -2042,12 +2082,12 @@ Can the system reduce the human effort required to add tests for selected source
 
 ## 26. Final Thesis Demo Script
 
-Use one prepared Merge Request with a clear business-rule change.
+Use one prepared Merge Request or Pull Request with a clear business-rule change.
 
 ```text
 1. Open sample service before change.
 2. Show existing tests.
-3. Open GitLab Merge Request.
+3. Open a GitLab Merge Request or GitHub Pull Request.
 4. Push/update the change.
 5. Show webhook received.
 6. Show changed symbol detected.
@@ -2070,13 +2110,13 @@ The demo SHOULD emphasize traceability rather than only the final generated code
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Scope becomes too large | High | Freeze Go + GitLab + unit-test MVP |
+| Scope becomes too large | High | Freeze Go + GitLab/GitHub + unit-test MVP |
 | LLM output is unstable | High | Structured prompts, schema validation, bounded retries |
 | RAG retrieves irrelevant context | High | Hybrid structural + vector retrieval and evaluation fixtures |
 | Generated tests pass but are meaningless | High | Coverage + human acceptance metrics; do not equate PASS with quality |
 | Generated code is unsafe | High | Isolated Docker sandbox with strict limits |
 | Secrets leak to LLM | High | File exclusion + secret masking + context minimization |
-| GitLab webhook duplicates | Medium | Event de-duplication/idempotent job creation |
+| SCM webhook duplicates | Medium | Provider delivery de-duplication/idempotent job creation |
 | Project A context leaks to Project B | High | Mandatory project_id filter and isolation tests |
 | Repair loop never terminates | High | MAX_REPAIR_ATTEMPTS hard limit |
 | Too much time spent on UI | Medium | Prioritize review traceability over visual polish |
@@ -2088,8 +2128,8 @@ The demo SHOULD emphasize traceability rather than only the final generated code
 
 The thesis MVP is DONE when all statements below are true:
 
-- A GitLab Merge Request can trigger an analysis.
-- The system can fetch and persist MR change information.
+- A GitLab Merge Request or GitHub Pull Request can trigger an analysis.
+- The system can fetch and persist MR/PR change information.
 - The Go analyzer can identify changed functions/methods.
 - Project source/tests are indexed into project-isolated knowledge chunks.
 - RAG can retrieve useful related project context.
@@ -2099,6 +2139,7 @@ The thesis MVP is DONE when all statements below are true:
 - Validation logs and status are stored.
 - Failed generated tests can enter a bounded repair loop.
 - All attempts are traceable.
+- Every LLM call has immutable prompt/context/model/usage provenance.
 - A human can Accept or Reject the result.
 - Evaluation data can compare at least Diff-only vs RAG and Generate-only vs Generate+Repair.
 - The system can be deployed reproducibly with documented steps.
@@ -2129,5 +2170,4 @@ This keeps development incremental and makes later AI-assisted coding much easie
 
 The product should be treated as a controlled engineering pipeline, not a generic AI chatbot:
 
-**GitLab Change -> Deterministic Change Analyzer -> Project-Aware RAG -> AI Recommendation -> AI Test Generation -> Isolated Validation -> Bounded Repair -> Human Review**
-
+**GitLab/GitHub Change -> Deterministic Change Analyzer -> Project-Aware RAG -> AI Recommendation -> AI Test Generation -> Isolated Validation -> Bounded Repair -> Immutable Evidence -> Human Review**

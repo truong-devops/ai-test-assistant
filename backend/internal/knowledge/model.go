@@ -45,22 +45,24 @@ type DraftChunk struct {
 }
 
 type KnowledgeChunk struct {
-	ID             int64           `json:"id"`
-	ProjectID      int64           `json:"project_id"`
-	ChunkKey       string          `json:"chunk_key"`
-	FilePath       string          `json:"file_path"`
-	PackageName    string          `json:"package_name"`
-	SymbolName     string          `json:"symbol_name"`
-	ChunkType      string          `json:"chunk_type"`
-	Content        string          `json:"content"`
-	ContentHash    string          `json:"content_hash"`
-	StartLine      int             `json:"start_line"`
-	EndLine        int             `json:"end_line"`
-	EmbeddingModel string          `json:"embedding_model"`
-	Metadata       json.RawMessage `json:"metadata"`
-	Score          float64         `json:"score,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	ID              int64           `json:"id"`
+	ProjectID       int64           `json:"project_id"`
+	ChunkKey        string          `json:"chunk_key"`
+	FilePath        string          `json:"file_path"`
+	PackageName     string          `json:"package_name"`
+	SymbolName      string          `json:"symbol_name"`
+	ChunkType       string          `json:"chunk_type"`
+	Content         string          `json:"content"`
+	ContentHash     string          `json:"content_hash"`
+	StartLine       int             `json:"start_line"`
+	EndLine         int             `json:"end_line"`
+	EmbeddingModel  string          `json:"embedding_model"`
+	IndexRef        string          `json:"index_ref,omitempty"`
+	IndexGeneration int64           `json:"index_generation,omitempty"`
+	Metadata        json.RawMessage `json:"metadata"`
+	Score           float64         `json:"score,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 
 	Embedding []float32 `json:"-"`
 }

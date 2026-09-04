@@ -9,6 +9,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 )
 
@@ -65,6 +66,17 @@ type saverStub struct {
 	calls   int
 }
 
+type provenanceRecorderStub struct {
+	inputs []provenance.RecordInput
+}
+
+func (s *provenanceRecorderStub) Record(_ context.Context,
+	input provenance.RecordInput,
+) (provenance.Call, error) {
+	s.inputs = append(s.inputs, input)
+	return provenance.Call{ID: int64(len(s.inputs))}, nil
+}
+
 func (s *saverStub) Save(_ context.Context, claimed job.AnalysisJob, items []GeneratedTest) error {
 	s.calls++
 	s.claimed, s.items = claimed, items
@@ -96,7 +108,8 @@ func TestProcessorGeneratesSyntaxChecksAndSavesCandidate(t *testing.T) {
 	}}}
 	provider := &providerStub{result: llm.Response{ID: "resp-1", Model: "fixture-model", Output: validGeneratedOutput}}
 	saver := &saverStub{}
-	if err := NewProcessor(reader, recommendations, retriever, provider, saver).
+	recorder := &provenanceRecorderStub{}
+	if err := NewProcessorWithProvenance(reader, recommendations, retriever, provider, saver, recorder).
 		Process(context.Background(), claimed); err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +123,11 @@ func TestProcessorGeneratesSyntaxChecksAndSavesCandidate(t *testing.T) {
 		saver.items[0].CodeHash == "" || saver.items[0].GenerationAttempt != InitialAttempt ||
 		saver.items[0].PromptVersion != PromptVersion {
 		t.Fatalf("saved=%#v", saver.items)
+	}
+	if len(recorder.inputs) != 1 || recorder.inputs[0].Phase != provenance.PhaseGeneration ||
+		recorder.inputs[0].SubjectID != 51 || recorder.inputs[0].Status != provenance.StatusCompleted ||
+		recorder.inputs[0].Request.Input == "" || len(recorder.inputs[0].Contexts) != 1 {
+		t.Fatalf("provenance=%#v", recorder.inputs)
 	}
 }
 

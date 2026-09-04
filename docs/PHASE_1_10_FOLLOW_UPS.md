@@ -26,8 +26,8 @@ Mốc xử lý:
 Khi xử lý một mục, không xóa dòng. Hãy đổi trạng thái, thêm ngày đóng, PR/commit,
 test hoặc tài liệu chứng minh vào cột **Điều kiện đóng / ghi chú**.
 
-Snapshot sau vòng hoàn thiện UI có **60 mục theo phase**: 38 `OPEN`, 14 `VERIFY`,
-7 `ACCEPTED_MVP` và 1 `DONE`. Bảng ưu tiên cao bên dưới gồm 8 mục tóm tắt xuyên phase nên
+Snapshot sau Phase 12 có **60 mục theo phase**: 33 `OPEN`, 15 `VERIFY`,
+7 `ACCEPTED_MVP` và 5 `DONE`. Bảng ưu tiên cao bên dưới gồm 8 mục tóm tắt xuyên phase nên
 không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạng thái thay đổi.
 
 ## Các mục ưu tiên cao nhất
@@ -39,7 +39,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | X-03 | OPEN | P0 | THESIS | Dataset Phase 10 hiện là controlled fixture, chưa phải dữ liệu thực nghiệm và không được dùng để kết luận luận văn. |
 | X-04 | VERIFY | P1 | P11 | Đã thêm GitLab CI cho lint, unit, integration, sandbox, image build và migration round-trip; cần xác nhận một pipeline thật trên GitLab runner. |
 | X-05 | VERIFY | P1 | P11 | Đã có secret-file production Compose, backup/restore drill và deployment runbook; TLS/reverse proxy và rollback trên host thật vẫn cần xác nhận. |
-| X-06 | OPEN | P1 | P11 | Chưa có immutable snapshot cho RAG context/prompt đã dùng ở từng lần recommendation, generation và repair. |
+| X-06 | DONE | P1 | P11 | Đóng 2026-09-04: Phase 12 lưu immutable prompt/schema/response, index generation và context chunk snapshots cho recommendation, generation và repair; có evidence API/export. |
 | X-07 | OPEN | P1 | THESIS | Coverage, human effort và human acceptance chưa được thu tự động từ trial thật; hiện được nhập qua dataset. |
 | X-08 | OPEN | P1 | P11 | Chưa có metrics/tracing/alerting, rate limit và operational dashboard; hiện chủ yếu dựa vào structured log và timestamp DB. |
 
@@ -80,7 +80,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | P4-01 | VERIFY | P0 | P11 | `project_id` đã được ép trong retrieval SQL và có isolation test. Mọi query mới vẫn có thể làm regression. | Giữ integration test bắt buộc trong CI; security review xác nhận không có đường retrieve chéo project. |
 | P4-02 | OPEN | P1 | THESIS | Embedding runtime hiện chỉ có deterministic `hash-v1`; chưa có semantic embedding provider production. | Chọn/pin model, lưu model/version, đánh giá retrieval fixture và chi phí trước trial thật. |
 | P4-03 | OPEN | P1 | P11 | Index lấy default branch, trong khi analysis chạy trên source/target SHA của MR. Context có thể không chứa code mới nhất của source branch. | Định nghĩa index theo commit/ref hoặc overlay MR; lưu ref/generation thực sự đã dùng. |
-| P4-04 | OPEN | P1 | P11 | Recommendation/generation chỉ lưu kết quả, không lưu danh sách immutable `knowledge_chunk`/content hash đã gửi cho LLM. Review context hiện được truy xuất lại từ index hiện tại. | Thêm prompt/context snapshot hoặc references bất biến, hiển thị đúng historical evidence. |
+| P4-04 | DONE | P1 | P11 | Phase 12 snapshot nội dung/hash/rank của context và exact prompt cho từng LLM call. Evidence UI tách historical snapshot khỏi current-index context. | Đóng 2026-09-04: migration 000013, provenance integration test và evidence export. |
 | P4-05 | VERIFY | P1 | P11 | Bộ lọc secret trong source là heuristic; có thể false negative/false positive và không thay thế DLP. | Security test với secret corpus, policy allow/deny path, redaction và quy trình xử lý incident. |
 | P4-06 | ACCEPTED_MVP | P3 | P12 | Chỉ index Go, README và Markdown trong `docs/`; file >1 MiB, generated, vendor, node_modules và path nhạy cảm bị bỏ qua. | Giữ giới hạn nếu đủ cho thesis; chỉ mở rộng theo dữ liệu retrieval thực tế. |
 | P4-07 | OPEN | P2 | THESIS | Trọng số hybrid ranking và giới hạn top-k chưa được hiệu chỉnh trên corpus đủ lớn. | Báo cáo retrieval relevance (ví dụ Recall@k/MRR hoặc rubric thủ công) và pin cấu hình cho trial. |
@@ -91,7 +91,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 |---|---|---:|---|---|---|
 | P5-01 | OPEN | P0 | THESIS | `LLM_PROVIDER` mặc định `disabled`; workflow với model thật phụ thuộc API key/model riêng và chưa tạo bằng chứng luận văn chỉ từ test mock. | Chạy trial model thật với model/prompt/config được pin và lưu raw dataset hợp lệ. |
 | P5-02 | ACCEPTED_MVP | P3 | P12 | Chỉ có một provider thật là OpenAI Responses API. | Nhiều provider chỉ là Phase 12; abstraction hiện tại phải được giữ. |
-| P5-03 | OPEN | P1 | P11 | Usage token, latency, prompt hash và chi phí chưa được persist cùng recommendation. | Bổ sung trace metadata không chứa secret; dùng được cho cost/reproducibility report. |
+| P5-03 | DONE | P1 | P11 | Usage token, latency, prompt/configuration hash và chi phí ước tính theo rate cấu hình được lưu trong `llm_calls`. | Đóng 2026-09-04: recorder không đưa API key/token/secret vào hash hoặc evidence. |
 | P5-04 | OPEN | P1 | P11 | Diff, code và docs là prompt data không tin cậy; strict JSON chỉ bảo vệ output shape, không loại bỏ prompt injection/data exfiltration. | Threat model, content delimiters/policy, egress/data-sharing review và adversarial prompt tests. |
 | P5-05 | OPEN | P1 | THESIS | Recommendation có trạng thái `USEFUL/PARTIALLY_USEFUL/NOT_USEFUL` nhưng chưa có workflow/API gán nhãn độc lập; review hiện quyết định trên generated test. | Có rubric và lưu nhãn recommendation bởi reviewer thật, kèm actor/timestamp. |
 | P5-06 | OPEN | P2 | P11 | Mỗi changed symbol gọi LLM tuần tự; chưa có quota, rate-limit riêng, budget theo analysis hoặc circuit breaker. | Có giới hạn call/token/cost, backoff theo provider và trạng thái lỗi dễ quan sát. |
@@ -102,7 +102,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 |---|---|---:|---|---|---|
 | P6-01 | VERIFY | P1 | P11 | Output đã được kiểm tra JSON, path, Go syntax, package và test name; type-check/compile chỉ xảy ra ở Phase 7. | Giữ ranh giới này và bảo đảm mọi candidate luôn qua sandbox trước review/final status. |
 | P6-02 | ACCEPTED_MVP | P3 | P12 | Candidate phải là file `_test.go` mới nằm cạnh source; chưa thể sửa/ghép file test có sẵn hoặc tạo nhiều file cho một recommendation. | Chỉ mở rộng sau khi có conflict strategy và patch validation an toàn. |
-| P6-03 | OPEN | P1 | P11 | Chưa lưu full prompt snapshot/context hash/LLM usage nên chưa tái dựng chính xác lần generation. | Persist provenance bất biến và cho phép export phục vụ thesis audit. |
+| P6-03 | DONE | P1 | P11 | Generation lưu full prompt/schema/response, denormalized context snapshot, usage, latency, model và source/index identity. | Đóng 2026-09-04: `ai-provenance-v1` JSON export. |
 | P6-04 | ACCEPTED_MVP | P3 | P12 | Không tự commit, push hoặc mở MR chứa test đã accept. | Đây là ranh giới an toàn MVP; chỉ thêm trong Phase 12 với quyền GitLab rõ ràng. |
 | P6-05 | OPEN | P2 | THESIS | Chưa đo chất lượng assertion, oracle strength hoặc false-positive test ngoài compile/pass và human acceptance. | Bổ sung rubric; cân nhắc mutation testing trên tập con nếu không làm lệch scope. |
 
@@ -126,7 +126,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | P8-02 | OPEN | P1 | THESIS | Cần trial model thật chứng minh ít nhất một fail→repair→pass và một trường hợp dừng ở max attempt; fixture/test mock chưa đủ làm bằng chứng. | Lưu validation/repair trace vào dataset thực nghiệm. |
 | P8-03 | OPEN | P2 | P11 | Timeout, compile failure và assertion failure đều có thể đi vào repair; chưa phân loại lỗi hạ tầng/dependency để tránh tốn lượt AI vô ích. | Error taxonomy quyết định retry infrastructure, repair code hoặc chuyển review. |
 | P8-04 | DONE | P1 | P11 | Candidate fail sau max attempt vẫn được chuyển `WAITING_REVIEW` để reviewer xem và Reject. | Đóng 2026-08-28: backend từ chối Accept nếu validation mới nhất của candidate hiện tại không `PASSED`; UI khóa nút Accept, hiển thị lý do, Reject vẫn hoạt động; có unit và PostgreSQL integration test. |
-| P8-05 | OPEN | P2 | P11 | Chưa có budget token/cost riêng cho repair và chưa persist usage/latency/prompt snapshot. | Có per-analysis budget và provenance tương tự Phase 5/6. |
+| P8-05 | VERIFY | P2 | P11 | Phase 12 đã persist usage/latency/prompt/context/cost cho repair; per-analysis hard budget vẫn chưa có. | Đóng hoàn toàn khi Phase 16 thêm policy từ chối call vượt budget. |
 
 ## Phase 9 — Human review UI
 
@@ -134,7 +134,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 |---|---|---:|---|---|---|
 | P9-01 | OPEN | P0 | P11 | Reviewer name là input tự khai, mặc định `local-reviewer`; không có login, session, RBAC hoặc danh tính kiểm chứng. | Decision lấy actor từ identity backend, không tin `reviewer_name` do client gửi. |
 | P9-02 | VERIFY | P1 | P11 | Decision bất biến và chống double-click/concurrency; chưa có quy trình correction/appeal nếu reviewer thao tác nhầm. | Chốt policy append-only correction có audit hoặc xác nhận tính bất biến là yêu cầu chính thức. |
-| P9-03 | OPEN | P1 | P11 | Review context là retrieval mới nhất, không phải context đúng thời điểm model chạy. | Đóng cùng P4-04; UI phân biệt historical snapshot và current index. |
+| P9-03 | DONE | P1 | P11 | UI giữ current-index context riêng và thêm AI provenance panel dùng historical index/chunk metadata cùng full evidence export. | Đóng 2026-09-04. |
 | P9-04 | OPEN | P2 | P11 | UI chưa realtime/polling; trạng thái worker mới chỉ thấy sau refresh/navigation. | Thêm polling/SSE hoặc ghi rõ behavior, có retry/backoff và trạng thái stale. |
 | P9-05 | VERIFY | P1 | P11 | Đã có typecheck/build, route + security-header smoke, manual headless-browser review cho overview/project/review/evaluation và responsive CSS; chưa có browser visual regression tự động trong CI. | Thêm test Accept/Reject, error states, keyboard/a11y và viewport chính vào CI để đóng hoàn toàn. |
 | P9-06 | OPEN | P2 | P11 | Diff, source và log lớn có thể làm review page nặng; chưa có pagination/virtualization/download artifact. | Benchmark payload đại diện và giới hạn/render strategy. |

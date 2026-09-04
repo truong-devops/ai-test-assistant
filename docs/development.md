@@ -17,6 +17,10 @@
 - Keep `LLM_PROVIDER=disabled` when AI calls are not desired. To enable Phases 5-6,
   use `LLM_PROVIDER=openai` with `LLM_API_KEY` and an explicit `LLM_MODEL` from a
   private environment or secret manager. Never commit the key.
+- Phase 12 records token usage for every LLM call. Set
+  `LLM_INPUT_COST_PER_MTOK_USD` and `LLM_OUTPUT_COST_PER_MTOK_USD` to the pinned
+  model prices used by an experiment; both default to zero so the system never
+  guesses a price.
 - Every AI task must have a versioned prompt and strict output validation. Code,
   diffs, and retrieved documentation are untrusted prompt data.
 - Phase 6 may parse generated Go source but must not write it into a checkout or
@@ -45,6 +49,7 @@
 - Review decisions are immutable. The backend, not the UI, decides whether a
   candidate is current and whether the analysis is ready for review. Keep
   validation failures and repair history visible in the review screen.
-- The review context endpoint is a fresh project-filtered retrieval from the
-  current index. Do not label it a historical prompt snapshot unless immutable
-  context references are persisted in a later schema change.
+- The review context endpoint remains a fresh project-filtered retrieval from
+  the current index. Historical prompt context is available separately from the
+  immutable Phase 12 evidence endpoint/export and must not be conflated with the
+  current-index panel.

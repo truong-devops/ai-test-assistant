@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -71,12 +72,14 @@ type EmbeddingConfig struct {
 }
 
 type LLMConfig struct {
-	Provider        string
-	BaseURL         string
-	APIKey          string
-	Model           string
-	RequestTimeout  time.Duration
-	MaxOutputTokens int
+	Provider                string
+	BaseURL                 string
+	APIKey                  string
+	Model                   string
+	RequestTimeout          time.Duration
+	MaxOutputTokens         int
+	InputCostPerMillionUSD  float64
+	OutputCostPerMillionUSD float64
 }
 
 type SandboxConfig struct {
@@ -147,6 +150,7 @@ func Load() (Config, error) {
 			BaseURL:  envOrDefault("LLM_BASE_URL", "https://api.openai.com/v1"),
 			APIKey:   llmAPIKey, Model: os.Getenv("LLM_MODEL"),
 			RequestTimeout: 60 * time.Second, MaxOutputTokens: 6000,
+			InputCostPerMillionUSD: 0, OutputCostPerMillionUSD: 0,
 		},
 		Worker: WorkerConfig{
 			PollInterval:  2 * time.Second,
@@ -280,6 +284,18 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("LLM_MAX_OUTPUT_TOKENS must be between 100 and 10000")
 		}
 		cfg.LLM.MaxOutputTokens = parsed
+	}
+	for name, destination := range map[string]*float64{
+		"LLM_INPUT_COST_PER_MTOK_USD":  &cfg.LLM.InputCostPerMillionUSD,
+		"LLM_OUTPUT_COST_PER_MTOK_USD": &cfg.LLM.OutputCostPerMillionUSD,
+	} {
+		if value := os.Getenv(name); value != "" {
+			parsed, err := strconv.ParseFloat(value, 64)
+			if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) || parsed < 0 || parsed > 1_000_000 {
+				return Config{}, fmt.Errorf("%s must be between 0 and 1000000", name)
+			}
+			*destination = parsed
+		}
 	}
 	if value := os.Getenv("SANDBOX_TIMEOUT_SECONDS"); value != "" {
 		parsed, err := strconv.Atoi(value)
