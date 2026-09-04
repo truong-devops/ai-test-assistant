@@ -75,6 +75,31 @@ make prod-up
 API_URL=http://127.0.0.1:8080 FRONTEND_URL=http://127.0.0.1:3000 make smoke
 ```
 
+For the first Gemini deployment, the following single command prompts for the
+API key without echoing it, updates `.env.production`, validates Compose, then
+rebuilds and recreates only the worker:
+
+```bash
+make prod-gemini-up
+```
+
+For later deployments, choose the smallest matching rebuild:
+
+| Changed area | Command |
+|---|---|
+| API only | `make prod-rebuild-api` |
+| API and frontend, followed by `/ready` check | `make rebuild` |
+| Worker, AI, indexing, analysis | `make rebuild-worker` |
+| Shared backend code or migrations | `make rebuild-be` |
+| Next.js frontend only | `make rebuild-fe` |
+| API, worker and frontend | `make prod-rebuild-app` |
+| Dependencies, sandbox or infrastructure | `make rebuild-all` |
+
+A secret or environment-only change needs only `make prod-worker-restart` when
+it affects the worker. Inspect the result with `make prod-status` and
+`make prod-worker-logs`; use `make prod-worker-logs-follow` for live logs and
+stop it with Ctrl+C. Run `make prod-help` to list the production shortcuts.
+
 `prod-up` builds all runtime images and the sandbox, waits for PostgreSQL, runs
 all migrations once, then starts the API, worker, and frontend. Migration is a
 separate one-shot service and is never run concurrently by every application
