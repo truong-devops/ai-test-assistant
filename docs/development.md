@@ -15,8 +15,9 @@
 - LLM calls belong in background processors behind `llm.Provider`; HTTP handlers
   only read persisted results.
 - Keep `LLM_PROVIDER=disabled` when AI calls are not desired. To enable Phases 5-6,
-  use `LLM_PROVIDER=openai` with `LLM_API_KEY` and an explicit `LLM_MODEL` from a
-  private environment or secret manager. Never commit the key.
+  use `LLM_PROVIDER=openai` or `LLM_PROVIDER=gemini` with `LLM_API_KEY` and an
+  explicit `LLM_MODEL` from a private environment or secret manager. Leave
+  `LLM_BASE_URL` empty for the provider default. Never commit the key.
 - Phase 12 records token usage for every LLM call. Set
   `LLM_INPUT_COST_PER_MTOK_USD` and `LLM_OUTPUT_COST_PER_MTOK_USD` to the pinned
   model prices used by an experiment; both default to zero so the system never

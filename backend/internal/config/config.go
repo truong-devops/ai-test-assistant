@@ -147,7 +147,7 @@ func Load() (Config, error) {
 		},
 		LLM: LLMConfig{
 			Provider: envOrDefault("LLM_PROVIDER", "disabled"),
-			BaseURL:  envOrDefault("LLM_BASE_URL", "https://api.openai.com/v1"),
+			BaseURL:  os.Getenv("LLM_BASE_URL"),
 			APIKey:   llmAPIKey, Model: os.Getenv("LLM_MODEL"),
 			RequestTimeout: 60 * time.Second, MaxOutputTokens: 6000,
 			InputCostPerMillionUSD: 0, OutputCostPerMillionUSD: 0,

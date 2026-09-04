@@ -90,7 +90,7 @@ không cộng thêm vào tổng số này. Hãy cập nhật snapshot khi trạn
 | ID | Trạng thái | Ưu tiên | Mốc | Lưu ý | Điều kiện đóng / ghi chú |
 |---|---|---:|---|---|---|
 | P5-01 | OPEN | P0 | THESIS | `LLM_PROVIDER` mặc định `disabled`; workflow với model thật phụ thuộc API key/model riêng và chưa tạo bằng chứng luận văn chỉ từ test mock. | Chạy trial model thật với model/prompt/config được pin và lưu raw dataset hợp lệ. |
-| P5-02 | ACCEPTED_MVP | P3 | P12 | Chỉ có một provider thật là OpenAI Responses API. | Nhiều provider chỉ là Phase 12; abstraction hiện tại phải được giữ. |
+| P5-02 | DONE | P3 | P12 | Có OpenAI Responses API và Gemini Interactions API sau `llm.Provider`. | Đóng 2026-09-04: hai adapter dùng cùng request/schema, giới hạn response và provenance usage. |
 | P5-03 | DONE | P1 | P11 | Usage token, latency, prompt/configuration hash và chi phí ước tính theo rate cấu hình được lưu trong `llm_calls`. | Đóng 2026-09-04: recorder không đưa API key/token/secret vào hash hoặc evidence. |
 | P5-04 | OPEN | P1 | P11 | Diff, code và docs là prompt data không tin cậy; strict JSON chỉ bảo vệ output shape, không loại bỏ prompt injection/data exfiltration. | Threat model, content delimiters/policy, egress/data-sharing review và adversarial prompt tests. |
 | P5-05 | OPEN | P1 | THESIS | Recommendation có trạng thái `USEFUL/PARTIALLY_USEFUL/NOT_USEFUL` nhưng chưa có workflow/API gán nhãn độc lập; review hiện quyết định trên generated test. | Có rubric và lưu nhãn recommendation bởi reviewer thật, kèm actor/timestamp. |
@@ -179,7 +179,7 @@ Những nội dung sau không cần “sửa” trong Phase 11 trừ khi scope t
 - Không tự commit/push/merge generated test.
 - Không bắt buộc Kubernetes hoặc tách hệ thống thành nhiều microservice.
 - Không bắt buộc mutation testing, release-risk scoring hoặc log root-cause analysis.
-- Chỉ một LLM provider thật.
+- Hai LLM provider thật (OpenAI và Gemini) là đủ cho phạm vi đồ án.
 - Review decision là hành động của con người; AI không tự merge code.
 
 Nếu thực hiện, các nội dung này thuộc Phase 12 và không được làm giảm chất lượng

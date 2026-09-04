@@ -137,7 +137,7 @@ services:
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-hash-v1}
       LLM_PROVIDER: ${LLM_PROVIDER:-disabled}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY_FILE: /run/secrets/llm_api_key
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-60s}

@@ -99,9 +99,9 @@ overwritten by a stale worker. Unchanged content hashes retain existing vectors;
 removed chunks are deleted transactionally. The local hash embedding provider
 is deterministic for development and tests, while the embedding boundary can
 be replaced by a remote model later. Phase 5 keeps vendor details behind the
-`llm.Provider` boundary and ships one real OpenAI Responses API provider. It
-sends only the compact diff and project-filtered retrieved chunks, uses a
-versioned prompt, and rejects malformed or oversized output before persistence.
+`llm.Provider` boundary and supports OpenAI Responses API and Gemini Interactions
+API adapters. Both send only the compact diff and project-filtered retrieved
+chunks, use a versioned prompt, and reject malformed or oversized output before persistence.
 The provider is disabled unless explicitly configured. Phase 6 stores one
 initial candidate per recommendation and keeps worker retry count separate from
 the candidate's generation attempt. It parses generated Go syntax but never

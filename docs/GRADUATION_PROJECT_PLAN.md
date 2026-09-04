@@ -145,7 +145,7 @@ khi mutation score và human acceptance không thấp hơn đáng kể.
 - Tự động merge generated code.
 - Kubernetes hoặc chia hệ thống thành nhiều microservice.
 - Chatbot hỏi đáp source code tổng quát.
-- Nhiều LLM provider chỉ để trình diễn.
+- Mở rộng thêm LLM provider ngoài OpenAI và Gemini chỉ để trình diễn.
 - Mutation testing toàn bộ repository lớn ở mọi analysis.
 
 ## 7. Đánh giá baseline hiện tại
@@ -157,7 +157,7 @@ khi mutation score và human acceptance không thấp hơn đáng kể.
 - GitLab/GitHub SCM abstraction và webhook verification.
 - Go AST parser và diff-to-symbol mapping.
 - Project-isolated hybrid retrieval.
-- OpenAI Responses API với strict structured output.
+- OpenAI Responses API và Gemini Interactions API với structured output.
 - Recommendation, generation, validation và bounded repair pipeline.
 - Docker sandbox có network/resource/privilege limits.
 - Review decision và version history.
@@ -1166,7 +1166,8 @@ prompt, model và usage đã tạo ra nó.
 - [x] Gắn snapshot vào recommendation pipeline.
 - [x] Gắn snapshot vào generation pipeline.
 - [x] Gắn snapshot vào repair pipeline.
-- [x] Lưu usage và latency từ OpenAI response.
+- [x] Lưu usage và latency từ OpenAI/Gemini response.
+- [x] Thêm Gemini Interactions API provider với structured output.
 - [x] Thêm API evidence read-only.
 - [x] Viết integration test cho project isolation và immutability.
 - [x] Hiển thị provenance metadata tối thiểu trên analysis page.

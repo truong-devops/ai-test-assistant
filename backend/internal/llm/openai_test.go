@@ -97,10 +97,19 @@ func TestNewProviderConfiguration(t *testing.T) {
 	for _, config := range []Config{
 		{Provider: "openai", Model: "model"},
 		{Provider: "openai", APIKey: "key"},
+		{Provider: "gemini", Model: "model"},
+		{Provider: "gemini", APIKey: "key"},
 		{Provider: "unknown"},
 	} {
-		if _, err := NewProvider(config); err == nil || !strings.Contains(err.Error(), "LLM") && config.Provider == "openai" {
+		if _, err := NewProvider(config); err == nil || !strings.Contains(err.Error(), "LLM") && config.Provider != "unknown" {
 			t.Fatalf("NewProvider(%#v) error=%v", config, err)
 		}
+	}
+	provider, err = NewProvider(Config{Provider: "gemini", APIKey: "key", Model: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := provider.(*GeminiProvider); !ok {
+		t.Fatalf("gemini provider = %T", provider)
 	}
 }

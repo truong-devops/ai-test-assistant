@@ -31,7 +31,10 @@ openssl rand -hex 32 > secrets/gitlab_webhook_secret
 printf '%s\n' 'glpat-replace-with-real-token' > secrets/gitlab_token
 openssl rand -hex 32 > secrets/github_webhook_secret
 printf '%s\n' 'github_pat_replace-with-real-token' > secrets/github_token
-printf '%s\n' 'replace-with-real-key' > secrets/llm_api_key
+read -rsp "LLM API key: " LLM_KEY
+printf '%s' "$LLM_KEY" > secrets/llm_api_key
+unset LLM_KEY
+echo
 ```
 
 Use the generated PostgreSQL password to create `secrets/database_url`. Because
@@ -43,6 +46,15 @@ postgres://ai_test_assistant:<password>@postgres:5432/ai_test_assistant?sslmode=
 
 If GitHub private repositories are not used, `secrets/github_token` may be an
 empty file. If `LLM_PROVIDER=disabled`, `secrets/llm_api_key` may be an empty file.
+To use Gemini, set the following values in `.env.production` after writing the
+key. The same generic secret file is used for every LLM provider:
+
+```dotenv
+LLM_PROVIDER=gemini
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+LLM_MODEL=gemini-3.8-flash
+```
+
 The API and worker run as UID/GID `65532`, so file-backed Compose secrets must be
 group-readable by GID `65532` while remaining private from other host users:
 
@@ -62,6 +74,31 @@ make prod-config
 make prod-up
 API_URL=http://127.0.0.1:8080 FRONTEND_URL=http://127.0.0.1:3000 make smoke
 ```
+
+For the first Gemini deployment, the following single command prompts for the
+API key without echoing it, updates `.env.production`, validates Compose, then
+rebuilds and recreates only the worker:
+
+```bash
+make prod-gemini-up
+```
+
+For later deployments, choose the smallest matching rebuild:
+
+| Changed area | Command |
+|---|---|
+| API only | `make prod-rebuild-api` |
+| API and frontend, followed by `/ready` check | `make rebuild` |
+| Worker, AI, indexing, analysis | `make rebuild-worker` |
+| Shared backend code or migrations | `make rebuild-be` |
+| Next.js frontend only | `make rebuild-fe` |
+| API, worker and frontend | `make prod-rebuild-app` |
+| Dependencies, sandbox or infrastructure | `make rebuild-all` |
+
+A secret or environment-only change needs only `make prod-worker-restart` when
+it affects the worker. Inspect the result with `make prod-status` and
+`make prod-worker-logs`; use `make prod-worker-logs-follow` for live logs and
+stop it with Ctrl+C. Run `make prod-help` to list the production shortcuts.
 
 `prod-up` builds all runtime images and the sandbox, waits for PostgreSQL, runs
 all migrations once, then starts the API, worker, and frontend. Migration is a
