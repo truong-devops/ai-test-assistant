@@ -90,9 +90,9 @@ func TestGeminiProviderRejectsProviderFailuresAndMalformedResponses(t *testing.T
 	}
 }
 
-func TestGeminiProviderUsesRequestedModelWhenResponseOmitsModel(t *testing.T) {
+func TestGeminiProviderAcceptsOmittedResponseMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, `{"id":"interaction-1","status":"completed","steps":[`+
+		fmt.Fprint(w, `{"status":"completed","steps":[`+
 			`{"type":"model_output","content":[{"type":"text","text":"{}"}]}]}`)
 	}))
 	defer server.Close()
@@ -107,7 +107,7 @@ func TestGeminiProviderUsesRequestedModelWhenResponseOmitsModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.ID != "interaction-1" || response.Model != "requested-model" {
+	if response.ID != "" || response.Model != "requested-model" || response.Output != "{}" {
 		t.Fatalf("response=%+v", response)
 	}
 }

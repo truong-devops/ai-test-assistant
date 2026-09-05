@@ -224,14 +224,12 @@ func (p *GeminiProvider) generateWithModel(ctx context.Context, request Request,
 	if strings.TrimSpace(output.String()) == "" {
 		return Response{}, fmt.Errorf("%w: no output text", ErrMalformedResponse)
 	}
-	if decoded.ID == "" {
-		return Response{}, fmt.Errorf("%w: response id is missing", ErrMalformedResponse)
-	}
 	responseModel := strings.TrimSpace(decoded.Model)
 	if responseModel == "" {
-		// The Interactions create response may omit the model even though the
-		// request succeeded. The attempted model is authoritative for this
-		// stateless request and keeps provenance records complete.
+		// The Interactions create response may omit request metadata even though
+		// the request succeeded. The attempted model is authoritative for this
+		// stateless request. A missing provider response ID remains empty in the
+		// provenance record rather than rejecting otherwise valid output.
 		responseModel = model
 	}
 	return Response{
