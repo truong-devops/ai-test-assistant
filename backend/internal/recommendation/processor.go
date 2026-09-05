@@ -99,7 +99,7 @@ func (p *Processor) Process(ctx context.Context, claimed job.AnalysisJob) error 
 		}
 		request := llm.Request{
 			Instructions: Instructions, Input: prompt, SchemaName: "test_recommendations",
-			Schema: ResponseSchema(), MaxOutputTokens: 2000,
+			Schema: ResponseSchema(), MaxOutputTokens: 6000,
 		}
 		started := time.Now()
 		response, err := p.provider.Generate(ctx, request)

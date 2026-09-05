@@ -54,5 +54,5 @@ unset api_key
 echo "Gemini smoke request: ${base_url}/interactions model=${model}"
 curl --config "$curl_config" --silent --show-error --connect-timeout 10 --max-time 60 \
 	--request POST "${base_url}/interactions" \
-	--data-raw "{\"model\":\"${model}\",\"input\":\"Return a JSON object whose status is ok.\",\"generation_config\":{\"max_output_tokens\":64},\"response_format\":{\"type\":\"text\",\"mime_type\":\"application/json\",\"schema\":{\"type\":\"object\",\"properties\":{\"status\":{\"type\":\"string\"}},\"required\":[\"status\"],\"additionalProperties\":false}}}" \
+	--data-raw "{\"model\":\"${model}\",\"input\":\"Return a JSON object whose status is ok.\",\"generation_config\":{\"max_output_tokens\":512},\"response_format\":{\"type\":\"text\",\"mime_type\":\"application/json\",\"schema\":{\"type\":\"object\",\"properties\":{\"status\":{\"type\":\"string\"}},\"required\":[\"status\"],\"additionalProperties\":false}}}" \
 	--write-out $'\nHTTP_STATUS=%{http_code}\n'

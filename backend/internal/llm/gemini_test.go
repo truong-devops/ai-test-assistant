@@ -67,7 +67,6 @@ func TestGeminiProviderRejectsProviderFailuresAndMalformedResponses(t *testing.T
 	}{
 		{name: "http error", status: http.StatusTooManyRequests, body: `{"error":{"message":"limited"}}`},
 		{name: "invalid json", status: http.StatusOK, body: `{`, want: ErrMalformedResponse},
-		{name: "incomplete", status: http.StatusOK, body: `{"id":"r","model":"m","status":"incomplete"}`, want: ErrMalformedResponse},
 		{name: "empty output", status: http.StatusOK, body: `{"id":"r","model":"m","status":"completed","steps":[]}`, want: ErrMalformedResponse},
 	}
 	for _, test := range tests {
@@ -88,6 +87,63 @@ func TestGeminiProviderRejectsProviderFailuresAndMalformedResponses(t *testing.T
 				t.Fatalf("Generate() error=%v, want %v", err, test.want)
 			}
 		})
+	}
+}
+
+func TestGeminiProviderUsesRequestedModelWhenResponseOmitsModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"id":"interaction-1","status":"completed","steps":[`+
+			`{"type":"model_output","content":[{"type":"text","text":"{}"}]}]}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProvider(server.URL, "key", "requested-model", time.Second, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := provider.Generate(context.Background(), Request{
+		Instructions: "i", Input: "x", SchemaName: "s", Schema: map[string]any{"type": "object"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.ID != "interaction-1" || response.Model != "requested-model" {
+		t.Fatalf("response=%+v", response)
+	}
+}
+
+func TestGeminiProviderFallsBackAfterIncompleteResponse(t *testing.T) {
+	models := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request geminiRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		models = append(models, request.Model)
+		if request.Model == "thinking-model" {
+			fmt.Fprint(w, `{"id":"first","status":"incomplete"}`)
+			return
+		}
+		fmt.Fprint(w, `{"id":"second","status":"completed","steps":[`+
+			`{"type":"model_output","content":[{"type":"text","text":"{}"}]}]}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProviderWithFallback(server.URL, "key", "thinking-model",
+		[]string{"fallback-model"}, time.Second, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.retryBaseDelay = time.Millisecond
+	response, err := provider.Generate(context.Background(), Request{
+		Instructions: "i", Input: "x", SchemaName: "s", Schema: map[string]any{"type": "object"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Model != "fallback-model" || len(models) != 2 ||
+		models[0] != "thinking-model" || models[1] != "fallback-model" {
+		t.Fatalf("response=%+v models=%v", response, models)
 	}
 }
 

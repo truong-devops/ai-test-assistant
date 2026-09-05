@@ -20,6 +20,8 @@ const (
 	maxGeminiModels      = 4
 )
 
+var errGeminiIncomplete = errors.New("Gemini response is incomplete")
+
 type GeminiProvider struct {
 	endpoint        string
 	apiKey          string
@@ -203,6 +205,9 @@ func (p *GeminiProvider) generateWithModel(ctx context.Context, request Request,
 			return Response{}, fmt.Errorf("Gemini response error %s: %s",
 				decoded.Errors[0].Code, decoded.Errors[0].Message)
 		}
+		if decoded.Status == "incomplete" {
+			return Response{}, fmt.Errorf("%w: output token budget was exhausted", errGeminiIncomplete)
+		}
 		return Response{}, fmt.Errorf("%w: response status is %q", ErrMalformedResponse, decoded.Status)
 	}
 	var output strings.Builder
@@ -219,11 +224,18 @@ func (p *GeminiProvider) generateWithModel(ctx context.Context, request Request,
 	if strings.TrimSpace(output.String()) == "" {
 		return Response{}, fmt.Errorf("%w: no output text", ErrMalformedResponse)
 	}
-	if decoded.ID == "" || decoded.Model == "" {
-		return Response{}, fmt.Errorf("%w: response metadata is missing", ErrMalformedResponse)
+	if decoded.ID == "" {
+		return Response{}, fmt.Errorf("%w: response id is missing", ErrMalformedResponse)
+	}
+	responseModel := strings.TrimSpace(decoded.Model)
+	if responseModel == "" {
+		// The Interactions create response may omit the model even though the
+		// request succeeded. The attempted model is authoritative for this
+		// stateless request and keeps provenance records complete.
+		responseModel = model
 	}
 	return Response{
-		ID: decoded.ID, Model: decoded.Model, Output: output.String(),
+		ID: decoded.ID, Model: responseModel, Output: output.String(),
 		Usage: Usage{
 			InputTokens: decoded.Usage.TotalInputTokens, OutputTokens: decoded.Usage.TotalOutputTokens,
 			TotalTokens: decoded.Usage.TotalTokens,
@@ -242,6 +254,9 @@ func (e *geminiAPIError) Error() string {
 }
 
 func isTransientGeminiError(err error) bool {
+	if errors.Is(err, errGeminiIncomplete) {
+		return true
+	}
 	var apiErr *geminiAPIError
 	if errors.As(err, &apiErr) {
 		return apiErr.statusCode == http.StatusRequestTimeout ||
