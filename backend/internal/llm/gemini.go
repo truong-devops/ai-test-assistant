@@ -4,25 +4,38 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
 
-const defaultGeminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+const (
+	defaultGeminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+	geminiRetryBaseDelay = 500 * time.Millisecond
+	maxGeminiModels      = 4
+)
 
 type GeminiProvider struct {
 	endpoint        string
 	apiKey          string
-	model           string
+	models          []string
 	maxOutputTokens int
 	client          *http.Client
+	retryBaseDelay  time.Duration
 }
 
 func NewGeminiProvider(baseURL, apiKey, model string, timeout time.Duration, maxOutputTokens int) (*GeminiProvider, error) {
+	return NewGeminiProviderWithFallback(baseURL, apiKey, model, nil, timeout, maxOutputTokens)
+}
+
+func NewGeminiProviderWithFallback(baseURL, apiKey, model string, fallbackModels []string,
+	timeout time.Duration, maxOutputTokens int,
+) (*GeminiProvider, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		baseURL = defaultGeminiBaseURL
@@ -37,11 +50,39 @@ func NewGeminiProvider(baseURL, apiKey, model string, timeout time.Duration, max
 	if maxOutputTokens <= 0 {
 		maxOutputTokens = 2000
 	}
+	models, err := normalizeGeminiModels(model, fallbackModels)
+	if err != nil {
+		return nil, err
+	}
 	return &GeminiProvider{
 		endpoint: baseURL + "/interactions", apiKey: strings.TrimSpace(apiKey),
-		model: strings.TrimSpace(model), maxOutputTokens: maxOutputTokens,
-		client: &http.Client{Timeout: timeout},
+		models: models, maxOutputTokens: maxOutputTokens,
+		client: &http.Client{Timeout: timeout}, retryBaseDelay: geminiRetryBaseDelay,
 	}, nil
+}
+
+func normalizeGeminiModels(primary string, fallbacks []string) ([]string, error) {
+	primary = strings.TrimSpace(primary)
+	if primary == "" {
+		return nil, fmt.Errorf("Gemini model is required")
+	}
+	models := make([]string, 0, 1+len(fallbacks))
+	seen := make(map[string]struct{}, 1+len(fallbacks))
+	for _, model := range append([]string{primary}, fallbacks...) {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, exists := seen[model]; exists {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	if len(models) > maxGeminiModels {
+		return nil, fmt.Errorf("Gemini supports at most %d configured models", maxGeminiModels)
+	}
+	return models, nil
 }
 
 type geminiRequest struct {
@@ -90,12 +131,38 @@ func (p *GeminiProvider) Generate(ctx context.Context, request Request) (Respons
 		strings.TrimSpace(request.SchemaName) == "" || len(request.Schema) == 0 {
 		return Response{}, fmt.Errorf("invalid LLM request")
 	}
+	var lastErr error
+	attempted := make([]string, 0, len(p.models))
+	for index, model := range p.models {
+		attempted = append(attempted, model)
+		response, err := p.generateWithModel(ctx, request, model)
+		if err == nil {
+			return response, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil || !isTransientGeminiError(err) || index == len(p.models)-1 {
+			break
+		}
+		delay := p.retryBaseDelay * time.Duration(1<<index)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return Response{}, fmt.Errorf("Gemini request canceled after models %s: %w",
+				strings.Join(attempted, ", "), ctx.Err())
+		case <-timer.C:
+		}
+	}
+	return Response{}, fmt.Errorf("Gemini models exhausted (%s): %w", strings.Join(attempted, ", "), lastErr)
+}
+
+func (p *GeminiProvider) generateWithModel(ctx context.Context, request Request, model string) (Response, error) {
 	maxTokens := request.MaxOutputTokens
 	if maxTokens <= 0 || maxTokens > p.maxOutputTokens {
 		maxTokens = p.maxOutputTokens
 	}
 	body, err := json.Marshal(geminiRequest{
-		Model: p.model, Input: request.Input, SystemInstruction: request.Instructions,
+		Model: model, Input: request.Input, SystemInstruction: request.Instructions,
 		Store: false, GenerationConfig: geminiGenerationConfig{MaxOutputTokens: maxTokens},
 		ResponseFormat: geminiTextResponseFormat{
 			Type: "text", MIMEType: "application/json", Schema: request.Schema,
@@ -124,8 +191,8 @@ func (p *GeminiProvider) Generate(ctx context.Context, request Request) (Respons
 		return Response{}, fmt.Errorf("%w: response exceeds size limit", ErrMalformedResponse)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return Response{}, fmt.Errorf("Gemini API returned %s: %s", response.Status,
-			providerErrorSnippet(responseBody))
+		return Response{}, &geminiAPIError{statusCode: response.StatusCode,
+			status: response.Status, message: providerErrorSnippet(responseBody)}
 	}
 	var decoded geminiResponse
 	if err := json.Unmarshal(responseBody, &decoded); err != nil {
@@ -162,6 +229,26 @@ func (p *GeminiProvider) Generate(ctx context.Context, request Request) (Respons
 			TotalTokens: decoded.Usage.TotalTokens,
 		},
 	}, nil
+}
+
+type geminiAPIError struct {
+	statusCode int
+	status     string
+	message    string
+}
+
+func (e *geminiAPIError) Error() string {
+	return fmt.Sprintf("Gemini API returned %s: %s", e.status, e.message)
+}
+
+func isTransientGeminiError(err error) bool {
+	var apiErr *geminiAPIError
+	if errors.As(err, &apiErr) {
+		return apiErr.statusCode == http.StatusRequestTimeout ||
+			apiErr.statusCode == http.StatusTooManyRequests || apiErr.statusCode >= 500
+	}
+	var networkErr net.Error
+	return errors.As(err, &networkErr) && (networkErr.Timeout() || networkErr.Temporary())
 }
 
 var _ Provider = (*GeminiProvider)(nil)

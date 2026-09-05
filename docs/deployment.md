@@ -52,7 +52,9 @@ key. The same generic secret file is used for every LLM provider:
 ```dotenv
 LLM_PROVIDER=gemini
 LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta
-LLM_MODEL=gemini-3.8-flash
+LLM_MODEL=gemini-3.6-flash
+LLM_FALLBACK_MODELS=gemini-3.5-flash-lite,gemini-2.5-flash-lite
+LLM_REQUEST_TIMEOUT=45s
 ```
 
 The API and worker run as UID/GID `65532`, so file-backed Compose secrets must be
@@ -82,6 +84,9 @@ rebuilds and recreates only the worker:
 ```bash
 make prod-gemini-up
 ```
+
+To verify the configured endpoint, key and model without creating a pull request
+analysis, run `make prod-gemini-smoke`. The command never prints the API key.
 
 For later deployments, choose the smallest matching rebuild:
 

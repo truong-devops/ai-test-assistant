@@ -74,7 +74,8 @@ func main() {
 	}
 	llmProvider, err := llm.NewProvider(llm.Config{
 		Provider: cfg.LLM.Provider, BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey,
-		Model: cfg.LLM.Model, RequestTimeout: cfg.LLM.RequestTimeout,
+		Model: cfg.LLM.Model, FallbackModels: cfg.LLM.FallbackModels,
+		RequestTimeout:  cfg.LLM.RequestTimeout,
 		MaxOutputTokens: cfg.LLM.MaxOutputTokens,
 	})
 	if err != nil {

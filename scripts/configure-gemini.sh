@@ -67,7 +67,8 @@ set_env_value() {
 
 set_env_value "LLM_PROVIDER" "gemini"
 set_env_value "LLM_BASE_URL" "https://generativelanguage.googleapis.com/v1beta"
-set_env_value "LLM_MODEL" "gemini-3.8-flash"
+set_env_value "LLM_MODEL" "gemini-3.6-flash"
+set_env_value "LLM_FALLBACK_MODELS" "gemini-3.5-flash-lite,gemini-2.5-flash-lite"
 
 echo "Gemini configured in $env_file"
 echo "API key stored in $key_file (value hidden)"

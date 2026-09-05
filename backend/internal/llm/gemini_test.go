@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -87,5 +88,95 @@ func TestGeminiProviderRejectsProviderFailuresAndMalformedResponses(t *testing.T
 				t.Fatalf("Generate() error=%v, want %v", err, test.want)
 			}
 		})
+	}
+}
+
+func TestGeminiProviderFallsBackAfterTransientFailure(t *testing.T) {
+	models := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request geminiRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		models = append(models, request.Model)
+		if request.Model == "busy-model" {
+			http.Error(w, `{"error":{"message":"high demand"}}`, http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprint(w, `{"id":"fallback-response","model":"stable-model","status":"completed",`+
+			`"steps":[{"type":"model_output","content":[{"type":"text","text":"{}"}]}]}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProviderWithFallback(server.URL, "key", "busy-model",
+		[]string{"stable-model"}, time.Second, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.retryBaseDelay = time.Millisecond
+	response, err := provider.Generate(context.Background(), Request{
+		Instructions: "i", Input: "x", SchemaName: "s", Schema: map[string]any{"type": "object"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Model != "stable-model" || len(models) != 2 ||
+		models[0] != "busy-model" || models[1] != "stable-model" {
+		t.Fatalf("response=%+v models=%v", response, models)
+	}
+}
+
+func TestGeminiProviderFallsBackAfterRequestTimeout(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request geminiRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		calls.Add(1)
+		if request.Model == "slow-model" {
+			time.Sleep(50 * time.Millisecond)
+			return
+		}
+		fmt.Fprint(w, `{"id":"fallback-response","model":"stable-model","status":"completed",`+
+			`"steps":[{"type":"model_output","content":[{"type":"text","text":"{}"}]}]}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProviderWithFallback(server.URL, "key", "slow-model",
+		[]string{"stable-model"}, 20*time.Millisecond, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.retryBaseDelay = time.Millisecond
+	response, err := provider.Generate(context.Background(), Request{
+		Instructions: "i", Input: "x", SchemaName: "s", Schema: map[string]any{"type": "object"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Model != "stable-model" || calls.Load() != 2 {
+		t.Fatalf("response=%+v calls=%d", response, calls.Load())
+	}
+}
+
+func TestGeminiProviderDoesNotFallbackAfterPermanentFailure(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		http.Error(w, `{"error":{"message":"invalid request"}}`, http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProviderWithFallback(server.URL, "key", "bad-model",
+		[]string{"unused-model"}, time.Second, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.Generate(context.Background(), Request{
+		Instructions: "i", Input: "x", SchemaName: "s", Schema: map[string]any{"type": "object"},
+	})
+	if err == nil || calls != 1 {
+		t.Fatalf("Generate() error=%v calls=%d", err, calls)
 	}
 }
