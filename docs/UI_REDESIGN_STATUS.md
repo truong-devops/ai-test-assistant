@@ -1,5 +1,9 @@
 # Review console redesign status
 
+> This records the implemented legacy review console. The target document,
+> requirement, test-case and execution-report UX is not implemented; follow
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+
 Status: **implemented and locally verified on 2026-08-28**.
 
 ## Design direction

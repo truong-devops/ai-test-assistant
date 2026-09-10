@@ -1,5 +1,11 @@
 # API
 
+> This page documents the API implemented by the current code-first baseline.
+> Document upload, requirement review, test-case coverage and XLSX report APIs
+> are planned but not implemented. Follow
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
+> for the target API and do not call its proposed routes until their phase is complete.
+
 All responses use JSON. Errors have the shape `{"error":"message"}`.
 
 ## Phase 12 evidence

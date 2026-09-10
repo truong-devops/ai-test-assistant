@@ -1,5 +1,17 @@
 # Development conventions
 
+- New feature work follows
+  `docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md`; older phase documents describe
+  the implemented code-first baseline.
+- Keep business evidence and technical code context in separate models, prompts
+  and UI sections.
+- A test-case expected result must cite an approved document version; code and
+  diff must never overwrite it.
+- Automation repair may change technical implementation only, never the approved
+  requirement/scenario/expected-result snapshot.
+- Coverage must be calculated from persisted requirement-flow/test-case links,
+  not from an LLM claim.
+
 - Keep API and worker entry points limited to dependency assembly.
 - HTTP handlers must call services rather than querying PostgreSQL directly.
 - External systems must be represented by interfaces.

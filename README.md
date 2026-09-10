@@ -1,15 +1,34 @@
 # AI Test Assistant
 
-AI Test Assistant is a graduation engineering project that turns GitLab Merge
-Request and GitHub Pull Request changes into project-aware Go test recommendations and generated tests.
-The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
+AI Test Assistant is being refactored into a **document-driven testing system**:
+approved requirements define test scenarios and expected results, while source
+code at a GitHub Pull Request or GitLab Merge Request is the execution target.
+Code may provide the technical context needed to build automation, but it must
+not redefine the expected business behaviour.
 
-This repository implements Phases 0-13: the backend foundation, GitLab capture
-pipeline, deterministic Go changed-symbol analyzer, project-isolated
-knowledge/RAG index, structured AI test recommendations and generated Go test
-candidates, isolated Docker validation, a bounded repair loop, and the human
-review console, a reproducible evaluation pipeline for the thesis experiments,
-and production deployment, CI/CD, backup, and security hardening foundations.
+The target flow is:
+
+```text
+Documents -> requirements -> reviewed test cases -> PR/MR automation
+          -> isolated execution -> evidence -> XLSX/Markdown report
+```
+
+See [the Vietnamese system overview](docs.md) and
+[the document-driven refactor plan](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
+for the authoritative target direction and phase checklist.
+
+## Current implementation status
+
+The code in this repository still implements the earlier Phases 0–13 baseline:
+GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
+code/document project RAG index, AI recommendations, generated Go tests,
+isolated Docker validation, bounded repair, provenance and human review. These
+capabilities are being reused incrementally; they must not be described as the
+completed document-driven product.
+
+[PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
+the implemented/historical code-first baseline. New implementation work should
+follow the document-driven refactor plan.
 
 ## Prerequisites
 
@@ -60,12 +79,14 @@ application-level user authentication/RBAC remains a tracked backlog item.
 - `examples/go-microservices/`: deterministic Go services used by later analysis experiments.
 - `infra/`: application Dockerfiles and local Compose stack.
 - `docs/`: architecture, API, database, and development notes.
+- [Document-driven refactor plan](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md):
+  authoritative target architecture, backend/frontend phases and completion checklist.
 - [Phase 1–10 follow-up register](docs/PHASE_1_10_FOLLOW_UPS.md): consolidated limitations and closure backlog.
 - `scripts/`: small development helpers called by the Makefile.
 - `.gitlab-ci.yml`: Phase 11 lint, test, integration, build, image, migration,
   dependency-audit, and sandbox jobs.
 
-## Current endpoints
+## Implemented baseline endpoints
 
 - `GET /health`
 - `GET /ready`

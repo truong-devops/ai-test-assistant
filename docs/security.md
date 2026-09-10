@@ -3,6 +3,11 @@
 This review records implemented controls and residual risks. It is not a claim
 that the unauthenticated MVP is safe for public internet exposure.
 
+It covers the current code-first baseline. Uploaded DOCX/Markdown/XLSX files,
+document parsers, report exports and document approval/RBAC introduce additional
+target trust boundaries tracked in
+[DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+
 ## Trust boundaries
 
 | Component | Trust level | Important controls | Residual risk |

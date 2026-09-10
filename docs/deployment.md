@@ -1,5 +1,11 @@
 # Phase 11 deployment runbook
 
+> This runbook deploys the current code-first baseline. It does not yet provision
+> document binary storage, document parser workers or report artifacts required
+> by the target architecture. Follow the deployment/hardening checklist in
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
+> before treating a future document-driven build as production-ready.
+
 The development stack remains in `infra/compose/docker-compose.yml`. Production
 uses `infra/compose/docker-compose.prod.yml`; it has no default passwords,
 mounts runtime secrets as files, binds HTTP ports to loopback by default, rotates

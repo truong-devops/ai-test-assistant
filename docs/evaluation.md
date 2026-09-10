@@ -1,5 +1,12 @@
 # Phase 10 evaluation protocol
 
+> This protocol evaluates the implemented code-first baseline. It must not be
+> used as the final evaluation design for document-driven testing. The new plan
+> additionally requires requirement/flow recall, citation correctness,
+> unsupported-claim rate, duplicate rate and product-vs-automation failure
+> classification; see
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+
 Phase 10 has three paired comparisons:
 
 | Experiment | Baseline | Treatment | Primary measures |

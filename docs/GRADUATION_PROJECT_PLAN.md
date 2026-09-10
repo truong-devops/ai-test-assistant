@@ -1,5 +1,11 @@
 # Kế hoạch phát triển AI Test Assistant thành đồ án tốt nghiệp
 
+> **Trạng thái – 10/09/2026:** đây là kế hoạch code-first trước khi đề tài đổi
+> sang lấy tài liệu yêu cầu làm nguồn của test scenario và expected result. Giữ
+> tài liệu này làm lịch sử/baseline; không dùng các Phase 12–19 bên dưới để điều
+> phối công việc mới. Kế hoạch hiện hành nằm tại
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+
 **Phiên bản:** 1.0
 **Ngày lập:** 2026-09-03
 **Thời lượng đề xuất:** 12 tuần

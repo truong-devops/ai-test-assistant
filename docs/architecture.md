@@ -1,5 +1,37 @@
 # Architecture
 
+> **Architecture status – 2026-09-10:** this document records the architecture
+> implemented by the current code-first baseline. It is retained so maintainers
+> can understand and safely migrate the running system. The target architecture
+> and its ordered backend/frontend work are defined in
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+
+## Target authority model
+
+The refactor does not remove SCM automation or sandbox execution. It separates
+business truth from technical execution:
+
+```text
+Approved documents -> requirements -> reviewed test cases
+                                            |
+PR/MR source SHA -> technical automation -> sandbox run -> execution report
+```
+
+- Documents determine the scenario and expected result.
+- Code/diff may select technical scope and help create compilable automation.
+- Code must never be used to rewrite an approved expected result.
+- A run must distinguish product failure, automation error, infrastructure
+  error, timeout and missing/contradictory specification.
+- Repair may change automation implementation but not the requirement or
+  expected-result snapshot.
+
+The target adds document sets/versions, semantic document blocks and chunks,
+requirement evidence/review, test cases and coverage links, automation artifacts,
+test runs and XLSX/Markdown reports. The current project/analysis tables remain
+in use until their replacement phase meets its migration Definition of Done.
+
+## Implemented baseline architecture
+
 The MVP is a modular monolith with two Go entry points: a synchronous HTTP API
 and a background worker. Domain logic lives below `backend/internal`; entry
 points only assemble dependencies.
@@ -119,7 +151,7 @@ CLI validates versioned observations and deterministically builds thesis-ready
 artifacts. PostgreSQL is optional for artifact generation and only serves the
 read-only evaluation UI after import.
 
-## Decisions
+## Implemented baseline decisions
 
 - Standard `net/http` routing keeps the initial API small.
 - `scm.Client` routes GitLab and GitHub through one normalized source boundary;

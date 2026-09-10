@@ -1,5 +1,10 @@
 # Database
 
+> This page documents the schema currently implemented by migrations 1–14.
+> The target document/requirement/test-case/test-run schema is not implemented
+> yet; its migration order is tracked in
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+
 PostgreSQL stores metadata and the `pgvector` knowledge index.
 
 ## Phase 12 AI provenance

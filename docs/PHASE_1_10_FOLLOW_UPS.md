@@ -1,5 +1,10 @@
 # Phase 1–10: lưu ý, giới hạn và backlog sau MVP
 
+> **Trạng thái:** sổ theo dõi của baseline code-first, được giữ để không mất các
+> rủi ro kỹ thuật cũ. Backlog phát triển sản phẩm mới nằm trong
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+> Không tự động chuyển trạng thái các mục cũ sang roadmap mới.
+
 Cập nhật lần đầu: **2026-08-28**  
 Phạm vi rà soát: mã nguồn, migration, API, frontend, Docker Compose và tài liệu từ Phase 1 đến Phase 10.
 
