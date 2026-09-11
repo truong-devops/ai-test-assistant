@@ -5,7 +5,8 @@ WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker \
+	&& mkdir -p /out/documents
 
 FROM docker:28.3.3-cli
 ARG BUILD_VERSION=dev
@@ -18,5 +19,6 @@ ENV HOME=/tmp \
     PATH=/usr/local/go/bin:$PATH
 COPY --from=build /usr/local/go /usr/local/go
 COPY --from=build --chown=65532:65532 /out/worker /worker
+COPY --from=build --chown=65532:65532 /out/documents /var/lib/ai-test-assistant/documents
 USER 65532:65532
 ENTRYPOINT ["/worker"]

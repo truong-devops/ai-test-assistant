@@ -1,15 +1,42 @@
 # AI Test Assistant
 
-AI Test Assistant is a graduation engineering project that turns GitLab Merge
-Request and GitHub Pull Request changes into project-aware Go test recommendations and generated tests.
-The full product pipeline is documented in [PROJECT_SPEC.md](PROJECT_SPEC.md).
+AI Test Assistant is being refactored into a **document-driven testing system**:
+approved requirements define test scenarios and expected results, while source
+code at a GitHub Pull Request or GitLab Merge Request is the execution target.
+Code may provide the technical context needed to build automation, but it must
+not redefine the expected business behaviour.
 
-This repository implements Phases 0-13: the backend foundation, GitLab capture
-pipeline, deterministic Go changed-symbol analyzer, project-isolated
-knowledge/RAG index, structured AI test recommendations and generated Go test
-candidates, isolated Docker validation, a bounded repair loop, and the human
-review console, a reproducible evaluation pipeline for the thesis experiments,
-and production deployment, CI/CD, backup, and security hardening foundations.
+The target flow is:
+
+```text
+Documents -> requirements -> reviewed test cases -> PR/MR automation
+          -> isolated execution -> evidence -> XLSX/Markdown report
+```
+
+See [the Vietnamese system overview](docs.md) and
+[the document-driven refactor plan](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
+for the authoritative target direction and phase checklist.
+
+## Current implementation status
+
+Document-driven refactor Phases 0–2 are now implemented alongside the earlier
+Phases 0–13 baseline. Users can create a product/scope document set, upload an
+immutable DOCX/Markdown version, and inspect deterministic parsed blocks with
+source locators in the Next.js Documents workspace. The API and worker share a
+persistent file volume; originals are checksummed and retained on parse failure.
+
+The earlier baseline remains operational:
+GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
+code/document project RAG index, AI recommendations, generated Go tests,
+isolated Docker validation, bounded repair, provenance and human review. These
+capabilities are being reused incrementally. Requirement extraction, document
+RAG, business test-case generation, coverage, approval, execution mapping and
+XLSX reporting are not implemented yet, so this is not the completed
+document-driven product.
+
+[PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
+the implemented/historical code-first baseline. New implementation work should
+follow the document-driven refactor plan.
 
 ## Prerequisites
 
@@ -36,6 +63,9 @@ curl -X POST http://localhost:8080/api/projects \
   -H 'Content-Type: application/json' \
   -d '{"name":"sample","provider":"gitlab","provider_project_id":123,"repository_url":"https://gitlab.com/example/sample.git","default_branch":"main","language":"go"}'
 curl http://localhost:8080/api/projects
+curl -X POST http://localhost:8080/api/document-sets \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Checkout v1","product_name":"Storefront","scope":"UC-B08"}'
 ```
 
 Stop the stack with `make dev-down`. Run all local tests with `make test`.
@@ -60,12 +90,25 @@ application-level user authentication/RBAC remains a tracked backlog item.
 - `examples/go-microservices/`: deterministic Go services used by later analysis experiments.
 - `infra/`: application Dockerfiles and local Compose stack.
 - `docs/`: architecture, API, database, and development notes.
+- [Document-driven refactor plan](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md):
+  authoritative target architecture, backend/frontend phases and completion checklist.
 - [Phase 1–10 follow-up register](docs/PHASE_1_10_FOLLOW_UPS.md): consolidated limitations and closure backlog.
 - `scripts/`: small development helpers called by the Makefile.
 - `.gitlab-ci.yml`: Phase 11 lint, test, integration, build, image, migration,
   dependency-audit, and sandbox jobs.
 
-## Current endpoints
+## Implemented baseline endpoints
+
+Document-driven Phase 2:
+
+- `POST /api/document-sets`
+- `GET /api/document-sets`
+- `GET /api/document-sets/{id}`
+- `POST /api/document-sets/{id}/documents`
+- `GET /api/document-sets/{id}/documents`
+- `GET /api/documents/{id}/versions/{version}`
+
+Legacy-compatible endpoints:
 
 - `GET /health`
 - `GET /ready`

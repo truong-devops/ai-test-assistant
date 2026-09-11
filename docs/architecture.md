@@ -1,5 +1,60 @@
 # Architecture
 
+> **Architecture status – 2026-09-11:** this document records the architecture
+> implemented by document-driven Phases 0–2 and the still-running code-first
+> baseline. It is retained so maintainers can safely migrate the system. The
+> target architecture and its ordered backend/frontend work are defined in
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+
+## Target authority model
+
+The refactor does not remove SCM automation or sandbox execution. It separates
+business truth from technical execution:
+
+```text
+Approved documents -> requirements -> reviewed test cases
+                                            |
+PR/MR source SHA -> technical automation -> sandbox run -> execution report
+```
+
+- Documents determine the scenario and expected result.
+- Code/diff may select technical scope and help create compilable automation.
+- Code must never be used to rewrite an approved expected result.
+- A run must distinguish product failure, automation error, infrastructure
+  error, timeout and missing/contradictory specification.
+- Repair may change automation implementation but not the requirement or
+  expected-result snapshot.
+
+Phase 2 now implements document sets, immutable source versions, parser blocks,
+and their upload/preview path. The reserved schema also includes chunks,
+requirement evidence/review, test cases and coverage links, automation artifacts,
+and test runs. Semantic indexing and all requirement/test/report behaviours are
+still Phase 3+. The current project/analysis tables remain in use until their
+replacement phase meets its migration Definition of Done.
+
+## Implemented document intake architecture
+
+```text
+Next.js Documents form -> same-origin proxy -> Go document handler/service
+                                           -> SHA-256 local volume object
+                                           -> immutable document version (UPLOADED)
+
+document parse worker -> leased version -> checksum verification
+                      -> passive DOCX/Markdown parser
+                      -> ordered blocks + source locators -> PARSED/FAILED
+```
+
+API and worker use the same `document_data` volume. PostgreSQL contains only
+metadata and normalized text blocks, not uploaded binary objects. DOCX handling
+limits archive entries, expanded bytes and XML size; it rejects traversal paths,
+macros and embedded executable extensions. Markdown requires UTF-8 without NUL
+bytes. Both parsers honor cancellation and the worker's bounded parse timeout.
+
+This flow does not call an LLM and does not inspect repository code. All uploads
+start as `DRAFT`; approval and semantic RAG begin in later phases.
+
+## Implemented baseline architecture
+
 The MVP is a modular monolith with two Go entry points: a synchronous HTTP API
 and a background worker. Domain logic lives below `backend/internal`; entry
 points only assemble dependencies.
@@ -119,7 +174,7 @@ CLI validates versioned observations and deterministically builds thesis-ready
 artifacts. PostgreSQL is optional for artifact generation and only serves the
 read-only evaluation UI after import.
 
-## Decisions
+## Implemented baseline decisions
 
 - Standard `net/http` routing keeps the initial API small.
 - `scm.Client` routes GitLab and GitHub through one normalized source boundary;

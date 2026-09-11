@@ -1,5 +1,12 @@
 # Phase 11 deployment runbook
 
+> This runbook deploys the legacy-compatible system plus document-driven Phase
+> 2. Compose now provisions shared document storage and the worker runs the
+> parser queue. Requirement/test-case/report services are still future phases.
+> Follow the deployment/hardening checklist in
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
+> before treating a future document-driven build as production-ready.
+
 The development stack remains in `infra/compose/docker-compose.yml`. Production
 uses `infra/compose/docker-compose.prod.yml`; it has no default passwords,
 mounts runtime secrets as files, binds HTTP ports to loopback by default, rotates
@@ -126,9 +133,15 @@ roll back the database.
 
 ## Backup and restore
 
-`make backup` creates a PostgreSQL custom-format dump plus SHA-256 checksum in
-`backups/`. Copy both files to encrypted storage outside the Docker host and
-apply an explicit retention policy.
+`make backup` currently creates a PostgreSQL custom-format dump plus SHA-256
+checksum in `backups/`. Migration 15 also stores original DOCX/Markdown objects
+in the `document_data` volume; the current script does **not** include that
+volume. Until the coordinated database + object backup/restore work in Phase 11
+is complete, separately snapshot `document_data` while API and worker writers
+are stopped, keep it paired with the matching database dump, and do not claim a
+production recovery guarantee for uploaded documents. Copy all backup material
+to encrypted storage outside the Docker host and apply the approved retention
+policy.
 
 Restore is intentionally guarded and destructive:
 
@@ -137,9 +150,11 @@ RESTORE_FILE=backups/ai-test-assistant-YYYYMMDDTHHMMSSZ.dump \
 RESTORE_CONFIRM=RESTORE_AI_TEST_ASSISTANT make restore
 ```
 
-The script verifies the checksum when present, stops API/worker writers, runs
-`pg_restore --clean --single-transaction`, and restarts them. Test restore on a
-non-production host regularly; an untested backup is not a recovery strategy.
+The script verifies the database checksum when present, stops API/worker
+writers, runs `pg_restore --clean --single-transaction`, and restarts them. It
+does not restore `document_data`; restore the paired volume snapshot before
+restarting writers. Test the combined restore on a non-production host
+regularly; an untested backup is not a recovery strategy.
 
 ## Reverse proxy and logs
 

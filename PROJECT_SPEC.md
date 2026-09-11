@@ -1,5 +1,13 @@
 # AI Test Assistant - Technical Design and Development Roadmap
 
+> **Document status – 2026-09-10:** this specification describes the
+> implemented/historical **code-first Phases 0–13 baseline**. It remains useful
+> for understanding current APIs, schema and workers, but it is no longer the
+> authority for new product direction. The approved target is
+> **document-driven test design + code execution**. New changes must follow
+> [docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+> Do not interpret the code-first pipeline below as the desired final system.
+
 **Project type:** Graduation thesis / engineering project  
 **Primary goal:** Use AI + project-aware RAG to recommend, generate, validate, repair, and review automation tests when source code changes.  
 **Primary language for MVP:** Go  

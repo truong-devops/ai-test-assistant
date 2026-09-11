@@ -31,6 +31,9 @@ func TestLoad(t *testing.T) {
 	t.Setenv("WORKER_RETRY_DELAY", "500ms")
 	t.Setenv("WORKER_LEASE_DURATION", "1m")
 	t.Setenv("WORKER_MAX_ATTEMPTS", "4")
+	t.Setenv("DOCUMENT_STORAGE_PATH", "/tmp/test-documents")
+	t.Setenv("DOCUMENT_MAX_UPLOAD_BYTES", "2097152")
+	t.Setenv("DOCUMENT_PARSE_TIMEOUT", "75s")
 	t.Setenv("EMBEDDING_PROVIDER", "hash")
 	t.Setenv("EMBEDDING_MODEL", "fixture-v1")
 	t.Setenv("LLM_PROVIDER", "openai")
@@ -69,6 +72,10 @@ func TestLoad(t *testing.T) {
 	if cfg.GitHub.APIBaseURL != "https://github-api.example.com" || cfg.GitHub.Token != "github-token" ||
 		cfg.GitHub.WebhookSecret != "github-secret" || cfg.GitHub.RequestTimeout != 9*time.Second {
 		t.Fatalf("Load() GitHub config = %+v", cfg.GitHub)
+	}
+	if cfg.Document.StoragePath != "/tmp/test-documents" || cfg.Document.MaxUploadBytes != 2097152 ||
+		cfg.Document.ParseTimeout != 75*time.Second {
+		t.Fatalf("Load() document config = %+v", cfg.Document)
 	}
 	if cfg.Embedding.Provider != "hash" || cfg.Embedding.Model != "fixture-v1" {
 		t.Fatalf("Load() embedding config = %+v", cfg.Embedding)
@@ -152,6 +159,19 @@ func TestLoadRejectsInvalidWorkerConfiguration(t *testing.T) {
 	t.Setenv("WORKER_MAX_ATTEMPTS", "0")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want worker validation error")
+	}
+}
+
+func TestLoadRejectsInvalidDocumentConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("DOCUMENT_MAX_UPLOAD_BYTES", "0")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want document upload limit error")
+	}
+	t.Setenv("DOCUMENT_MAX_UPLOAD_BYTES", "1024")
+	t.Setenv("DOCUMENT_PARSE_TIMEOUT", "11m")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want document parse timeout error")
 	}
 }
 

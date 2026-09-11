@@ -12,6 +12,131 @@ export type Project = {
   updated_at: string;
 };
 
+export type DocumentSet = {
+  id: number;
+  name: string;
+  product_name: string;
+  scope: string;
+  description: string;
+  status: "ACTIVE" | "ARCHIVED";
+  created_at: string;
+  updated_at: string;
+};
+
+export type DocumentVersion = {
+  id: number;
+  document_id: number;
+  document_set_id: number;
+  version_number: number;
+  original_filename: string;
+  media_type: string;
+  size_bytes: number;
+  sha256: string;
+  approval_status: "DRAFT" | "APPROVED" | "REJECTED";
+  parse_status: "UPLOADED" | "PARSING" | "PARSED" | "FAILED";
+  parse_error?: string;
+  block_count: number;
+  attempt_count: number;
+  next_attempt_at: string;
+  lease_expires_at?: string;
+  uploaded_at: string;
+  started_at?: string;
+  parsed_at?: string;
+};
+
+export type SourceDocument = {
+  id: number;
+  document_set_id: number;
+  name: string;
+  document_type: string;
+  created_at: string;
+  updated_at: string;
+  latest_version?: DocumentVersion;
+};
+
+export type DocumentBlock = {
+  id: number;
+  document_version_id: number;
+  ordinal: number;
+  block_type: "HEADING" | "PARAGRAPH" | "LIST" | "TABLE" | "CODE";
+  heading_level: number;
+  content: string;
+  source_locator: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type DocumentVersionDetail = {
+  document: SourceDocument;
+  version: DocumentVersion;
+  blocks: DocumentBlock[];
+};
+
+// Phase 1 domain contracts. Their APIs and full workspaces arrive in Phases
+// 4–9; keeping them separate from legacy generated tests prevents the UI from
+// treating automation source as a business test case.
+export type Requirement = {
+  id: number;
+  document_set_id: number;
+  requirement_key: string;
+  version_number: number;
+  title: string;
+  statement: string;
+  requirement_type: string;
+  flow_type: "NONE" | "MAIN" | "ALTERNATE" | "EXCEPTION";
+  actor: string;
+  precondition: string;
+  postcondition: string;
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  status: "DRAFT" | "APPROVED" | "REJECTED" | "CONFLICT" | "TBD";
+  confidence: number;
+};
+
+export type BusinessTestCase = {
+  id: number;
+  test_suite_id: number;
+  document_set_id: number;
+  test_case_key: string;
+  version_number: number;
+  title: string;
+  test_type: string;
+  risk: "LOW" | "MEDIUM" | "HIGH";
+  actor: string;
+  precondition: string;
+  test_data: string;
+  expected_result: string;
+  expected_result_hash: string;
+  postcondition: string;
+  status: "DRAFT" | "APPROVED" | "REJECTED";
+  automation_status: "MANUAL" | "AUTOMATABLE" | "AUTOMATED" | "BLOCKED";
+};
+
+export type AutomationArtifact = {
+  id: number;
+  test_case_id: number;
+  version_number: number;
+  framework: string;
+  file_path: string;
+  source_hash: string;
+  expected_result_hash: string;
+  status: "DRAFT" | "APPROVED" | "REJECTED" | "UNREPAIRABLE";
+};
+
+export type TestRun = {
+  id: number;
+  test_suite_id: number;
+  project_id?: number;
+  analysis_job_id?: number;
+  source_sha: string;
+  target_sha: string;
+  environment: string;
+  environment_fingerprint: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  requested_at: string;
+  started_at?: string;
+  finished_at?: string;
+};
+
 export type IndexStatus = {
   project_id: number;
   ref: string;

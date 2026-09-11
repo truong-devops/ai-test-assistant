@@ -1,5 +1,9 @@
 # Phase 11 implementation status
 
+> Historical implementation evidence for the current code-first deployment.
+> Document-driven deployment changes are tracked separately in
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+
 Status: **implemented locally; external GitLab runner and production-host
 verification remain**.
 

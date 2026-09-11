@@ -13,9 +13,26 @@ import type {
   StoredEvaluation,
   ProvenanceBundle,
   ImpactBundle,
+  DocumentSet,
+  SourceDocument,
+  DocumentVersionDetail,
 } from "@/lib/types";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
+
+const configuredDocumentMaxBytes = Number(process.env.DOCUMENT_MAX_UPLOAD_BYTES ?? 16 * 1024 * 1024);
+export const documentMaxUploadBytes = Number.isSafeInteger(configuredDocumentMaxBytes) &&
+  configuredDocumentMaxBytes > 0 && configuredDocumentMaxBytes <= 256 * 1024 * 1024
+  ? configuredDocumentMaxBytes
+  : 16 * 1024 * 1024;
+
+export const documentRoutes = {
+  sets: "/api/document-sets",
+  set: (id: string | number) => `/api/document-sets/${encodeURIComponent(String(id))}`,
+  documents: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/documents`,
+  version: (documentId: string | number, version: string | number) =>
+    `/api/documents/${encodeURIComponent(String(documentId))}/versions/${encodeURIComponent(String(version))}`,
+} as const;
 
 export class ApiError extends Error {
   constructor(
@@ -57,6 +74,26 @@ export async function optional<T>(load: () => Promise<T>, fallback: T): Promise<
 
 export async function getProjects(): Promise<Project[]> {
   return (await request<{ projects: Project[] }>("/api/projects")).projects;
+}
+
+export async function getDocumentSets(): Promise<DocumentSet[]> {
+  return (await request<{ document_sets: DocumentSet[] }>(documentRoutes.sets)).document_sets;
+}
+
+export async function getDocumentSet(id: string | number): Promise<DocumentSet> {
+  return request<DocumentSet>(documentRoutes.set(id));
+}
+
+export async function getDocuments(setId: string | number): Promise<SourceDocument[]> {
+  return (await request<{ documents: SourceDocument[] }>(
+    documentRoutes.documents(setId),
+  )).documents;
+}
+
+export async function getDocumentVersion(documentId: string | number, version: string | number): Promise<DocumentVersionDetail> {
+  return request<DocumentVersionDetail>(
+    documentRoutes.version(documentId, version),
+  );
 }
 
 export async function getProject(id: string): Promise<Project> {

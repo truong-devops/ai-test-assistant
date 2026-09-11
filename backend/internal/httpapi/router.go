@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 )
 
@@ -117,6 +118,36 @@ func NewRouterWithPhaseThirteenServices(logger *slog.Logger, checker ReadinessCh
 	evaluationService EvaluationService, provenanceService ProvenanceService,
 	impactService ImpactService, options RouterOptions,
 ) http.Handler {
+	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, recommendationService, generationService, validationService, repairService,
+		reviewService, contextService, evaluationService, provenanceService, impactService, nil,
+		document.DefaultMaxUploadBytes, options)
+}
+
+func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService, provenanceService ProvenanceService,
+	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
+	options RouterOptions,
+) http.Handler {
+	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, recommendationService, generationService, validationService, repairService,
+		reviewService, contextService, evaluationService, provenanceService, impactService,
+		documentService, documentMaxUploadBytes, options)
+}
+
+func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService, provenanceService ProvenanceService,
+	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
+	options RouterOptions,
+) http.Handler {
 	mux := http.NewServeMux()
 	health := healthHandler{checker: checker}
 	projects := projectHandler{service: projectService}
@@ -176,6 +207,15 @@ func NewRouterWithPhaseThirteenServices(logger *slog.Logger, checker ReadinessCh
 	if impactService != nil {
 		impacts := impactHandler{service: impactService}
 		mux.HandleFunc("GET /api/analyses/{id}/impact", impacts.get)
+	}
+	if documentService != nil {
+		documents := documentHandler{service: documentService, maxUploadBytes: documentMaxUploadBytes}
+		mux.HandleFunc("POST /api/document-sets", documents.createSet)
+		mux.HandleFunc("GET /api/document-sets", documents.listSets)
+		mux.HandleFunc("GET /api/document-sets/{id}", documents.getSet)
+		mux.HandleFunc("POST /api/document-sets/{id}/documents", documents.upload)
+		mux.HandleFunc("GET /api/document-sets/{id}/documents", documents.listDocuments)
+		mux.HandleFunc("GET /api/documents/{id}/versions/{version}", documents.getVersion)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)

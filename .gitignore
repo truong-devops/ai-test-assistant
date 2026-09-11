@@ -6,6 +6,7 @@ coverage.out
 *.test
 bin/
 tmp/
+backend/data/
 backups/
 secrets/
 .env.production

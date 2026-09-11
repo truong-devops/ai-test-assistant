@@ -1,5 +1,12 @@
 # AI Test Assistant Review Console
 
+> **Current UI:** this frontend displays the implemented code-first analysis
+> pipeline. The target UI will add document upload, requirement baseline review,
+> test-case coverage, execution classification and XLSX/Markdown export. See
+> [the refactor plan](../docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md). Until
+> those phases are complete, the current screen must not be presented as the
+> finished document-driven workflow.
+
 The frontend is a Next.js application for human review and Phase 10 experiment reporting. It presents
 project/index status, analysis history, and a traceable review screen with the
 MR diff, changed symbols, current project context, recommendation rationale,
