@@ -84,6 +84,19 @@ approved-suite fallback instead of silently narrowing coverage.
 and separate context hashes. Contract fields cannot be updated; regeneration
 creates a new artifact version. `automation_artifact_reviews` records approval.
 
+## Document-driven execution (migration 18)
+
+Migration 18 turns `test_runs` into an independently leased execution queue.
+It stores who/when requested execution, retry/lease state, immutable local image
+ID, image reference, error and environment fingerprint. `test_run_items` keeps
+one immutable expected/artifact snapshot per attempt; an approved artifact may
+be bound exactly once while the item is still `NOT_RUN`.
+
+`test_run_evidence` retains bounded/redacted stdout, stderr and artifact or
+screenshot references. `test_run_classification_reviews` append-audits every
+manual result override with previous/new taxonomy, reviewer and reason. Infra
+retry appends a new item attempt instead of overwriting execution history.
+
 ## Phase 12 AI provenance
 
 `llm_calls` stores every actual recommendation, generation, and repair provider

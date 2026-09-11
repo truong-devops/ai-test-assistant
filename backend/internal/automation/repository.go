@@ -193,6 +193,21 @@ func (r *Repository) Review(ctx context.Context, id int64, input ReviewInput) (A
 	if _, err = tx.Exec(ctx, `UPDATE test_cases SET automation_status=$2,updated_at=NOW() WHERE id=$1`, testCaseID, automationStatus); err != nil {
 		return ArtifactHistory{}, err
 	}
+	if input.Decision == StatusApproved {
+		// Automatically queue the document-driven run only when every scoped case
+		// has an approved artifact generated for this exact analysis. Runs with
+		// manual/blocked cases remain reviewable and can be explicitly requested.
+		if _, err = tx.Exec(ctx, `UPDATE test_runs r SET execution_requested_at=COALESCE(r.execution_requested_at,NOW()),
+			execution_requested_by=CASE WHEN r.execution_requested_by='' THEN 'SYSTEM_ARTIFACT_APPROVAL' ELSE r.execution_requested_by END,
+			next_attempt_at=NOW()
+			WHERE r.status='PENDING' AND r.analysis_job_id=(SELECT analysis_job_id FROM automation_artifacts WHERE id=$1)
+			AND NOT EXISTS (SELECT 1 FROM test_run_items i WHERE i.test_run_id=r.id AND i.attempt_number=1
+				AND NOT EXISTS (SELECT 1 FROM automation_artifacts candidate
+					WHERE candidate.test_case_id=i.test_case_id AND candidate.analysis_job_id=r.analysis_job_id
+					AND candidate.status='APPROVED'))`, id); err != nil {
+			return ArtifactHistory{}, err
+		}
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return ArtifactHistory{}, err
 	}

@@ -79,7 +79,11 @@ func (r *Repository) BuildSnapshot(ctx context.Context, setID int64, input Expor
 		COALESCE((SELECT string_agg(value,E'\n') FROM jsonb_array_elements_text(t.assumptions) value),''),t.automation_status,t.status,
 		COALESCE(review.reviewer_name,'')
 		FROM test_cases t
-		LEFT JOIN test_run_items item ON item.test_case_id=t.id AND item.test_run_id=$2
+		LEFT JOIN LATERAL (
+			SELECT latest.* FROM test_run_items latest
+			WHERE latest.test_case_id=t.id AND latest.test_run_id=$2
+			ORDER BY latest.attempt_number DESC,latest.id DESC LIMIT 1
+		) item ON TRUE
 		LEFT JOIN test_runs run ON run.id=item.test_run_id
 		LEFT JOIN test_case_reviews review ON review.test_case_id=t.id
 		WHERE t.test_suite_id=$1 AND (cardinality($3::bigint[])=0 OR t.id=ANY($3)) AND NOT EXISTS(

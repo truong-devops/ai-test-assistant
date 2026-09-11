@@ -2,7 +2,7 @@
 
 - **Ngày chốt định hướng:** 10/09/2026
 - **Cập nhật triển khai:** 11/09/2026
-- **Trạng thái:** Phase 0–8 hoàn thành; Phase 9 là phase tiếp theo
+- **Trạng thái:** Phase 0–9 hoàn thành; Phase 10 là phase tiếp theo
 - **Phạm vi:** Backend Go, Frontend Next.js, PostgreSQL/pgvector, LLM,
   GitHub/GitLab và Docker Sandbox
 
@@ -121,7 +121,7 @@ Approved test case + PR/MR source SHA
 | 6 | Test-case workspace và XLSX export | Đã làm | Đã làm | `DONE` |
 | 7 | Liên kết PR/MR với test scope | Đã làm | Đã làm | `DONE` |
 | 8 | Sinh automation từ test case đã duyệt | Đã làm | Đã làm | `DONE` |
-| 9 | Sandbox execution và phân loại kết quả | Chưa làm | Chưa làm | `NOT_STARTED` |
+| 9 | Sandbox execution và phân loại kết quả | Đã làm | Đã làm | `DONE` |
 | 10 | Technical repair có guardrail | Chưa làm | Chưa làm | `NOT_STARTED` |
 | 11 | Migration UI, evaluation và hardening | Chưa làm | Chưa làm | `NOT_STARTED` |
 
@@ -614,39 +614,57 @@ Chạy automation tại đúng code revision và báo cáo đúng loại kết q
 
 ### Backend
 
-- [ ] Giữ source-SHA workspace và Docker isolation hiện có.
-- [ ] Chạy baseline suite trước generated artifact nếu framework hỗ trợ.
-- [ ] Lưu build/commit SHA, image digest, command và environment fingerprint.
-- [ ] Tách trạng thái: `PASSED`, `PRODUCT_FAILED`, `AUTOMATION_ERROR`,
+- [x] Giữ source-SHA workspace và Docker isolation hiện có.
+- [x] Chạy baseline suite trước generated artifact nếu framework hỗ trợ.
+- [x] Lưu build/commit SHA, image digest, command và environment fingerprint.
+- [x] Tách trạng thái: `PASSED`, `PRODUCT_FAILED`, `AUTOMATION_ERROR`,
   `INFRA_ERROR`, `TIMED_OUT`, `BLOCKED`, `NOT_RUN`.
-- [ ] Parser lỗi phân biệt compile error, assertion failure, panic, timeout và setup.
-- [ ] Assertion failure không mặc nhiên là product failure nếu artifact chưa được duyệt.
-- [ ] Lưu bounded/redacted stdout/stderr.
-- [ ] Evidence hỗ trợ log/artifact/screenshot link.
-- [ ] Map kết quả sang Excel `P/F/NY/BLOCKED` nhưng không làm mất taxonomy gốc.
-- [ ] Retry infra error riêng với repair attempt.
-- [ ] Không cho repair product failure bằng cách đổi expected assertion.
+- [x] Parser lỗi phân biệt compile error, assertion failure, panic, timeout và setup.
+- [x] Assertion failure không mặc nhiên là product failure nếu artifact chưa được duyệt.
+- [x] Lưu bounded/redacted stdout/stderr.
+- [x] Evidence hỗ trợ log/artifact/screenshot link.
+- [x] Map kết quả sang Excel `P/F/NY/BLOCKED` nhưng không làm mất taxonomy gốc.
+- [x] Retry infra error riêng với repair attempt.
+- [x] Không cho repair product failure bằng cách đổi expected assertion.
 
 ### Frontend
 
-- [ ] Run summary theo product/automation/infra status.
-- [ ] Hiển thị Expected và Actual cạnh nhau.
-- [ ] Hiển thị source SHA, environment, command, duration và evidence.
-- [ ] Filter failed/blocked/not-run.
-- [ ] Cho reviewer xác nhận hoặc đổi classification kèm audit reason.
+- [x] Run summary theo product/automation/infra status.
+- [x] Hiển thị Expected và Actual cạnh nhau.
+- [x] Hiển thị source SHA, environment, command, duration và evidence.
+- [x] Filter failed/blocked/not-run.
+- [x] Cho reviewer xác nhận hoặc đổi classification kèm audit reason.
 
 ### Tests
 
-- [ ] Fixture product failure có assertion mismatch.
-- [ ] Fixture automation compile failure.
-- [ ] Fixture infra failure và timeout.
-- [ ] Sandbox security tests vẫn pass.
-- [ ] Excel export nhận đúng Actual/Status/Evidence từ test run.
+- [x] Fixture product failure có assertion mismatch.
+- [x] Fixture automation compile failure.
+- [x] Fixture infra failure và timeout.
+- [x] Sandbox security tests vẫn pass.
+- [x] Excel export nhận đúng Actual/Status/Evidence từ test run.
 
 ### Definition of Done
 
-- [ ] Báo cáo không đánh đồng mọi non-zero exit với product bug.
-- [ ] Một run có thể tái lập từ source SHA + artifact hash + environment fingerprint.
+- [x] Báo cáo không đánh đồng mọi non-zero exit với product bug.
+- [x] Một run có thể tái lập từ source SHA + artifact hash + environment fingerprint.
+
+### Bằng chứng xác minh Phase 9 (12/09/2026)
+
+- Migration 18 chạy up/down/up trên PostgreSQL thật; integration test xác minh
+  claim bằng lease, bind approved artifact một lần, infra-only retry tạo attempt
+  mới, evidence không bị ghi đè và classification override có audit.
+- Test processor xác minh baseline chạy trước artifact, approved assertion
+  mismatch thành `PRODUCT_FAILED`, thiếu approved artifact thành `BLOCKED` và
+  code test không được ghi vào source checkout.
+- Taxonomy fixtures phủ pass, compile, assertion, panic, dependency/infra,
+  timeout và artifact chưa duyệt.
+- `go vet ./...`, `go test -race ./...`, integration suite PostgreSQL,
+  frontend typecheck/production build đều pass.
+- `make sandbox-security-check` và `make sandbox-test` pass; test execution mới
+  thực sự chạy clean baseline rồi approved artifact trong container không
+  network, non-root, read-only và lưu image digest/fingerprint.
+- XLSX giữ bốn sheet Test Cases/Run History/Summary/Metadata và đọc Actual,
+  taxonomy/evidence trực tiếp từ `test_run_items`/`test_run_evidence`.
 
 ---
 
@@ -739,9 +757,9 @@ chỉ sau khi dữ liệu mới ổn định.
 - [ ] Dữ liệu cũ vẫn đọc được hoặc có migration/deprecation document rõ ràng.
 - [ ] README/API/database/deployment/security docs phản ánh trạng thái cuối.
 
-## 7. API mục tiêu sơ bộ
+## 7. API document-driven hiện tại
 
-Tên endpoint có thể thay đổi sau Phase 1, nhưng capability tối thiểu gồm:
+Các endpoint đã triển khai đến hết Phase 9 gồm:
 
 ```text
 POST /api/document-sets
@@ -764,11 +782,17 @@ GET  /api/document-sets/{id}/coverage
 POST /api/test-cases/{id}/accept
 POST /api/test-cases/{id}/reject
 
-POST /api/test-suites/{id}/runs
 GET  /api/test-runs/{id}
-GET  /api/test-runs/{id}/export.xlsx
-GET  /api/test-runs/{id}/export.md
+POST /api/test-runs/{id}/execute
+POST /api/test-run-items/{id}/classification
+
+POST /api/document-sets/{id}/exports
+GET  /api/document-sets/{id}/exports
+GET  /api/test-exports/{id}/download
 ```
+
+`POST /api/document-sets/{id}/exports` nhận `format` là `XLSX` hoặc `MARKDOWN`
+và có thể nhận `test_run_id`; API trả `download_url` của snapshot bất biến.
 
 Webhook GitHub/GitLab hiện có tiếp tục được giữ và sau Phase 7 sẽ tạo `test_run`
 thay vì chỉ tạo code-first `analysis_job`.

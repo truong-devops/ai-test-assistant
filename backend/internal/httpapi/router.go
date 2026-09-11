@@ -121,7 +121,7 @@ func NewRouterWithPhaseThirteenServices(logger *slog.Logger, checker ReadinessCh
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService, nil,
-		document.DefaultMaxUploadBytes, nil, nil, nil, nil, nil, nil, options)
+		document.DefaultMaxUploadBytes, nil, nil, nil, nil, nil, nil, nil, options)
 }
 
 func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker,
@@ -136,7 +136,7 @@ func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService,
-		documentService, documentMaxUploadBytes, nil, nil, nil, nil, nil, nil, options)
+		documentService, documentMaxUploadBytes, nil, nil, nil, nil, nil, nil, nil, options)
 }
 
 func NewRouterWithDocumentWorkflowServices(logger *slog.Logger, checker ReadinessChecker,
@@ -153,7 +153,7 @@ func NewRouterWithDocumentWorkflowServices(logger *slog.Logger, checker Readines
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService,
 		documentService, documentMaxUploadBytes, documentIndexService, requirementService,
-		testCaseService, nil, nil, nil, options)
+		testCaseService, nil, nil, nil, nil, options)
 }
 
 func NewRouterWithDocumentDrivenServices(logger *slog.Logger, checker ReadinessChecker,
@@ -165,13 +165,13 @@ func NewRouterWithDocumentDrivenServices(logger *slog.Logger, checker ReadinessC
 	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
 	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
 	testCaseService TestCaseWorkflowService, reportService ReportService, scopeService ScopeService,
-	automationService AutomationService, options RouterOptions,
+	automationService AutomationService, executionService ExecutionService, options RouterOptions,
 ) http.Handler {
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService,
 		documentService, documentMaxUploadBytes, documentIndexService, requirementService,
-		testCaseService, reportService, scopeService, automationService, options)
+		testCaseService, reportService, scopeService, automationService, executionService, options)
 }
 
 func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
@@ -183,7 +183,7 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
 	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
 	testCaseService TestCaseWorkflowService, reportService ReportService, scopeService ScopeService,
-	automationService AutomationService,
+	automationService AutomationService, executionService ExecutionService,
 	options RouterOptions,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -300,6 +300,12 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		mux.HandleFunc("POST /api/analyses/{id}/automation/generate", automations.generate)
 		mux.HandleFunc("GET /api/test-cases/{id}/automation", automations.history)
 		mux.HandleFunc("POST /api/automation-artifacts/{id}/review", automations.review)
+	}
+	if executionService != nil {
+		executions := executionHandler{service: executionService}
+		mux.HandleFunc("GET /api/test-runs/{id}", executions.get)
+		mux.HandleFunc("POST /api/test-runs/{id}/execute", executions.request)
+		mux.HandleFunc("POST /api/test-run-items/{id}/classification", executions.classify)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)

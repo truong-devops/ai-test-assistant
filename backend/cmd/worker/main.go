@@ -13,6 +13,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/execution"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
@@ -130,6 +131,10 @@ func main() {
 	}
 	documentRepository := document.NewRepository(database.Pool())
 	documentProcessor := document.NewProcessor(documentStore, document.NewStructuredParser(), documentRepository)
+	executionRepository := execution.NewRepository(database.Pool())
+	executionProcessor := execution.NewProcessor(projectRepository,
+		validation.NewWorkspaceManager(sourceClient, validation.WorkspaceOptions{}), sandboxRunner,
+		executionRepository, cfg.Sandbox.Timeout, cfg.Worker.MaxAttempts, cfg.Worker.RetryDelay)
 	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,
@@ -159,6 +164,10 @@ func main() {
 				LeaseDuration: options.LeaseDuration, MaxAttempts: options.MaxAttempts,
 				ParseTimeout: cfg.Document.ParseTimeout,
 			}),
+		execution.NewWorker(logger.With("phase", "document-execution"), executionRepository,
+			executionProcessor, execution.WorkerOptions{PollInterval: options.PollInterval,
+				RetryDelay: options.RetryDelay, LeaseDuration: options.LeaseDuration,
+				MaxAttempts: options.MaxAttempts}),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

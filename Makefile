@@ -19,7 +19,7 @@ sandbox-build:
 
 sandbox-test: sandbox-build
 	./scripts/sandbox-smoke.sh
-	cd backend && RUN_SANDBOX_TESTS=1 SANDBOX_TEST_IMAGE="$${SANDBOX_IMAGE:-ai-test-assistant-sandbox:phase7}" go test -count=1 -tags=sandbox ./internal/validation ./internal/repair
+	cd backend && RUN_SANDBOX_TESTS=1 SANDBOX_TEST_IMAGE="$${SANDBOX_IMAGE:-ai-test-assistant-sandbox:phase7}" go test -count=1 -tags=sandbox ./internal/validation ./internal/repair ./internal/execution
 
 sandbox-security-check:
 	./scripts/sandbox-security-check.sh

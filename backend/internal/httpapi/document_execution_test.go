@@ -8,12 +8,47 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/execution"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/report"
 )
 
 type reportServiceStub struct {
 	exportInput report.ExportInput
 	download    report.ExportArtifact
+}
+
+type executionServiceStub struct {
+	run        execution.Run
+	requested  execution.RequestInput
+	classified execution.ClassificationInput
+}
+
+func (s *executionServiceStub) Get(context.Context, int64) (execution.Run, error) { return s.run, nil }
+func (s *executionServiceStub) Request(_ context.Context, _ int64, input execution.RequestInput) (execution.Run, error) {
+	s.requested = input
+	return s.run, nil
+}
+func (s *executionServiceStub) ReviewClassification(_ context.Context, _ int64, input execution.ClassificationInput) (execution.Run, error) {
+	s.classified = input
+	return s.run, nil
+}
+
+func TestExecutionRequestAndClassificationEndpoints(t *testing.T) {
+	service := &executionServiceStub{run: execution.Run{ID: 8}}
+	request := httptest.NewRequest(http.MethodPost, "/api/test-runs/8/execute", strings.NewReader(`{"requested_by":"QA"}`))
+	request.SetPathValue("id", "8")
+	response := httptest.NewRecorder()
+	executionHandler{service: service}.request(response, request)
+	if response.Code != http.StatusAccepted || service.requested.RequestedBy != "QA" {
+		t.Fatalf("request status=%d input=%+v", response.Code, service.requested)
+	}
+	request = httptest.NewRequest(http.MethodPost, "/api/test-run-items/9/classification", strings.NewReader(`{"status":"PRODUCT_FAILED","reviewer_name":"Lead","reason":"actual mismatch"}`))
+	request.SetPathValue("id", "9")
+	response = httptest.NewRecorder()
+	executionHandler{service: service}.classify(response, request)
+	if response.Code != http.StatusOK || service.classified.Status != "PRODUCT_FAILED" || service.classified.Reason != "actual mismatch" {
+		t.Fatalf("classification status=%d input=%+v", response.Code, service.classified)
+	}
 }
 
 func (s *reportServiceStub) Export(_ context.Context, _ int64, input report.ExportInput) (report.ExportArtifact, error) {

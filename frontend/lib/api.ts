@@ -29,6 +29,7 @@ import type {
   BaselineView,
   AnalysisTestScope,
   AutomationHistory,
+	TestRunDetail,
 } from "@/lib/types";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
@@ -168,6 +169,10 @@ export async function getAnalysisTestScope(analysisId: string | number): Promise
 
 export async function getAutomationHistory(testCaseId: string | number): Promise<AutomationHistory> {
   return request<AutomationHistory>(`/api/test-cases/${encodeURIComponent(String(testCaseId))}/automation`);
+}
+
+export async function getTestRun(testRunId: string | number): Promise<TestRunDetail> {
+	return request<TestRunDetail>(`/api/test-runs/${encodeURIComponent(String(testRunId))}`);
 }
 
 export async function getProject(id: string): Promise<Project> {

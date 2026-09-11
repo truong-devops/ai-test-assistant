@@ -336,10 +336,42 @@ export type TestRun = {
   target_sha: string;
   environment: string;
   environment_fingerprint: string;
+	image_reference: string;
+	image_digest: string;
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+	execution_requested_at?: string;
+	execution_requested_by: string;
+	attempt_count: number;
+	error_message?: string;
   requested_at: string;
   started_at?: string;
   finished_at?: string;
+};
+
+export type TestRunItem = {
+	id: number;
+	test_run_id: number;
+	test_case_id: number;
+	test_case_key: string;
+	title: string;
+	expected_result: string;
+	expected_result_hash: string;
+	automation_artifact_id?: number;
+	automation_source_hash: string;
+	attempt_number: number;
+	status: "NOT_RUN" | "PASSED" | "PRODUCT_FAILED" | "AUTOMATION_ERROR" | "INFRA_ERROR" | "TIMED_OUT" | "BLOCKED";
+	actual_result: string;
+	command: string;
+	exit_code?: number;
+	duration_ms: number;
+	output_truncated: boolean;
+	created_at: string;
+	evidence: Array<{ id: number; evidence_type: string; content?: string; storage_key?: string; content_hash: string; created_at: string }>;
+};
+
+export type TestRunDetail = TestRun & {
+	items: TestRunItem[];
+	classification_reviews: Array<{ id: number; test_run_item_id: number; reviewer_name: string; previous_status: string; new_status: string; reason: string; created_at: string }>;
 };
 
 export type IndexStatus = {

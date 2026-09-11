@@ -1,12 +1,31 @@
 # API
 
 > This page documents the API currently implemented. Document-driven Phases
-> 2–8 now run beside the code-first baseline. XLSX/Markdown export, approved
-> baseline mapping and document-grounded Go automation are implemented. Follow
+> 2–9 now run beside the code-first baseline. XLSX/Markdown export, approved
+> baseline mapping, document-grounded Go automation and typed sandbox execution
+> are implemented. Follow
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 > for the remaining target API.
 
 All responses use JSON. Errors have the shape `{"error":"message"}`.
+
+## Document-driven sandbox execution
+
+- `GET /api/test-runs/{id}` returns the run, every attempt, Expected/Actual,
+  original taxonomy, bounded evidence, source SHA, image digest and environment
+  fingerprint.
+- `POST /api/test-runs/{id}/execute` with `{"requested_by":"QA"}` queues a
+  pending run. Approval of the final required artifact also queues the run
+  automatically.
+- `POST /api/test-run-items/{id}/classification` accepts `status`,
+  `reviewer_name` and mandatory `reason`; the override is append-audited.
+
+The worker runs the repository baseline before adding each approved artifact.
+Only an approved assertion mismatch can become `PRODUCT_FAILED`. Compilation or
+test setup failures become `AUTOMATION_ERROR`; runtime/container/dependency
+failures become `INFRA_ERROR`; timeout, missing automation and successful runs
+remain separate outcomes. Infra errors use the execution retry queue, not LLM
+repair.
 
 ## Phase 12 evidence
 

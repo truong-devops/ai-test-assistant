@@ -19,22 +19,25 @@ for the authoritative target direction and phase checklist.
 
 ## Current implementation status
 
-Document-driven refactor Phases 0–8 are now implemented alongside the earlier
+Document-driven refactor Phases 0–9 are now implemented alongside the earlier
 Phases 0–13 baseline. Users can upload immutable DOCX/Markdown versions, approve
 source versions, build a semantic document index, review cited requirements and
 conflict/TBD items, generate grounded business test cases, and inspect a
 deterministic requirement-to-test coverage matrix in the Next.js Documents
 workspace. Projects can bind an approved suite, webhook analyses snapshot a
 safe execution scope, and approved cases can produce reviewed Go automation
-artifacts plus immutable XLSX/Markdown exports.
+artifacts plus immutable XLSX/Markdown exports. Approved artifacts now run at
+the webhook source SHA in the isolated Docker sandbox; results retain the image
+digest/environment fingerprint and distinguish product, automation, infra,
+timeout and blocked outcomes.
 
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
 isolated Docker validation, bounded repair, provenance and human review. These
-capabilities are being reused incrementally. The new execution taxonomy and
-document-driven sandbox execution remain Phase 9 work, so this is not yet the
-completed execution/reporting product.
+capabilities are being reused incrementally. Guarded technical repair for the
+new result taxonomy remains Phase 10 work; the legacy repair worker is not used
+to alter document-driven product failures.
 
 [PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
 the implemented/historical code-first baseline. New implementation work should
@@ -134,6 +137,9 @@ Document-driven Phases 2–5:
 - `POST /api/analyses/{id}/automation/generate`
 - `GET /api/test-cases/{id}/automation`
 - `POST /api/automation-artifacts/{id}/review`
+- `GET /api/test-runs/{id}`
+- `POST /api/test-runs/{id}/execute`
+- `POST /api/test-run-items/{id}/classification`
 
 Legacy-compatible endpoints:
 

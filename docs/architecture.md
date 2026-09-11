@@ -1,7 +1,7 @@
 # Architecture
 
-> **Architecture status – 2026-09-11:** this document records the architecture
-> implemented by document-driven Phases 0–8 and the still-running code-first
+> **Architecture status – 2026-09-12:** this document records the architecture
+> implemented by document-driven Phases 0–9 and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
 > target architecture and its ordered backend/frontend work are defined in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
@@ -25,10 +25,10 @@ PR/MR source SHA -> technical automation -> sandbox run -> execution report
 - Repair may change automation implementation but not the requirement or
   expected-result snapshot.
 
-Phases 2–8 implement document intake, semantic retrieval, requirement inventory,
+Phases 2–9 implement document intake, semantic retrieval, requirement inventory,
 human source/requirement review, grounded business test cases, deterministic
 coverage, PR/MR baseline snapshots, Go automation artifacts and immutable
-reports. Sandbox execution/result taxonomy begins in Phase 9. Legacy
+reports, source-SHA sandbox execution, typed results and evidence. Legacy
 project/analysis tables remain in use as the SCM trigger and technical pipeline.
 
 ## Implemented document-driven architecture
@@ -61,7 +61,11 @@ project -> selected approved suite -> webhook-time immutable baseline snapshot
 PR/MR identifiers -> explicit testcase scope; uncertain mapping -> full suite
 changed path/module/symbol -> technical signals only, never expected behavior
 approved testcase + Go context -> versioned/reviewed automation artifact
-suite/run snapshot -> XLSX/Markdown bytes + content/snapshot hashes
+approved artifacts complete -> leased document execution run
+per case -> source-SHA workspace -> clean baseline -> artifact overlay
+         -> isolated Docker run -> typed result + bounded/redacted evidence
+         -> infra-only retry or completed run
+suite/run snapshot -> Actual/Status/Evidence -> XLSX/Markdown + snapshot hashes
 ```
 
 API and worker use the same `document_data` volume. PostgreSQL contains only

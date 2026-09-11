@@ -15,6 +15,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/evaluation"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/execution"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
@@ -142,6 +143,7 @@ func main() {
 	automationService := automation.NewService(automation.NewRepository(database.Pool()),
 		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, providerName,
 		cfg.LLM.Model, cfg.LLM.MaxOutputTokens)
+	executionService := execution.NewService(execution.NewRepository(database.Pool()))
 	webhookService := gitlab.NewWebhookService(projectRepository, scopedEnqueuer)
 	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
 	gitHubWebhookService := github.NewWebhookService(projectRepository, scopedEnqueuer)
@@ -156,7 +158,7 @@ func main() {
 			validationService, repairService, reviewService, contextService, evaluationService,
 			provenanceService, impactService, documentService, cfg.Document.MaxUploadBytes,
 			documentIndexService, requirementService, testCaseService, reportService,
-			scopeRepository, automationService,
+			scopeRepository, automationService, executionService,
 			httpapi.RouterOptions{RateLimitPerSecond: cfg.HTTP.RateLimitPerSecond,
 				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients}),
 		ReadHeaderTimeout: 5 * time.Second,
