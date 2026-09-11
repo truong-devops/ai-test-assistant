@@ -6,7 +6,8 @@ COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api \
-    && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/healthcheck ./cmd/healthcheck
+	&& CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/healthcheck ./cmd/healthcheck \
+	&& mkdir -p /out/documents
 
 FROM gcr.io/distroless/static-debian12:nonroot
 ARG BUILD_VERSION=dev
@@ -16,6 +17,7 @@ LABEL org.opencontainers.image.title="AI Test Assistant API" \
       org.opencontainers.image.revision="$VCS_REF"
 COPY --from=build /out/api /api
 COPY --from=build /out/healthcheck /healthcheck
+COPY --from=build --chown=65532:65532 /out/documents /var/lib/ai-test-assistant/documents
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/api"]

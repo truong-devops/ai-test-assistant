@@ -19,12 +19,20 @@ for the authoritative target direction and phase checklist.
 
 ## Current implementation status
 
-The code in this repository still implements the earlier Phases 0–13 baseline:
+Document-driven refactor Phases 0–2 are now implemented alongside the earlier
+Phases 0–13 baseline. Users can create a product/scope document set, upload an
+immutable DOCX/Markdown version, and inspect deterministic parsed blocks with
+source locators in the Next.js Documents workspace. The API and worker share a
+persistent file volume; originals are checksummed and retained on parse failure.
+
+The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
 isolated Docker validation, bounded repair, provenance and human review. These
-capabilities are being reused incrementally; they must not be described as the
-completed document-driven product.
+capabilities are being reused incrementally. Requirement extraction, document
+RAG, business test-case generation, coverage, approval, execution mapping and
+XLSX reporting are not implemented yet, so this is not the completed
+document-driven product.
 
 [PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
 the implemented/historical code-first baseline. New implementation work should
@@ -55,6 +63,9 @@ curl -X POST http://localhost:8080/api/projects \
   -H 'Content-Type: application/json' \
   -d '{"name":"sample","provider":"gitlab","provider_project_id":123,"repository_url":"https://gitlab.com/example/sample.git","default_branch":"main","language":"go"}'
 curl http://localhost:8080/api/projects
+curl -X POST http://localhost:8080/api/document-sets \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Checkout v1","product_name":"Storefront","scope":"UC-B08"}'
 ```
 
 Stop the stack with `make dev-down`. Run all local tests with `make test`.
@@ -87,6 +98,17 @@ application-level user authentication/RBAC remains a tracked backlog item.
   dependency-audit, and sandbox jobs.
 
 ## Implemented baseline endpoints
+
+Document-driven Phase 2:
+
+- `POST /api/document-sets`
+- `GET /api/document-sets`
+- `GET /api/document-sets/{id}`
+- `POST /api/document-sets/{id}/documents`
+- `GET /api/document-sets/{id}/documents`
+- `GET /api/documents/{id}/versions/{version}`
+
+Legacy-compatible endpoints:
 
 - `GET /health`
 - `GET /ready`

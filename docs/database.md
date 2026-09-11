@@ -1,11 +1,41 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–14.
-> The target document/requirement/test-case/test-run schema is not implemented
-> yet; its migration order is tracked in
+> This page documents the schema currently implemented by migrations 1–15.
+> Migration 15 establishes the new document-driven domain beside the legacy
+> tables. Semantic indexing, extraction, generation and reporting behaviour are
+> still introduced incrementally in later phases tracked in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
+
+## Document-driven foundation (migration 15)
+
+`document_sets` is the ownership boundary for a product/scope. `documents`
+represents a logical source, while `document_versions` stores append-only file
+identity: version number, filename, allow-listed media type, byte size, SHA-256,
+private storage key, approval state, parse queue state and timestamps. File
+bytes live in the shared local/object-store abstraction, not in PostgreSQL.
+
+`document_blocks` stores the ordered parser result (`HEADING`, `PARAGRAPH`,
+`LIST`, `TABLE`, or `CODE`) with source locator and structural metadata.
+Identity fields on document versions and parsed block/evidence rows reject
+in-place updates. Set/version composite foreign keys prevent evidence from
+crossing document-set boundaries.
+
+The same migration reserves normalized, ownership-safe tables for later phases:
+
+- `document_chunks` for set-filtered full-text/vector retrieval;
+- `requirements`, `requirement_evidence`, `requirement_conflicts`,
+  `open_questions`, and `requirement_reviews`;
+- `test_suites`, versioned `test_cases`, ordered `test_case_steps`, deterministic
+  requirement links, and `test_case_reviews`;
+- versioned `automation_artifacts` separated from business test cases;
+- `test_runs`, `test_run_items`, and typed `test_run_evidence`.
+
+An automation artifact can only reference an approved test case and must copy
+the exact expected-result hash. Once a run item exists, its test-case reference,
+expected-result snapshot and expected hash cannot be updated. Application APIs
+for these reserved Phase 3+ tables are intentionally not exposed yet.
 
 ## Phase 12 AI provenance
 

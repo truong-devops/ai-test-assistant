@@ -1,10 +1,10 @@
 # AI Test Assistant – Cơ chế hoạt động hiện tại và định hướng mới
 
-> **Trạng thái tài liệu – 10/09/2026:** code trong repository hiện vẫn chạy theo
-> pipeline cũ, bắt đầu từ GitHub Pull Request/GitLab Merge Request và dùng code
-> context để đề xuất test. Kiến trúc mục tiêu đã được chốt là
-> **document-driven test generation + code execution** và chưa được triển khai
-> đầy đủ. Xem checklist chuyển đổi tại
+> **Trạng thái tài liệu – 11/09/2026:** Phase 0–2 của kiến trúc
+> **document-driven test generation + code execution** đã được triển khai song
+> song với pipeline PR/MR cũ. Hệ thống hiện tạo document set, nhận DOCX/Markdown,
+> lưu version bất biến và preview block/source locator. Document RAG, requirement
+> inventory, sinh/duyệt test case và XLSX vẫn thuộc Phase 3–6. Xem checklist tại
 > [docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 ## 1. Dự án sẽ dùng để làm gì?
@@ -27,15 +27,15 @@ phải là `FAILED` hoặc `NEEDS_CLARIFICATION`, không phải sửa expected r
 
 | Nội dung | Code hiện tại | Kiến trúc mục tiêu |
 | --- | --- | --- |
-| Điểm bắt đầu | PR/MR webhook | Upload tài liệu; PR/MR kích hoạt lần chạy |
+| Điểm bắt đầu | PR/MR webhook vẫn hoạt động | Upload tài liệu đã có; PR/MR kích hoạt lần chạy ở Phase 7 |
 | Nguồn test scenario | Diff, changed symbol và code/docs RAG | Requirement, use case, business rule, acceptance criteria, lỗi cũ |
 | Nguồn expected result | AI suy luận từ code context | Chỉ từ bằng chứng tài liệu có truy vết |
 | Vai trò của code | Vừa tạo context, vừa là đối tượng chạy test | Chỉ dùng để xác định phạm vi kỹ thuật, viết automation và thực thi |
 | Đầu ra | Go generated test và sandbox result | Test case, coverage matrix, automated test, execution report và Excel |
-| Trạng thái chuyển đổi | Đã triển khai | Đang lập kế hoạch |
+| Trạng thái chuyển đổi | Được giữ tương thích | Phase 0–2 đã xong; Phase 3–11 chưa làm |
 
-Các màn hình và API hiện có vẫn phản ánh pipeline cũ cho đến khi từng phase trong
-kế hoạch refactor hoàn thành.
+Frontend hiện có thêm workspace `Documents`; các màn hình Projects/Review cũ vẫn
+được giữ tương thích trong khi các phase sau tiếp tục chuyển đổi.
 
 ## 3. Đầu vào của kiến trúc mục tiêu
 

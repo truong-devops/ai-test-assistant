@@ -12,6 +12,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analysis"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
@@ -122,6 +123,13 @@ func main() {
 		generationRepository, validationRepository,
 		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider,
 		repairRepository, cfg.Repair.MaxAttempts, provenanceRepository)
+	documentStore, err := document.NewLocalFileStore(cfg.Document.StoragePath, cfg.Document.MaxUploadBytes)
+	if err != nil {
+		logger.Error("configure document storage", "error", err)
+		os.Exit(1)
+	}
+	documentRepository := document.NewRepository(database.Pool())
+	documentProcessor := document.NewProcessor(documentStore, document.NewStructuredParser(), documentRepository)
 	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,
@@ -145,6 +153,12 @@ func main() {
 			validationProcessor, options),
 		job.NewWorker(logger.With("phase", "repair"), repairRepository,
 			repairProcessor, options),
+		document.NewWorker(logger.With("phase", "document-parse"), documentRepository,
+			documentProcessor, document.WorkerOptions{
+				PollInterval: options.PollInterval, RetryDelay: options.RetryDelay,
+				LeaseDuration: options.LeaseDuration, MaxAttempts: options.MaxAttempts,
+				ParseTimeout: cfg.Document.ParseTimeout,
+			}),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

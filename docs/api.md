@@ -1,8 +1,8 @@
 # API
 
-> This page documents the API implemented by the current code-first baseline.
-> Document upload, requirement review, test-case coverage and XLSX report APIs
-> are planned but not implemented. Follow
+> This page documents the API currently implemented. Document intake from the
+> new Phase 2 now runs beside the code-first baseline. Requirement review,
+> test-case coverage and XLSX report APIs remain planned. Follow
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 > for the target API and do not call its proposed routes until their phase is complete.
 
@@ -49,6 +49,49 @@ write endpoint.
 
 - `GET /health` returns liveness without checking dependencies.
 - `GET /ready` checks PostgreSQL and returns HTTP 503 when unavailable.
+
+## Document intake (document-driven Phase 2)
+
+- `POST /api/document-sets` creates a source boundary and returns HTTP 201.
+- `GET /api/document-sets` returns `{"document_sets":[...]}`.
+- `GET /api/document-sets/{id}` returns one set or HTTP 404.
+- `POST /api/document-sets/{id}/documents` accepts a multipart upload and
+  returns HTTP 202 because parsing is asynchronous.
+- `GET /api/document-sets/{id}/documents` lists logical documents with their
+  latest version.
+- `GET /api/documents/{id}/versions/{version}` returns document metadata,
+  immutable version metadata, and ordered parsed blocks.
+
+Create-set requests accept one strict JSON object:
+
+```json
+{
+  "name": "Sàn TMĐT v1.0",
+  "product_name": "Sàn thương mại điện tử",
+  "scope": "UC-B08 - Đặt đơn hàng",
+  "description": "PTYC và URD dùng cho baseline kiểm thử"
+}
+```
+
+The upload body uses `multipart/form-data` with:
+
+- `file` (required): `.docx`, `.md`, or `.markdown`;
+- `document_name` (optional): defaults to the filename without its extension;
+- `document_type` (optional): `REQUIREMENTS`, `USER_STORY`, `SYSTEM_DESIGN`,
+  `DATABASE_DESIGN`, `API_CONTRACT`, `BUG_HISTORY`, `TEST_REFERENCE`, or
+  `OTHER`; defaults to `REQUIREMENTS`.
+
+Every upload starts with `approval_status=DRAFT`. The API derives the accepted
+media type from the allow-listed extension, computes SHA-256 while streaming to
+the shared file store, and never returns the internal storage key. The default
+file limit is 16 MiB and is controlled by `DOCUMENT_MAX_UPLOAD_BYTES`.
+
+The worker transitions parse state through `UPLOADED` → `PARSING` → `PARSED`
+or `FAILED`. Parsed blocks preserve order, block type, content and a locator
+such as `line:18`, `lines:20-25`, `word/body/p[12]`, or
+`word/body/table[4]`. A parser failure leaves the original file/version intact.
+XLSX import is not supported in Phase 2; XLSX report export is planned for
+Phase 6.
 
 ## Projects
 

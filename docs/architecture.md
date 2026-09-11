@@ -1,9 +1,9 @@
 # Architecture
 
-> **Architecture status – 2026-09-10:** this document records the architecture
-> implemented by the current code-first baseline. It is retained so maintainers
-> can understand and safely migrate the running system. The target architecture
-> and its ordered backend/frontend work are defined in
+> **Architecture status – 2026-09-11:** this document records the architecture
+> implemented by document-driven Phases 0–2 and the still-running code-first
+> baseline. It is retained so maintainers can safely migrate the system. The
+> target architecture and its ordered backend/frontend work are defined in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 ## Target authority model
@@ -25,10 +25,33 @@ PR/MR source SHA -> technical automation -> sandbox run -> execution report
 - Repair may change automation implementation but not the requirement or
   expected-result snapshot.
 
-The target adds document sets/versions, semantic document blocks and chunks,
+Phase 2 now implements document sets, immutable source versions, parser blocks,
+and their upload/preview path. The reserved schema also includes chunks,
 requirement evidence/review, test cases and coverage links, automation artifacts,
-test runs and XLSX/Markdown reports. The current project/analysis tables remain
-in use until their replacement phase meets its migration Definition of Done.
+and test runs. Semantic indexing and all requirement/test/report behaviours are
+still Phase 3+. The current project/analysis tables remain in use until their
+replacement phase meets its migration Definition of Done.
+
+## Implemented document intake architecture
+
+```text
+Next.js Documents form -> same-origin proxy -> Go document handler/service
+                                           -> SHA-256 local volume object
+                                           -> immutable document version (UPLOADED)
+
+document parse worker -> leased version -> checksum verification
+                      -> passive DOCX/Markdown parser
+                      -> ordered blocks + source locators -> PARSED/FAILED
+```
+
+API and worker use the same `document_data` volume. PostgreSQL contains only
+metadata and normalized text blocks, not uploaded binary objects. DOCX handling
+limits archive entries, expanded bytes and XML size; it rejects traversal paths,
+macros and embedded executable extensions. Markdown requires UTF-8 without NUL
+bytes. Both parsers honor cancellation and the worker's bounded parse timeout.
+
+This flow does not call an LLM and does not inspect repository code. All uploads
+start as `DRAFT`; approval and semantic RAG begin in later phases.
 
 ## Implemented baseline architecture
 

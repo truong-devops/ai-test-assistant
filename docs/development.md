@@ -11,6 +11,36 @@
   requirement/scenario/expected-result snapshot.
 - Coverage must be calculated from persisted requirement-flow/test-case links,
   not from an LLM claim.
+- Phase 2 accepts DOCX and Markdown only. Keep parser input passive: never run
+  macros, embedded executables, document links, or uploaded code. XLSX input is
+  deferred; do not silently treat the Phase 6 report template as a requirement
+  source.
+- `DOCUMENT_STORAGE_PATH` must resolve to storage shared by API and worker.
+  `DOCUMENT_MAX_UPLOAD_BYTES` defaults to 16 MiB (hard maximum 256 MiB), and
+  `DOCUMENT_PARSE_TIMEOUT` defaults to 60 seconds (hard maximum 10 minutes).
+  Docker Compose mounts the `document_data` volume for both processes.
+- Every upload is a new immutable version and starts as `DRAFT`. There is no
+  Phase 2 approval or delete endpoint; preserve original files after parser
+  failure and include document storage in operational backups.
+- Run parser tests against the maintained synthetic DOCX/Markdown fixtures. A
+  local sample can also be checked without committing it:
+
+  ```bash
+  cd backend
+  DOCUMENT_FIXTURE_DOCX=/path/to/requirements.docx \
+  DOCUMENT_FIXTURE_MARKDOWN=/path/to/requirements.md \
+  go test -count=1 -run ExternalFixtures -v ./internal/document
+  ```
+- Stop any locally running Compose worker before repository integration tests;
+  otherwise it may legitimately claim the same test queue rows and make the
+  test nondeterministic. Restart it after the suite:
+
+  ```bash
+  docker compose -f infra/compose/docker-compose.yml stop worker
+  TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/ai_test_assistant?sslmode=disable \
+    make test-integration
+  docker compose -f infra/compose/docker-compose.yml start worker
+  ```
 
 - Keep API and worker entry points limited to dependency assembly.
 - HTTP handlers must call services rather than querying PostgreSQL directly.

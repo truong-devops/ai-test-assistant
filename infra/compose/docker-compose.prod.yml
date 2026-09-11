@@ -82,6 +82,9 @@ services:
       GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-hash-v1}
+      DOCUMENT_STORAGE_PATH: /var/lib/ai-test-assistant/documents
+      DOCUMENT_MAX_UPLOAD_BYTES: ${DOCUMENT_MAX_UPLOAD_BYTES:-16777216}
+      DOCUMENT_PARSE_TIMEOUT: ${DOCUMENT_PARSE_TIMEOUT:-60s}
     secrets: [database_url, gitlab_token, gitlab_webhook_secret, github_token, github_webhook_secret]
     tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
     networks: [app, data]
@@ -90,6 +93,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - document_data:/var/lib/ai-test-assistant/documents
     healthcheck:
       test: ["CMD", "/healthcheck"]
       interval: 10s
@@ -104,6 +109,7 @@ services:
       dockerfile: infra/docker/Dockerfile.frontend
     environment:
       BACKEND_API_URL: http://api:8080
+      DOCUMENT_MAX_UPLOAD_BYTES: ${DOCUMENT_MAX_UPLOAD_BYTES:-16777216}
     tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
     networks: [app]
     ports:
@@ -149,6 +155,9 @@ services:
       WORKER_RETRY_DELAY: ${WORKER_RETRY_DELAY:-5s}
       WORKER_LEASE_DURATION: ${WORKER_LEASE_DURATION:-5m}
       WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
+      DOCUMENT_STORAGE_PATH: /var/lib/ai-test-assistant/documents
+      DOCUMENT_MAX_UPLOAD_BYTES: ${DOCUMENT_MAX_UPLOAD_BYTES:-16777216}
+      DOCUMENT_PARSE_TIMEOUT: ${DOCUMENT_PARSE_TIMEOUT:-60s}
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-ai-test-assistant-sandbox:phase11}
       SANDBOX_TIMEOUT_SECONDS: ${SANDBOX_TIMEOUT_SECONDS:-60}
       SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-512}
@@ -162,6 +171,7 @@ services:
     networks: [app, data]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - document_data:/var/lib/ai-test-assistant/documents
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,3 +206,4 @@ networks:
 
 volumes:
   postgres_data:
+  document_data:

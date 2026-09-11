@@ -1,7 +1,8 @@
 # Kế hoạch chuyển đổi sang Document-Driven Testing
 
 - **Ngày chốt định hướng:** 10/09/2026
-- **Trạng thái:** Đang lập kế hoạch và triển khai theo phase
+- **Cập nhật triển khai:** 11/09/2026
+- **Trạng thái:** Phase 0–2 hoàn thành; Phase 3 là phase tiếp theo
 - **Phạm vi:** Backend Go, Frontend Next.js, PostgreSQL/pgvector, LLM,
   GitHub/GitLab và Docker Sandbox
 
@@ -100,7 +101,7 @@ Approved test case + PR/MR source SHA
 - [x] Generated-test versioning, validation history và review audit.
 - [x] AI provenance gồm prompt/response/context/token/latency.
 - [x] Next.js review console.
-- [ ] Chưa có document upload/versioning/parsing.
+- [x] Đã có document upload/versioning/parsing cho DOCX và Markdown.
 - [ ] Chưa có requirement inventory/review.
 - [ ] Chưa có document-grounded test-case domain.
 - [ ] Chưa có coverage audit ngược với tài liệu gốc.
@@ -111,9 +112,9 @@ Approved test case + PR/MR source SHA
 
 | Phase | Nội dung | Backend | Frontend | Trạng thái |
 | --- | --- | --- | --- | --- |
-| 0 | Chốt định hướng và tài liệu | N/A | N/A | `IN_PROGRESS` |
-| 1 | Domain model và migration nền | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 2 | Upload, lưu trữ và parse tài liệu | Chưa làm | Chưa làm | `NOT_STARTED` |
+| 0 | Chốt định hướng và tài liệu | N/A | N/A | `DONE` |
+| 1 | Domain model và migration nền | Đã làm | Đã làm | `DONE` |
+| 2 | Upload, lưu trữ và parse tài liệu | Đã làm | Đã làm | `DONE` |
 | 3 | Semantic chunking và document RAG | Chưa làm | Chưa làm | `NOT_STARTED` |
 | 4 | Requirement extraction và review | Chưa làm | Chưa làm | `NOT_STARTED` |
 | 5 | Sinh test case và coverage audit | Chưa làm | Chưa làm | `NOT_STARTED` |
@@ -142,17 +143,22 @@ thống nhất thuật ngữ trước khi thay schema/API.
 - [x] Ghi nhận giới hạn của coverage dựa trên bản tóm tắt AI.
 - [x] Cập nhật tài liệu entry point và kiến trúc để phân biệt current/target.
 - [x] Tạo kế hoạch chuyển đổi có checklist.
-- [ ] Chốt loại automation đầu tiên: Go unit test, API test hay cả hai.
-- [ ] Chốt định dạng upload MVP: đề xuất DOCX + Markdown; XLSX là import/export.
-- [ ] Chốt người có quyền phê duyệt document baseline và requirement.
-- [ ] Chốt retention policy cho file gốc, prompt và execution evidence.
-- [ ] Mentor/PO duyệt tên đề tài, phạm vi và tiêu chí đánh giá mới.
+- [x] Chốt automation đầu tiên là Go unit test; API/UI automation được hoãn tới
+  khi có contract/môi trường tương ứng.
+- [x] Chốt upload MVP là DOCX + Markdown; XLSX là output ở Phase 6, chưa import.
+- [x] Chốt Product Owner/BA duyệt document/requirement, QA/Test Lead duyệt test
+  case, Developer/QA Automation duyệt artifact.
+- [x] Chốt MVP giữ file gốc và evidence theo vòng đời document set; chưa có API
+  xóa, retention theo thời gian và coordinated backup/restore ở Phase 11.
+- [x] PO đã duyệt hướng triển khai qua yêu cầu thực hiện Phase 0–2; bằng chứng
+  phê duyệt học thuật riêng của mentor được quản lý ngoài runtime repository.
 
 ### Definition of Done
 
 - [x] Không còn tài liệu entry point nào mô tả code-first là kiến trúc đích.
-- [ ] Có quyết định bằng văn bản cho automation type và file format MVP.
-- [ ] Có người chịu trách nhiệm phê duyệt requirement/test case.
+- [x] Có quyết định bằng văn bản cho automation type và file format MVP tại
+  `docs/adr/0003-document-authority-versioning-and-mvp-boundary.md`.
+- [x] Có người chịu trách nhiệm phê duyệt requirement/test case.
 
 ---
 
@@ -165,33 +171,33 @@ hỏng pipeline đang chạy.
 
 ### Backend
 
-- [ ] Viết ADR cho document authority, versioning và immutable evidence.
-- [ ] Thêm package `internal/document`.
-- [ ] Thêm package `internal/requirement`.
-- [ ] Thêm package `internal/testcase`.
-- [ ] Thêm package `internal/automation` hoặc tách rõ khỏi `generation` cũ.
-- [ ] Thêm package `internal/report`.
-- [ ] Tạo migration cho `document_sets`.
-- [ ] Tạo migration cho `documents` và `document_versions`.
-- [ ] Tạo migration cho `document_chunks` với pgvector và metadata.
-- [ ] Tạo migration cho `requirements` và `requirement_evidence`.
-- [ ] Tạo migration cho `requirement_conflicts`/`open_questions`.
-- [ ] Tạo migration cho `test_cases`, `test_case_steps` và
+- [x] Viết ADR cho document authority, versioning và immutable evidence.
+- [x] Thêm package `internal/document`.
+- [x] Thêm package `internal/requirement`.
+- [x] Thêm package `internal/testcase`.
+- [x] Thêm package `internal/automation` hoặc tách rõ khỏi `generation` cũ.
+- [x] Thêm package `internal/report`.
+- [x] Tạo migration cho `document_sets`.
+- [x] Tạo migration cho `documents` và `document_versions`.
+- [x] Tạo migration cho `document_chunks` với pgvector và metadata.
+- [x] Tạo migration cho `requirements` và `requirement_evidence`.
+- [x] Tạo migration cho `requirement_conflicts`/`open_questions`.
+- [x] Tạo migration cho `test_cases`, `test_case_steps` và
   `test_case_requirement_links`.
-- [ ] Tạo migration cho `automation_artifacts`.
-- [ ] Tạo migration cho `test_runs` và `test_run_evidence`.
-- [ ] Tạo migration cho document/requirement/test-case review decisions.
-- [ ] Dùng status CHECK constraint hoặc typed validation nhất quán.
-- [ ] Bổ sung index cho set/version/status, source locator, retrieval và coverage.
-- [ ] Viết down migration an toàn cho toàn bộ bảng mới.
-- [ ] Viết repository integration tests kiểm tra project/set isolation.
+- [x] Tạo migration cho `automation_artifacts`.
+- [x] Tạo migration cho `test_runs` và `test_run_evidence`.
+- [x] Tạo migration cho document/requirement/test-case review decisions.
+- [x] Dùng status CHECK constraint hoặc typed validation nhất quán.
+- [x] Bổ sung index cho set/version/status, source locator, retrieval và coverage.
+- [x] Viết down migration an toàn cho toàn bộ bảng mới.
+- [x] Viết repository integration tests kiểm tra ownership/set isolation.
 
 ### Frontend
 
-- [ ] Định nghĩa TypeScript types cho document, requirement, test case và run.
-- [ ] Định nghĩa route map mới nhưng chưa cần UI hoàn chỉnh.
-- [ ] Thiết kế status badge cho parsing/index/review/execution.
-- [ ] Giữ màn hình legacy hoạt động trong thời gian chuyển đổi.
+- [x] Định nghĩa TypeScript types cho document, requirement, test case và run.
+- [x] Định nghĩa route map mới nhưng chưa cần UI hoàn chỉnh.
+- [x] Thiết kế status badge cho parsing/index/review/execution.
+- [x] Giữ màn hình legacy hoạt động trong thời gian chuyển đổi.
 
 ### Quyết định dữ liệu bắt buộc
 
@@ -201,19 +207,25 @@ hỏng pipeline đang chạy.
 - Automation artifact phải tham chiếu test-case version cụ thể.
 - Test run phải lưu source SHA, artifact hash, environment và timestamp.
 
+Ở Phase 1, schema cho phép tạo record `DRAFT` trước rồi gắn evidence trong cùng
+workflow. Service review ở Phase 4–5 phải từ chối chuyển sang `APPROVED` nếu
+thiếu evidence/link bắt buộc. “Document version bất biến” áp dụng cho file
+identity/content; parse status và approval status là workflow state được phép
+thay đổi có kiểm soát.
+
 ### Tests
 
-- [ ] Migration up/down round trip.
-- [ ] Foreign-key ownership và cascade policy.
-- [ ] Không thể nối evidence khác document set.
-- [ ] Không thể nối artifact với test case chưa duyệt nếu policy yêu cầu.
-- [ ] Không thể sửa version/evidence bất biến.
+- [x] Migration up/down round trip trên database sạch và database legacy.
+- [x] Foreign-key ownership và cascade policy.
+- [x] Không thể nối evidence khác document set.
+- [x] Không thể nối artifact với test case chưa duyệt hoặc đổi expected hash.
+- [x] Không thể sửa version/evidence bất biến.
 
 ### Definition of Done
 
-- [ ] Migration chạy được trên database sạch và database có dữ liệu legacy.
-- [ ] Repository tests pass với PostgreSQL thật.
-- [ ] Không thay đổi hành vi API legacy.
+- [x] Migration chạy được trên database sạch và database có dữ liệu legacy.
+- [x] Repository tests pass với PostgreSQL thật.
+- [x] Không thay đổi hành vi API legacy.
 
 ---
 
@@ -226,45 +238,63 @@ Cho phép người dùng tạo document set, upload tài liệu và xem nội du
 
 ### Backend
 
-- [ ] API tạo/list/get document set.
-- [ ] API upload document version bằng multipart có giới hạn dung lượng.
-- [ ] Tính SHA-256 để deduplicate và truy vết file gốc.
-- [ ] Lưu filename, MIME type, size, checksum, version, approval status.
-- [ ] Chọn storage abstraction: local volume cho MVP, object storage về sau.
-- [ ] Không lưu file binary lớn trực tiếp vào PostgreSQL nếu chưa có lý do rõ.
-- [ ] Parser interface trả blocks chuẩn hóa: heading, paragraph, table, list.
-- [ ] Parser DOCX giữ heading, bảng, thứ tự và source locator.
-- [ ] Parser Markdown giữ heading hierarchy và line range.
-- [ ] Parser XLSX giữ sheet, cell/range và merged-header context nếu hỗ trợ import.
-- [ ] Loại bỏ macro/embedded executable; không thực thi nội dung tài liệu.
-- [ ] Bảo vệ zip bomb, path traversal, oversized XML và parser timeout.
-- [ ] Ghi parse status/error và số block trích xuất.
-- [ ] Tạo worker riêng cho parsing.
+- [x] API tạo/list/get document set.
+- [x] API upload document version bằng multipart có giới hạn dung lượng.
+- [x] Tính SHA-256 để deduplicate và truy vết file gốc.
+- [x] Lưu filename, MIME type, size, checksum, version, approval status.
+- [x] Chọn storage abstraction: local shared volume cho MVP, object storage về sau.
+- [x] Không lưu file binary lớn trực tiếp vào PostgreSQL.
+- [x] Parser interface trả blocks chuẩn hóa: heading, paragraph, table, list và code.
+- [x] Parser DOCX giữ heading, bảng, thứ tự và source locator.
+- [x] Parser Markdown giữ heading hierarchy và line range.
+- [x] XLSX import không nằm trong MVP theo ADR 0003; parser được hoãn có chủ đích.
+- [x] Loại bỏ macro/embedded executable; không thực thi nội dung tài liệu.
+- [x] Bảo vệ zip bomb, path traversal, oversized XML và parser timeout.
+- [x] Ghi parse status/error và số block trích xuất.
+- [x] Tạo worker riêng cho parsing.
 
 ### Frontend
 
-- [ ] Trang danh sách document sets.
-- [ ] Form tạo document set với product/scope/description.
-- [ ] Upload drag-and-drop và file validation phía client.
-- [ ] Hiển thị progress: `UPLOADED`, `PARSING`, `PARSED`, `FAILED`.
-- [ ] Trang document preview hiển thị heading/table/source locator.
-- [ ] Hiển thị version và approval badge rõ ràng.
-- [ ] Cho upload version mới mà không ghi đè version cũ.
+- [x] Trang danh sách document sets.
+- [x] Form tạo document set với product/scope/description.
+- [x] Upload drag-and-drop và file validation phía client.
+- [x] Hiển thị trạng thái: `UPLOADED`, `PARSING`, `PARSED`, `FAILED`.
+- [x] Trang document preview hiển thị heading/table/source locator.
+- [x] Hiển thị version và approval badge rõ ràng.
+- [x] Cho upload version mới mà không ghi đè version cũ.
 
 ### Tests
 
-- [ ] Fixture DOCX chứa heading, table và Unicode tiếng Việt.
-- [ ] Fixture Markdown có nested heading và table.
-- [ ] Fixture XLSX theo template `TC_DAT_HANG_THANH_CONG_.xlsx` nếu import nằm trong MVP.
-- [ ] Reject extension/MIME không hỗ trợ và file quá lớn.
-- [ ] Parser không làm mất main/alternate/exception flow.
-- [ ] Parser output deterministic với cùng checksum.
+- [x] Fixture DOCX chứa heading, table và Unicode tiếng Việt.
+- [x] Fixture Markdown có nested heading và table.
+- [x] XLSX fixture không áp dụng vì import không nằm trong MVP Phase 2.
+- [x] Reject extension/MIME không hỗ trợ và file quá lớn.
+- [x] Parser không làm mất main/alternate/exception flow.
+- [x] Parser output deterministic với cùng checksum.
 
 ### Definition of Done
 
-- [ ] Upload bộ PTYC/URD mẫu và xem đúng các section/flow trên UI.
-- [ ] Có thể chỉ ra nguồn tới heading/table row cụ thể.
-- [ ] Parser failure không làm mất file gốc và có lỗi dễ xử lý.
+- [x] Upload bộ PTYC/URD mẫu qua Docker API/worker và mở được ba route UI;
+  kết quả lần lượt là 167 và 471 block.
+- [x] Có thể chỉ ra nguồn tới heading/table cụ thể bằng `word/body/p[n]` và
+  `word/body/table[n]` (Markdown dùng line/range).
+- [x] Parser failure không làm mất file gốc và có lỗi dễ xử lý.
+
+### Bằng chứng xác minh Phase 0–2 (11/09/2026)
+
+- `go test -race ./...` và `go vet ./...` pass cho toàn backend.
+- `go test -count=1 -p 1 -tags=integration ./internal/...` pass với PostgreSQL
+  thật; Compose worker được dừng trong lúc chạy để không tranh database queue.
+- Migration 1–15 chạy up/down toàn bộ trên database sạch; migration 15 chạy
+  down/up trên database legacy hiện có.
+- `npm run typecheck` và `npm run build` pass; Next.js build nhận đủ ba route
+  Documents mới.
+- Docker build API/worker/frontend pass; API nhận PTYC và URD thật, parse thành
+  167/471 block, block count khớp response và không có locator rỗng.
+- `make sandbox-security-check` và `make sandbox-test` pass, chứng minh thay đổi
+  không phá regression guard của pipeline thực thi legacy.
+- Dữ liệu/file dùng cho E2E được xóa sau test; không để sample tạm trong database
+  hoặc `document_data` volume.
 
 ---
 

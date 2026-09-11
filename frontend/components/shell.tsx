@@ -1,10 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-type Section = "overview" | "projects" | "analyses" | "evaluations";
+type Section = "overview" | "documents" | "projects" | "analyses" | "evaluations";
 
 const navigation: Array<{ href: string; label: string; section: Section; icon: string }> = [
   { href: "/", label: "Overview", section: "overview", icon: "overview" },
+  { href: "/documents", label: "Documents", section: "documents", icon: "documents" },
   { href: "/projects", label: "Projects", section: "projects", icon: "projects" },
   { href: "/analyses", label: "Review queue", section: "analyses", icon: "reviews" },
   { href: "/evaluations", label: "Evaluation", section: "evaluations", icon: "evaluation" },
@@ -22,6 +23,7 @@ function ProductMark() {
 function NavIcon({ name }: { name: string }) {
   const common = { "aria-hidden": true, fill: "none", stroke: "currentColor", strokeLinecap: "round" as const, strokeLinejoin: "round" as const, strokeWidth: 1.8 };
   if (name === "search") return <svg viewBox="0 0 24 24" {...common}><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4.5 4.5" /></svg>;
+  if (name === "documents") return <svg viewBox="0 0 24 24" {...common}><path d="M6 3.5h8l4 4v13H6z" /><path d="M14 3.5v4h4M9 12h6M9 15.5h6" /></svg>;
   if (name === "projects") return <svg viewBox="0 0 24 24" {...common}><path d="M3.5 6.5h6l1.8 2h9.2v10h-17z" /><path d="M3.5 8.5v-3h6" /></svg>;
   if (name === "reviews") return <svg viewBox="0 0 24 24" {...common}><path d="M7 4.5h10a2 2 0 0 1 2 2v12H5v-12a2 2 0 0 1 2-2Z" /><path d="m8.5 11 2.2 2.2 4.8-5M8.5 16h7" /></svg>;
   if (name === "evaluation") return <svg viewBox="0 0 24 24" {...common}><path d="M5 19.5V12h3v7.5zm5.5 0V5h3v14.5zm5.5 0v-11h3v11z" /></svg>;

@@ -31,6 +31,7 @@ type Config struct {
 	Embedding       EmbeddingConfig
 	LLM             LLMConfig
 	Worker          WorkerConfig
+	Document        DocumentConfig
 	Sandbox         SandboxConfig
 	Repair          RepairConfig
 }
@@ -64,6 +65,12 @@ type WorkerConfig struct {
 	RetryDelay    time.Duration
 	LeaseDuration time.Duration
 	MaxAttempts   int
+}
+
+type DocumentConfig struct {
+	StoragePath    string
+	MaxUploadBytes int64
+	ParseTimeout   time.Duration
 }
 
 type EmbeddingConfig struct {
@@ -159,6 +166,11 @@ func Load() (Config, error) {
 			RetryDelay:    5 * time.Second,
 			LeaseDuration: 5 * time.Minute,
 			MaxAttempts:   3,
+		},
+		Document: DocumentConfig{
+			StoragePath:    envOrDefault("DOCUMENT_STORAGE_PATH", "./data/documents"),
+			MaxUploadBytes: 16 << 20,
+			ParseTimeout:   60 * time.Second,
 		},
 		Sandbox: SandboxConfig{
 			Image:   envOrDefault("SANDBOX_IMAGE", "ai-test-assistant-sandbox:phase7"),
@@ -272,6 +284,23 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("WORKER_MAX_ATTEMPTS must be between 1 and 20")
 		}
 		cfg.Worker.MaxAttempts = parsed
+	}
+	if strings.TrimSpace(cfg.Document.StoragePath) == "" {
+		return Config{}, errors.New("DOCUMENT_STORAGE_PATH is required")
+	}
+	if value := os.Getenv("DOCUMENT_MAX_UPLOAD_BYTES"); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed < 1 || parsed > 256<<20 {
+			return Config{}, errors.New("DOCUMENT_MAX_UPLOAD_BYTES must be between 1 and 268435456")
+		}
+		cfg.Document.MaxUploadBytes = parsed
+	}
+	if value := os.Getenv("DOCUMENT_PARSE_TIMEOUT"); value != "" {
+		parsed, err := positiveDuration("DOCUMENT_PARSE_TIMEOUT", value)
+		if err != nil || parsed > 10*time.Minute {
+			return Config{}, errors.New("DOCUMENT_PARSE_TIMEOUT must be a positive duration no greater than 10m")
+		}
+		cfg.Document.ParseTimeout = parsed
 	}
 	if value := os.Getenv("LLM_REQUEST_TIMEOUT"); value != "" {
 		parsed, err := positiveDuration("LLM_REQUEST_TIMEOUT", value)

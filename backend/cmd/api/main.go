@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/evaluation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
@@ -47,6 +48,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer database.Close()
+	documentStore, err := document.NewLocalFileStore(cfg.Document.StoragePath, cfg.Document.MaxUploadBytes)
+	if err != nil {
+		logger.Error("configure document storage", "error", err)
+		os.Exit(1)
+	}
+	documentService := document.NewService(document.NewRepository(database.Pool()), documentStore)
 
 	projectRepository := project.NewPostgresRepository(database.Pool())
 	gitLabSourceClient, err := gitlab.NewHTTPClient(cfg.GitLab.BaseURL, cfg.GitLab.Token, cfg.GitLab.RequestTimeout)
@@ -106,10 +113,10 @@ func main() {
 	webhookHandler.Handle("POST /api/webhooks/github", gitHubWebhookHandler)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewRouterWithPhaseThirteenServices(logger, database, projectService, analysisService,
+		Handler: httpapi.NewRouterWithDocumentServices(logger, database, projectService, analysisService,
 			webhookHandler, knowledgeService, recommendationService, generationService,
 			validationService, repairService, reviewService, contextService, evaluationService,
-			provenanceService, impactService,
+			provenanceService, impactService, documentService, cfg.Document.MaxUploadBytes,
 			httpapi.RouterOptions{RateLimitPerSecond: cfg.HTTP.RateLimitPerSecond,
 				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients}),
 		ReadHeaderTimeout: 5 * time.Second,

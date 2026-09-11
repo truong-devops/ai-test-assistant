@@ -3,6 +3,46 @@ import { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
+const configuredDocumentMaxBytes = Number(process.env.DOCUMENT_MAX_UPLOAD_BYTES ?? 16 * 1024 * 1024);
+const documentMaxBytes = Number.isSafeInteger(configuredDocumentMaxBytes) &&
+  configuredDocumentMaxBytes > 0 && configuredDocumentMaxBytes <= 256 * 1024 * 1024
+  ? configuredDocumentMaxBytes
+  : 16 * 1024 * 1024;
+const genericMaxBodyBytes = 2 * 1024 * 1024;
+
+class ProxyBodyTooLarge extends Error {}
+
+function isDocumentUpload(path: string[]): boolean {
+  return path.length === 4 && path[0] === "api" && path[1] === "document-sets" && path[3] === "documents";
+}
+
+async function boundedRequestBody(request: NextRequest, maxBytes: number): Promise<ArrayBuffer | undefined> {
+  if (request.method === "GET" || request.method === "HEAD" || request.body === null) return undefined;
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw new ProxyBodyTooLarge();
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new ProxyBodyTooLarge();
+    }
+    chunks.push(value);
+  }
+  const buffer = new ArrayBuffer(total);
+  const body = new Uint8Array(buffer);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return buffer;
+}
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
@@ -13,11 +53,21 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const requestID = request.headers.get("x-request-id");
   if (contentType) headers.set("content-type", contentType);
   if (requestID) headers.set("x-request-id", requestID);
+  let body: ArrayBuffer | undefined;
+  try {
+    const limit = isDocumentUpload(path) ? documentMaxBytes + (1 * 1024 * 1024) : genericMaxBodyBytes;
+    body = await boundedRequestBody(request, limit);
+  } catch (error) {
+    if (error instanceof ProxyBodyTooLarge) {
+      return Response.json({ error: "request body is too large" }, { status: 413 });
+    }
+    return Response.json({ error: "could not read request body" }, { status: 400 });
+  }
   try {
     const upstream = await fetch(target, {
       method: request.method,
       headers,
-      body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.arrayBuffer(),
+      body,
       cache: "no-store",
     });
     const responseHeaders = new Headers();
