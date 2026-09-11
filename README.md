@@ -19,20 +19,21 @@ for the authoritative target direction and phase checklist.
 
 ## Current implementation status
 
-Document-driven refactor Phases 0–5 are now implemented alongside the earlier
+Document-driven refactor Phases 0–8 are now implemented alongside the earlier
 Phases 0–13 baseline. Users can upload immutable DOCX/Markdown versions, approve
 source versions, build a semantic document index, review cited requirements and
 conflict/TBD items, generate grounded business test cases, and inspect a
 deterministic requirement-to-test coverage matrix in the Next.js Documents
-workspace.
+workspace. Projects can bind an approved suite, webhook analyses snapshot a
+safe execution scope, and approved cases can produce reviewed Go automation
+artifacts plus immutable XLSX/Markdown exports.
 
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
 isolated Docker validation, bounded repair, provenance and human review. These
-capabilities are being reused incrementally. PR/MR-to-business-test mapping,
-automation generated from approved business cases, the new execution taxonomy,
-and XLSX/Markdown reporting remain Phase 6+ work, so this is not yet the
+capabilities are being reused incrementally. The new execution taxonomy and
+document-driven sandbox execution remain Phase 9 work, so this is not yet the
 completed execution/reporting product.
 
 [PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
@@ -126,6 +127,13 @@ Document-driven Phases 2–5:
 - `GET /api/test-cases/{id}`
 - `POST /api/test-cases/{id}/review`
 - `POST /api/test-cases/bulk-review`
+- `POST|GET /api/document-sets/{id}/exports`
+- `GET /api/test-exports/{id}/download`
+- `GET|POST /api/projects/{id}/document-baseline`
+- `GET|POST /api/analyses/{id}/test-scope`
+- `POST /api/analyses/{id}/automation/generate`
+- `GET /api/test-cases/{id}/automation`
+- `POST /api/automation-artifacts/{id}/review`
 
 Legacy-compatible endpoints:
 

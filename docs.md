@@ -1,11 +1,12 @@
 # AI Test Assistant – Cơ chế hoạt động hiện tại và định hướng mới
 
-> **Trạng thái tài liệu – 11/09/2026:** Phase 0–5 của kiến trúc
+> **Trạng thái tài liệu – 11/09/2026:** Phase 0–8 của kiến trúc
 > **document-driven test generation + code execution** đã được triển khai song
 > song với pipeline PR/MR cũ. Hệ thống hiện nhận DOCX/Markdown, index semantic,
 > trích xuất và duyệt requirement có evidence, sinh/duyệt test case nghiệp vụ và
-> tính coverage từ database. XLSX/export và nối baseline này vào lần chạy PR/MR
-> vẫn thuộc Phase 6 trở đi. Xem checklist tại
+> tính coverage từ database. Hệ thống cũng đã có XLSX/Markdown export, project
+> baseline, PR/MR test scope và Go automation artifact từ test case đã duyệt.
+> Sandbox execution/result taxonomy tiếp tục ở Phase 9. Xem checklist tại
 > [docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 ## 1. Dự án sẽ dùng để làm gì?
@@ -33,7 +34,7 @@ phải là `FAILED` hoặc `NEEDS_CLARIFICATION`, không phải sửa expected r
 | Nguồn expected result | Phase 5 business test dùng approved evidence; legacy generated Go test vẫn tồn tại riêng | Chỉ từ bằng chứng tài liệu có truy vết |
 | Vai trò của code | Vừa tạo context, vừa là đối tượng chạy test | Chỉ dùng để xác định phạm vi kỹ thuật, viết automation và thực thi |
 | Đầu ra | Go generated test và sandbox result | Test case, coverage matrix, automated test, execution report và Excel |
-| Trạng thái chuyển đổi | Được giữ tương thích | Phase 0–5 đã xong; Phase 6–11 chưa làm |
+| Trạng thái chuyển đổi | Được giữ tương thích | Phase 0–8 đã xong; Phase 9–11 chưa làm |
 
 Frontend `Documents` hiện có các màn hình index, requirement inventory/review,
 test-case review và coverage. Các màn hình Projects/Review cũ vẫn được giữ tương
@@ -241,9 +242,10 @@ PR/MR webhook
 → human review
 ```
 
-Các phần legacy được giữ làm baseline để nối approved business test với PR/MR ở
-Phase 7+, không được dùng để thay expected result của Phase 5. Export XLSX và
-execution report vẫn chưa có trong document-driven workflow.
+Các phần legacy được giữ tương thích, nhưng PR/MR mới đã snapshot được approved
+business baseline và tạo test run/scope. Code/diff chỉ cung cấp tín hiệu kỹ
+thuật, không được dùng để thay expected result. Export XLSX/Markdown đã có;
+sandbox execution và phân loại kết quả đầy đủ thuộc Phase 9.
 
 ## 12. Cách trình bày ngắn với giảng viên
 

@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
 import { TestCaseReview } from "@/components/test-case-review";
-import { ApiError, getBusinessTestCase, getDocumentSet } from "@/lib/api";
+import { AutomationHistory } from "@/components/automation-history";
+import { ApiError, getAutomationHistory, getBusinessTestCase, getDocumentSet } from "@/lib/api";
 import { humanize } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function TestCaseDetailPage({ params }: { params: Promise<{
   }
   if (detail.test_case.document_set_id !== Number(id)) notFound();
   const set = await getDocumentSet(id);
+	const automation = await getAutomationHistory(testCaseId);
   const item = detail.test_case;
   return <AppShell active="documents">
     <div className="breadcrumb"><Link href="/documents">Documents</Link><span>/</span><Link href={`/documents/${id}`}>{set.name}</Link><span>/</span><Link href={`/documents/${id}/test-cases`}>Test cases</Link><span>/</span><span>{item.test_case_key}</span></div>
@@ -26,6 +28,7 @@ export default async function TestCaseDetailPage({ params }: { params: Promise<{
     <section className="panel"><div className="detail-grid"><div className="detail-cell"><span>Case ID</span><strong className="mono">{item.test_case_key}</strong></div><div className="detail-cell"><span>Version</span><strong>v{item.version_number}</strong></div><div className="detail-cell"><span>Actor</span><strong>{item.actor || "—"}</strong></div></div></section>
     <section className="document-preview-section panel"><div className="panel-header"><div><h2>Steps</h2><p>Step-level expected results are retained when the source provides them.</p></div></div><ol className="step-list">{detail.steps.map((step) => <li key={step.id}><strong>{step.action}</strong>{step.expected_result ? <p>Expected: {step.expected_result}</p> : null}</li>)}</ol></section>
     <section className="document-preview-section panel"><div className="panel-header"><div><h2>Expected-result evidence</h2><p>Business source is separate from generated_by={item.generated_by}.</p></div><span className="section-counter">{detail.evidence.length}</span></div><div className="evidence-drawer">{detail.evidence.map((evidence) => <article key={evidence.id}><header><strong>{evidence.document_name} v{evidence.version_number}</strong><StatusBadge status={evidence.approval_status} /><code>{evidence.source_locator}</code></header><pre>{evidence.excerpt}</pre></article>)}</div></section>
+	<AutomationHistory history={automation} expectedHash={item.expected_result_hash} />
     <div className="document-preview-section"><TestCaseReview testCase={item} /></div>
   </AppShell>;
 }

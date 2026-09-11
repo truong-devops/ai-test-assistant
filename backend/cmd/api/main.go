@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/automation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/evaluation"
@@ -27,9 +28,11 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/report"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/requirement"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/review"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scope"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/testcase"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
@@ -133,20 +136,27 @@ func main() {
 	provenanceService := provenance.NewService(jobRepository, provenanceRepository)
 	impactRepository := impact.NewRepository(database.Pool())
 	impactService := impact.NewService(jobRepository, impactRepository)
-	webhookService := gitlab.NewWebhookService(projectRepository, jobRepository)
+	scopeRepository := scope.NewRepository(database.Pool())
+	scopedEnqueuer := scope.NewEnqueuer(jobRepository, scopeRepository)
+	reportService := report.NewService(report.NewRepository(database.Pool()))
+	automationService := automation.NewService(automation.NewRepository(database.Pool()),
+		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, providerName,
+		cfg.LLM.Model, cfg.LLM.MaxOutputTokens)
+	webhookService := gitlab.NewWebhookService(projectRepository, scopedEnqueuer)
 	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
-	gitHubWebhookService := github.NewWebhookService(projectRepository, jobRepository)
+	gitHubWebhookService := github.NewWebhookService(projectRepository, scopedEnqueuer)
 	gitHubWebhookHandler := github.NewWebhookHandler(cfg.GitHub.WebhookSecret, gitHubWebhookService)
 	webhookHandler := http.NewServeMux()
 	webhookHandler.Handle("POST /api/webhooks/gitlab", gitLabWebhookHandler)
 	webhookHandler.Handle("POST /api/webhooks/github", gitHubWebhookHandler)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewRouterWithDocumentWorkflowServices(logger, database, projectService, analysisService,
+		Handler: httpapi.NewRouterWithDocumentDrivenServices(logger, database, projectService, analysisService,
 			webhookHandler, knowledgeService, recommendationService, generationService,
 			validationService, repairService, reviewService, contextService, evaluationService,
 			provenanceService, impactService, documentService, cfg.Document.MaxUploadBytes,
-			documentIndexService, requirementService, testCaseService,
+			documentIndexService, requirementService, testCaseService, reportService,
+			scopeRepository, automationService,
 			httpapi.RouterOptions{RateLimitPerSecond: cfg.HTTP.RateLimitPerSecond,
 				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients}),
 		ReadHeaderTimeout: 5 * time.Second,

@@ -254,9 +254,77 @@ export type AutomationArtifact = {
   version_number: number;
   framework: string;
   file_path: string;
+  source: string;
   source_hash: string;
   expected_result_hash: string;
   status: "DRAFT" | "APPROVED" | "REJECTED" | "UNREPAIRABLE";
+  analysis_job_id?: number;
+  setup: string;
+  assertions: string[];
+  test_case_snapshot: Record<string, unknown>;
+  business_context: Record<string, unknown>;
+  technical_context: KnowledgeChunk[];
+  business_context_hash: string;
+  technical_context_hash: string;
+  model_name: string;
+  prompt_version: string;
+  created_at: string;
+};
+
+export type TestExport = {
+  id: number;
+  document_set_id: number;
+  test_suite_id: number;
+  test_run_id?: number;
+  format: "XLSX" | "MARKDOWN";
+  filename: string;
+  content_type: string;
+  content_hash: string;
+  snapshot_hash: string;
+  row_count: number;
+  generated_by: string;
+  created_at: string;
+  download_url: string;
+};
+
+export type ProjectDocumentBaseline = {
+  project_id: number;
+  document_set_id: number;
+  document_set_name: string;
+  test_suite_id: number;
+  test_suite_name: string;
+  selection_mode: "FULL_APPROVED" | "MAPPED_WITH_FULL_FALLBACK";
+  selected_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BaselineView = {
+  bound: boolean;
+  baseline?: ProjectDocumentBaseline;
+  candidates: Array<{ document_set_id: number; document_set_name: string; test_suite_id: number; test_suite_name: string; approved_test_cases: number }>;
+};
+
+export type AnalysisTestScope = {
+  analysis_job_id: number;
+  project_id: number;
+  document_set_id: number;
+  test_suite_id: number;
+  test_run_id: number;
+  baseline_hash: string;
+  explicit_identifiers: string[];
+  selection_mode: "FULL_APPROVED" | "EXPLICIT_TRACE" | "FULL_BASELINE_FALLBACK";
+  mapping_confidence: number;
+  warning?: string;
+  items: Array<{ id: number; test_case_id: number; test_case_key: string; title: string; test_type: string; risk: string; expected_result: string; expected_result_hash: string; automation_status: string; included: boolean; selection_reason: string; confidence: number; explanation: string; updated_at: string }>;
+  decisions: Array<{ id: number; scope_item_id: number; reviewer_name: string; included: boolean; comment: string; created_at: string }>;
+	signals: Array<{ id: number; signal_type: "PATH" | "MODULE" | "SYMBOL"; signal_value: string; confidence: number; explanation: string; created_at: string }>;
+  created_at: string;
+};
+
+export type AutomationHistory = {
+  artifacts: AutomationArtifact[];
+  reviews: Array<{ id: number; automation_artifact_id: number; reviewer_name: string; decision: string; comment: string; created_at: string }>;
 };
 
 export type TestRun = {

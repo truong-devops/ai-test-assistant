@@ -92,6 +92,9 @@ func (r *Repository) SaveFetched(ctx context.Context, id int64, expectedAttempt 
 	if _, err := tx.Exec(ctx, `DELETE FROM changed_files WHERE analysis_job_id = $1`, id); err != nil {
 		return fmt.Errorf("clear changed files: %w", err)
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM analysis_scope_signals WHERE analysis_job_id=$1 AND signal_type='PATH'`, id); err != nil {
+		return fmt.Errorf("clear path scope signals: %w", err)
+	}
 	const insertFile = `
 		INSERT INTO changed_files
 			(analysis_job_id, old_path, new_path, change_type, additions, deletions, diff,
@@ -102,6 +105,19 @@ func (r *Repository) SaveFetched(ctx context.Context, id int64, expectedAttempt 
 			file.Additions, file.Deletions, file.Diff, file.NewFile, file.RenamedFile,
 			file.DeletedFile, file.Collapsed, file.TooLarge); err != nil {
 			return fmt.Errorf("insert changed file %q: %w", file.NewPath, err)
+		}
+		signalPath := file.NewPath
+		if signalPath == "" {
+			signalPath = file.OldPath
+		}
+		if signalPath != "" {
+			if _, err := tx.Exec(ctx, `INSERT INTO analysis_scope_signals
+				(analysis_job_id,signal_type,signal_value,confidence,explanation)
+				SELECT $1,'PATH',$2,0.25,'Technical path signal only; it never changes expected results and cannot narrow a full fallback by itself.'
+				WHERE EXISTS(SELECT 1 FROM analysis_baseline_snapshots WHERE analysis_job_id=$1)
+				ON CONFLICT(analysis_job_id,signal_type,signal_value) DO NOTHING`, id, signalPath); err != nil {
+				return fmt.Errorf("save path scope signal: %w", err)
+			}
 		}
 	}
 
@@ -118,6 +134,11 @@ func (r *Repository) SaveFetched(ctx context.Context, id int64, expectedAttempt 
 	}
 	if result.RowsAffected() != 1 {
 		return ErrLeaseLost
+	}
+	if _, err := tx.Exec(ctx, `UPDATE test_runs SET source_sha=$2,target_sha=$3
+		WHERE analysis_job_id=$1 AND status='PENDING'`, id, metadata.SourceSHA,
+		metadata.TargetSHA); err != nil {
+		return fmt.Errorf("update scoped test run source: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit fetched analysis: %w", err)
@@ -180,6 +201,9 @@ func (r *Repository) SaveSymbols(ctx context.Context, analysisID int64, expected
 		(SELECT id FROM changed_files WHERE analysis_job_id=$1)`, analysisID); err != nil {
 		return fmt.Errorf("clear changed symbols: %w", err)
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM analysis_scope_signals WHERE analysis_job_id=$1 AND signal_type IN ('MODULE','SYMBOL')`, analysisID); err != nil {
+		return fmt.Errorf("clear technical scope signals: %w", err)
+	}
 	const insert = `
 		INSERT INTO changed_symbols
 			(changed_file_id, symbol_name, symbol_kind, receiver_name, package_name,
@@ -195,6 +219,18 @@ func (r *Repository) SaveSymbols(ctx context.Context, analysisID int64, expected
 		}
 		if result.RowsAffected() != 1 {
 			return fmt.Errorf("changed file %d does not belong to analysis %d", symbol.ChangedFileID, analysisID)
+		}
+		for signalType, signalValue := range map[string]string{"MODULE": symbol.PackageName, "SYMBOL": symbol.SymbolName} {
+			if signalValue == "" {
+				continue
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO analysis_scope_signals
+				(analysis_job_id,signal_type,signal_value,confidence,explanation)
+				SELECT $1,$2,$3,0.4,'Technical change signal for reviewer scope evidence; business expectations remain document-controlled.'
+				WHERE EXISTS(SELECT 1 FROM analysis_baseline_snapshots WHERE analysis_job_id=$1)
+				ON CONFLICT(analysis_job_id,signal_type,signal_value) DO NOTHING`, analysisID, signalType, signalValue); err != nil {
+				return fmt.Errorf("save technical scope signal: %w", err)
+			}
 		}
 	}
 	result, err := tx.Exec(ctx, `UPDATE analysis_jobs SET status=$2, error_message=NULL,

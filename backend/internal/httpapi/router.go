@@ -121,7 +121,7 @@ func NewRouterWithPhaseThirteenServices(logger *slog.Logger, checker ReadinessCh
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService, nil,
-		document.DefaultMaxUploadBytes, nil, nil, nil, options)
+		document.DefaultMaxUploadBytes, nil, nil, nil, nil, nil, nil, options)
 }
 
 func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker,
@@ -136,7 +136,7 @@ func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService,
-		documentService, documentMaxUploadBytes, nil, nil, nil, options)
+		documentService, documentMaxUploadBytes, nil, nil, nil, nil, nil, nil, options)
 }
 
 func NewRouterWithDocumentWorkflowServices(logger *slog.Logger, checker ReadinessChecker,
@@ -153,7 +153,25 @@ func NewRouterWithDocumentWorkflowServices(logger *slog.Logger, checker Readines
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService,
 		documentService, documentMaxUploadBytes, documentIndexService, requirementService,
-		testCaseService, options)
+		testCaseService, nil, nil, nil, options)
+}
+
+func NewRouterWithDocumentDrivenServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService, provenanceService ProvenanceService,
+	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
+	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
+	testCaseService TestCaseWorkflowService, reportService ReportService, scopeService ScopeService,
+	automationService AutomationService, options RouterOptions,
+) http.Handler {
+	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, recommendationService, generationService, validationService, repairService,
+		reviewService, contextService, evaluationService, provenanceService, impactService,
+		documentService, documentMaxUploadBytes, documentIndexService, requirementService,
+		testCaseService, reportService, scopeService, automationService, options)
 }
 
 func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
@@ -164,7 +182,8 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	evaluationService EvaluationService, provenanceService ProvenanceService,
 	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
 	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
-	testCaseService TestCaseWorkflowService,
+	testCaseService TestCaseWorkflowService, reportService ReportService, scopeService ScopeService,
+	automationService AutomationService,
 	options RouterOptions,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -262,6 +281,25 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		mux.HandleFunc("GET /api/test-cases/{id}", testCases.get)
 		mux.HandleFunc("POST /api/test-cases/{id}/review", testCases.review)
 		mux.HandleFunc("POST /api/test-cases/bulk-review", testCases.bulkReview)
+	}
+	if reportService != nil {
+		reports := reportHandler{service: reportService}
+		mux.HandleFunc("POST /api/document-sets/{id}/exports", reports.export)
+		mux.HandleFunc("GET /api/document-sets/{id}/exports", reports.list)
+		mux.HandleFunc("GET /api/test-exports/{id}/download", reports.download)
+	}
+	if scopeService != nil {
+		scopes := scopeHandler{service: scopeService}
+		mux.HandleFunc("GET /api/projects/{id}/document-baseline", scopes.baseline)
+		mux.HandleFunc("POST /api/projects/{id}/document-baseline", scopes.selectBaseline)
+		mux.HandleFunc("GET /api/analyses/{id}/test-scope", scopes.get)
+		mux.HandleFunc("POST /api/analyses/{id}/test-scope", scopes.decide)
+	}
+	if automationService != nil {
+		automations := automationHandler{service: automationService}
+		mux.HandleFunc("POST /api/analyses/{id}/automation/generate", automations.generate)
+		mux.HandleFunc("GET /api/test-cases/{id}/automation", automations.history)
+		mux.HandleFunc("POST /api/automation-artifacts/{id}/review", automations.review)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)

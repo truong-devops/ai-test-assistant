@@ -25,6 +25,10 @@ import type {
   BusinessTestCase,
   BusinessTestCaseDetail,
   CoverageReport,
+  TestExport,
+  BaselineView,
+  AnalysisTestScope,
+  AutomationHistory,
 } from "@/lib/types";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
@@ -148,6 +152,22 @@ export async function getBusinessTestCase(id: string | number): Promise<Business
 
 export async function getCoverage(setId: string | number): Promise<CoverageReport> {
   return request<CoverageReport>(documentRoutes.coverage(setId));
+}
+
+export async function getTestExports(setId: string | number): Promise<TestExport[]> {
+  return (await request<{ exports: TestExport[] }>(`/api/document-sets/${encodeURIComponent(String(setId))}/exports`)).exports;
+}
+
+export async function getProjectBaseline(projectId: string | number): Promise<BaselineView> {
+  return request<BaselineView>(`/api/projects/${encodeURIComponent(String(projectId))}/document-baseline`);
+}
+
+export async function getAnalysisTestScope(analysisId: string | number): Promise<AnalysisTestScope> {
+  return request<AnalysisTestScope>(`/api/analyses/${encodeURIComponent(String(analysisId))}/test-scope`);
+}
+
+export async function getAutomationHistory(testCaseId: string | number): Promise<AutomationHistory> {
+  return request<AutomationHistory>(`/api/test-cases/${encodeURIComponent(String(testCaseId))}/automation`);
 }
 
 export async function getProject(id: string): Promise<Project> {

@@ -1,7 +1,7 @@
 # Architecture
 
 > **Architecture status – 2026-09-11:** this document records the architecture
-> implemented by document-driven Phases 0–5 and the still-running code-first
+> implemented by document-driven Phases 0–8 and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
 > target architecture and its ordered backend/frontend work are defined in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
@@ -25,12 +25,11 @@ PR/MR source SHA -> technical automation -> sandbox run -> execution report
 - Repair may change automation implementation but not the requirement or
   expected-result snapshot.
 
-Phases 2–5 implement document intake, semantic retrieval, requirement inventory,
-human source/requirement review, grounded business test cases and deterministic
-coverage audit. Automation artifacts, test runs, PR/MR mapping and report export
-remain reserved/future document-driven stages. The current project/analysis
-tables remain in use until their replacement phase meets its migration
-Definition of Done.
+Phases 2–8 implement document intake, semantic retrieval, requirement inventory,
+human source/requirement review, grounded business test cases, deterministic
+coverage, PR/MR baseline snapshots, Go automation artifacts and immutable
+reports. Sandbox execution/result taxonomy begins in Phase 9. Legacy
+project/analysis tables remain in use as the SCM trigger and technical pipeline.
 
 ## Implemented document-driven architecture
 
@@ -57,6 +56,12 @@ approved requirements -> generator per requirement/flow
                       -> grounded expected result + steps + source links
                       -> exact/semantic dedupe -> QA review/versioning
                       -> database-derived coverage matrix
+
+project -> selected approved suite -> webhook-time immutable baseline snapshot
+PR/MR identifiers -> explicit testcase scope; uncertain mapping -> full suite
+changed path/module/symbol -> technical signals only, never expected behavior
+approved testcase + Go context -> versioned/reviewed automation artifact
+suite/run snapshot -> XLSX/Markdown bytes + content/snapshot hashes
 ```
 
 API and worker use the same `document_data` volume. PostgreSQL contains only
@@ -65,7 +70,7 @@ limits archive entries, expanded bytes and XML size; it rejects traversal paths,
 macros and embedded executable extensions. Markdown requires UTF-8 without NUL
 bytes. Both parsers honor cancellation and the worker's bounded parse timeout.
 
-Parsing itself does not call an LLM and none of Phases 2–5 inspect repository
+Parsing itself does not call an LLM and none of Phases 2–6 inspect repository
 code. All uploads start as `DRAFT`. Indexing may include draft sources with an
 explicit warning, but requirement/test-case approval is guarded by database
 triggers requiring approved source evidence. When the LLM is enabled,

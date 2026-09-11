@@ -1,8 +1,8 @@
 # API
 
 > This page documents the API currently implemented. Document-driven Phases
-> 2–5 now run beside the code-first baseline. XLSX/Markdown export and mapping
-> approved business cases to PR/MR execution remain planned. Follow
+> 2–8 now run beside the code-first baseline. XLSX/Markdown export, approved
+> baseline mapping and document-grounded Go automation are implemented. Follow
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 > for the remaining target API.
 
@@ -90,8 +90,8 @@ The worker transitions parse state through `UPLOADED` → `PARSING` → `PARSED`
 or `FAILED`. Parsed blocks preserve order, block type, content and a locator
 such as `line:18`, `lines:20-25`, `word/body/p[12]`, or
 `word/body/table[4]`. A parser failure leaves the original file/version intact.
-XLSX import is not supported in Phase 2; XLSX report export is planned for
-Phase 6.
+XLSX import is not supported in Phase 2; XLSX report export is implemented as
+an output-only Phase 6 capability.
 
 ## Document index and source review (Phase 3)
 
@@ -165,6 +165,32 @@ rejected. Coverage exposes the approved denominator, covered/uncovered,
 conflict, TBD, rejected and duplicate counts separately. `baseline_complete`
 stays false while any approved requirement is uncovered or any current
 conflict/TBD exists—even if the approved-only ratio is 100%.
+
+## Export, execution scope and automation (Phases 6–8)
+
+- `POST /api/document-sets/{id}/exports` creates an immutable XLSX or Markdown
+  snapshot for a suite and optional run. The body requires `test_suite_id`,
+  `format`, and `generated_by`; optional `test_case_ids` and `sort_by` preserve
+  the chosen workspace filter/order.
+- `GET /api/document-sets/{id}/exports` lists artifact metadata and hashes.
+- `GET /api/test-exports/{id}/download` returns stored bytes with
+  `X-Content-SHA256` and attachment headers.
+- `GET|POST /api/projects/{id}/document-baseline` lists/selects the approved
+  document set and suite used by future webhooks.
+- `GET|POST /api/analyses/{id}/test-scope` returns the immutable baseline
+  snapshot, selection reasons/confidence and technical signals, or audits a
+  manual testcase include/exclude decision.
+- `POST /api/analyses/{id}/automation/generate` accepts one approved
+  `test_case_id`. It returns `BLOCKED` instead of inventing an API when Go
+  technical context or the LLM provider is unavailable.
+- `GET /api/test-cases/{id}/automation` lists versioned artifacts and reviews.
+- `POST /api/automation-artifacts/{id}/review` accepts `APPROVED` or `REJECTED`
+  with reviewer provenance.
+
+The automation schema is Go-unit-test-only in Phase 8. Business context comes
+from the approved baseline snapshot; repository chunks are separately marked
+untrusted technical context. Expected-result hashes and production paths cannot
+be changed by provider output.
 
 ## Projects
 

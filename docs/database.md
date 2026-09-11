@@ -1,10 +1,11 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–16.
+> This page documents the schema currently implemented by migrations 1–17.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
-> Reporting and execution mapping remain later phases tracked in
+> Migration 17 adds immutable exports, execution-scope snapshots and separated
+> automation provenance. Sandbox result classification remains tracked in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
@@ -63,6 +64,25 @@ records. Approval requires a link to an approved requirement with evidence.
 Approved title/scenario/expected fields are immutable, while review edits append
 a superseding version and copy evidence links. Coverage is not stored as an AI
 summary: the API rebuilds it from current requirements and test-case links.
+
+## Export, execution scope and automation (migration 17)
+
+`test_exports` stores XLSX/Markdown bytes with an immutable JSON snapshot,
+content hash and snapshot hash. Reports can target a suite/run and retain all
+execution rounds on a separate history sheet.
+
+`project_document_baselines` binds a repository to one approved document
+set/test suite. On webhook enqueue, `analysis_baseline_snapshots` copies the
+approved document versions, requirements and test cases before technical
+analysis. `analysis_test_scope_items` stores selection reasons/confidence,
+`analysis_scope_signals` records path/module/symbol evidence, and
+`analysis_scope_decisions` audits manual changes. Uncertain mapping uses a full
+approved-suite fallback instead of silently narrowing coverage.
+
+`automation_generation_calls` stores business and technical context separately.
+`automation_artifacts` stores the immutable test-case snapshot, setup/assertions
+and separate context hashes. Contract fields cannot be updated; regeneration
+creates a new artifact version. `automation_artifact_reviews` records approval.
 
 ## Phase 12 AI provenance
 

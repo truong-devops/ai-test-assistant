@@ -2,7 +2,7 @@
 
 - **Ngày chốt định hướng:** 10/09/2026
 - **Cập nhật triển khai:** 11/09/2026
-- **Trạng thái:** Phase 0–5 hoàn thành; Phase 6 là phase tiếp theo
+- **Trạng thái:** Phase 0–8 hoàn thành; Phase 9 là phase tiếp theo
 - **Phạm vi:** Backend Go, Frontend Next.js, PostgreSQL/pgvector, LLM,
   GitHub/GitLab và Docker Sandbox
 
@@ -105,7 +105,7 @@ Approved test case + PR/MR source SHA
 - [x] Đã có requirement inventory/review với evidence, conflict và TBD.
 - [x] Đã có document-grounded test-case domain và versioned review.
 - [x] Đã có coverage audit tái tạo từ requirement/test-case links.
-- [ ] Chưa có XLSX execution report exporter.
+- [x] Đã có XLSX/Markdown execution report exporter với immutable snapshot/hash.
 - [ ] Chưa tách product failure khỏi automation/infra error.
 
 ## 5. Trạng thái tổng thể
@@ -118,9 +118,9 @@ Approved test case + PR/MR source SHA
 | 3 | Semantic chunking và document RAG | Đã làm | Đã làm | `DONE` |
 | 4 | Requirement extraction và review | Đã làm | Đã làm | `DONE` |
 | 5 | Sinh test case và coverage audit | Đã làm | Đã làm | `DONE` |
-| 6 | Test-case workspace và XLSX export | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 7 | Liên kết PR/MR với test scope | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 8 | Sinh automation từ test case đã duyệt | Chưa làm | Chưa làm | `NOT_STARTED` |
+| 6 | Test-case workspace và XLSX export | Đã làm | Đã làm | `DONE` |
+| 7 | Liên kết PR/MR với test scope | Đã làm | Đã làm | `DONE` |
+| 8 | Sinh automation từ test case đã duyệt | Đã làm | Đã làm | `DONE` |
 | 9 | Sandbox execution và phân loại kết quả | Chưa làm | Chưa làm | `NOT_STARTED` |
 | 10 | Technical repair có guardrail | Chưa làm | Chưa làm | `NOT_STARTED` |
 | 11 | Migration UI, evaluation và hardening | Chưa làm | Chưa làm | `NOT_STARTED` |
@@ -480,37 +480,38 @@ lý kiểm thử.
 
 ### Backend
 
-- [ ] API export XLSX và Markdown theo document set/test suite/test run.
-- [ ] Workbook có metadata: scope, document versions, generated time và reviewer.
-- [ ] Các cột: TC ID, trace, objective, precondition, steps, data, role, expected,
+- [x] API export XLSX và Markdown theo document set/test suite/test run.
+- [x] Workbook có metadata: scope, document versions, generated time và reviewer.
+- [x] Các cột: TC ID, trace, objective, precondition, steps, data, role, expected,
   priority, environment, actual, status, evidence, notes.
-- [ ] Hỗ trợ nhiều execution rounds hoặc tách sheet run history rõ ràng.
-- [ ] Công thức thống kê P/F/NY không tính header/blank row.
-- [ ] Escape formula injection cho cell bắt đầu bằng `=`, `+`, `-`, `@` từ input.
-- [ ] Giới hạn cell length và sanitize invalid XML characters.
-- [ ] Export dùng immutable snapshot để có thể tái lập.
-- [ ] Lưu hash của artifact xuất.
+- [x] Hỗ trợ nhiều execution rounds hoặc tách sheet run history rõ ràng.
+- [x] Công thức thống kê P/F/NY không tính header/blank row.
+- [x] Escape formula injection cho cell bắt đầu bằng `=`, `+`, `-`, `@` từ input.
+- [x] Giới hạn cell length và sanitize invalid XML characters.
+- [x] Export dùng immutable snapshot để có thể tái lập.
+- [x] Lưu hash của artifact xuất.
 
 ### Frontend
 
-- [ ] Workspace giống test management sheet nhưng responsive.
-- [ ] Cho filter/sort trước khi export.
-- [ ] Nút tải XLSX/Markdown và hiển thị export metadata.
-- [ ] Preview cột Actual/Status/Evidence dù test chưa chạy.
-- [ ] Phân biệt `DRAFT`, `APPROVED`, `MANUAL`, `AUTOMATED`, `BLOCKED`.
+- [x] Workspace giống test management sheet nhưng responsive.
+- [x] Cho filter/sort trước khi export.
+- [x] Nút tải XLSX/Markdown và hiển thị export metadata.
+- [x] Preview cột Actual/Status/Evidence dù test chưa chạy.
+- [x] Phân biệt `DRAFT`, `APPROVED`, `MANUAL`, `AUTOMATED`, `BLOCKED`.
 
 ### Tests
 
-- [ ] So sánh workbook xuất với template mẫu về cột bắt buộc.
-- [ ] Mở workbook được bằng Excel/LibreOffice.
-- [ ] Unicode tiếng Việt và multiline steps không bị lỗi.
-- [ ] Formula injection test.
-- [ ] Số liệu summary khớp dữ liệu database.
+- [x] So sánh workbook xuất với template mẫu về cột bắt buộc.
+- [x] Mở workbook bằng parser OOXML độc lập `openpyxl`; launcher LibreOffice cục
+  bộ bị hỏng nên test LibreOffice tự skip khi executable không khả dụng.
+- [x] Unicode tiếng Việt và multiline steps không bị lỗi.
+- [x] Formula injection test.
+- [x] Số liệu summary khớp data row range và dữ liệu database.
 
 ### Definition of Done
 
-- [ ] Có thể xuất bộ UC-B08 ra XLSX dễ đọc và truy vết được nguồn.
-- [ ] Export trước khi chạy hiển thị NY; sau khi chạy có Actual/P/F/Evidence.
+- [x] Có thể xuất bộ UC-B08 ra XLSX dễ đọc và truy vết được nguồn.
+- [x] Export trước khi chạy hiển thị NY; sau khi chạy có Actual/P/F/Evidence.
 
 ---
 
@@ -522,37 +523,38 @@ Giữ tự động hóa theo code change nhưng không để code tạo ra expec
 
 ### Backend
 
-- [ ] Giữ webhook verification, dedupe, source/target SHA và changed files.
-- [ ] Thêm liên kết project ↔ document set/baseline version.
-- [ ] Cho người dùng chọn baseline áp dụng cho repository.
-- [ ] Cho PR/MR liên kết issue/user-story/requirement ID từ title/description/label.
-- [ ] Ưu tiên explicit link hơn AI mapping.
-- [ ] Dùng path/module/change symbol chỉ làm tín hiệu chọn scope.
-- [ ] Lưu lý do mỗi test case được chọn: explicit trace, issue link, path mapping,
+- [x] Giữ webhook verification, dedupe, source/target SHA và changed files.
+- [x] Thêm liên kết project ↔ document set/baseline version.
+- [x] Cho người dùng chọn baseline áp dụng cho repository.
+- [x] Cho PR/MR liên kết issue/user-story/requirement ID từ title/description/label.
+- [x] Ưu tiên explicit link; Phase 7 MVP không cho AI tự thu hẹp scope, mapping
+  không chắc chắn luôn dùng full approved fallback.
+- [x] Dùng path/module/change symbol chỉ làm tín hiệu chọn scope.
+- [x] Lưu lý do mỗi test case được chọn: explicit trace, issue link, path mapping,
   impact inference hoặc manual selection.
-- [ ] Cho chế độ chạy full approved suite khi scope mapping không chắc chắn.
-- [ ] Không thay expected result dựa trên diff.
-- [ ] Snapshot baseline version tại lúc tạo execution analysis.
+- [x] Cho chế độ chạy full approved suite khi scope mapping không chắc chắn.
+- [x] Không thay expected result dựa trên diff.
+- [x] Snapshot baseline version tại lúc tạo execution analysis.
 
 ### Frontend
 
-- [ ] Project page chọn document baseline.
-- [ ] Analysis page hiển thị requirement/test-case scope trước automation.
-- [ ] Cho reviewer thêm/bỏ test case khỏi run với audit comment.
-- [ ] Hiển thị confidence và lý do mapping.
-- [ ] Cảnh báo PR/MR không liên kết requirement.
+- [x] Project page chọn document baseline.
+- [x] Analysis page hiển thị requirement/test-case scope trước automation.
+- [x] Cho reviewer thêm/bỏ test case khỏi run với audit comment.
+- [x] Hiển thị confidence và lý do mapping.
+- [x] Cảnh báo PR/MR không liên kết requirement.
 
 ### Tests
 
-- [ ] Webhook cũ vẫn hoạt động.
-- [ ] Hai project không dùng nhầm document baseline.
-- [ ] Explicit requirement ID chọn đúng test cases.
-- [ ] Low-confidence mapping không âm thầm thu hẹp test suite.
+- [x] Webhook cũ vẫn hoạt động.
+- [x] Hai project không dùng nhầm document baseline.
+- [x] Explicit requirement ID chọn đúng test cases.
+- [x] Low-confidence mapping không âm thầm thu hẹp test suite.
 
 ### Definition of Done
 
-- [ ] Một PR/MR tạo test run gắn source SHA và approved baseline cụ thể.
-- [ ] Người review biết rõ vì sao từng test case nằm trong scope.
+- [x] Một PR/MR tạo test run gắn source SHA và approved baseline cụ thể.
+- [x] Người review biết rõ vì sao từng test case nằm trong scope.
 
 ---
 
@@ -564,43 +566,43 @@ Chuyển test case thành artifact chạy được mà không thay đổi ý ngh
 
 ### Quyết định phạm vi trước khi code
 
-- [ ] Chọn Go unit test nếu chấp nhận AI đọc package/interface/type/mocks.
-- [ ] Chọn black-box API test nếu có OpenAPI/base URL/test credentials.
-- [ ] Hoãn UI test nếu chưa có locator contract ổn định.
+- [x] Chọn Go unit test; AI chỉ đọc technical context cần cho package/interface/type.
+- [x] Hoãn black-box API test tới khi có OpenAPI/base URL/test credentials.
+- [x] Hoãn UI test vì chưa có locator contract ổn định.
 
 ### Backend
 
-- [ ] Automation input bắt buộc chứa immutable test-case snapshot.
-- [ ] Tách `business_context` và `technical_context` trong prompt/schema.
-- [ ] Business context chỉ lấy từ document evidence đã duyệt.
-- [ ] Technical context chỉ chứa thông tin cần compile/run.
-- [ ] Expected result nằm trong immutable section và có hash.
-- [ ] Structured output trả framework, target path, setup, steps/assertions và code.
-- [ ] Validate automation không sửa requirement/expected hash.
-- [ ] Validate path, package, imports, syntax, size và forbidden operations.
-- [ ] Một test case có thể có nhiều artifact version.
-- [ ] Một artifact chỉ hiện thực test cases được khai báo.
-- [ ] Lưu provenance riêng cho business và technical context.
-- [ ] Hỗ trợ `MANUAL/BLOCKED` khi thiếu thông tin automation.
+- [x] Automation input bắt buộc chứa immutable test-case snapshot.
+- [x] Tách `business_context` và `technical_context` trong prompt/schema.
+- [x] Business context chỉ lấy từ document evidence đã duyệt.
+- [x] Technical context chỉ chứa thông tin cần compile/run.
+- [x] Expected result nằm trong immutable section và có hash.
+- [x] Structured output trả framework, target path, setup, steps/assertions và code.
+- [x] Validate automation không sửa requirement/expected hash.
+- [x] Validate path, package, imports, syntax, size và forbidden operations.
+- [x] Một test case có thể có nhiều artifact version.
+- [x] Một artifact chỉ hiện thực test cases được khai báo.
+- [x] Lưu provenance riêng cho business và technical context.
+- [x] Hỗ trợ `MANUAL/BLOCKED` khi thiếu thông tin automation.
 
 ### Frontend
 
-- [ ] Test-case detail hiển thị tab Business Specification và Automation.
-- [ ] Diff artifact version nhưng khóa expected result.
-- [ ] Hiển thị technical context riêng, không gọi nó là business evidence.
-- [ ] Reviewer approve artifact trước lần chạy nếu policy yêu cầu.
+- [x] Test-case detail hiển thị riêng Business Specification và Automation.
+- [x] Diff artifact version nhưng khóa expected result.
+- [x] Hiển thị technical context riêng, không gọi nó là business evidence.
+- [x] Reviewer approve artifact trước lần chạy nếu policy yêu cầu.
 
 ### Tests
 
-- [ ] Prompt injection từ code không thể đổi expected result field/hash.
-- [ ] Artifact compile syntax đúng với fixture.
-- [ ] Thiếu interface/contract trả `BLOCKED`, không bịa API.
-- [ ] Generated code không sửa production file.
+- [x] Prompt injection từ code không thể đổi expected result field/hash.
+- [x] Artifact compile syntax đúng với fixture.
+- [x] Thiếu interface/contract trả `BLOCKED`, không bịa API.
+- [x] Generated code không sửa production file.
 
 ### Definition of Done
 
-- [ ] Có ít nhất một approved test case được chuyển thành artifact và truy vết hai chiều.
-- [ ] Có bằng chứng expected result trước/sau generation là bất biến.
+- [x] Có ít nhất một approved test case được chuyển thành artifact và truy vết hai chiều.
+- [x] Có bằng chứng expected result trước/sau generation là bất biến.
 
 ---
 

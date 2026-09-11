@@ -88,8 +88,13 @@
 
   The integration fixture verifies UC-B08 main/two alternate/two exception
   flows, approved-source guards, idempotent retries and deterministic coverage.
-- Phase 6 may parse generated Go source but must not write it into a checkout or
-  execute it. Compilation and execution require the isolated Phase 7 sandbox.
+- Document-driven Phase 8 may parse generated Go source but must not write it
+  into a checkout or execute it. Compilation and execution require the isolated
+  document-driven Phase 9 sandbox. The older numbered sandbox phases below
+  describe the retained code-first pipeline.
+- Keep project baseline snapshots, export snapshots and automation generation
+  calls append-only. A missing explicit requirement mapping must select the full
+  approved suite, never an inferred subset.
 - Build and run the Phase 7 Docker cases with `make sandbox-test`. Sandbox
   containers must keep network disabled, run as non-root, drop all capabilities,
   use a read-only root filesystem, and enforce CPU/memory/PID/time limits.
