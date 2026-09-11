@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, EmptyState } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
+import { DocumentReview } from "@/components/document-review";
 import { ApiError, getDocumentSet, getDocumentVersion } from "@/lib/api";
 import { formatDate, humanize } from "@/lib/presentation";
 
@@ -36,6 +37,7 @@ export default async function DocumentVersionPage({ params }: {
         </div>
       </section>
       {version.parse_error ? <p className="notice"><strong>Parser error</strong>{version.parse_error}</p> : null}
+      <div className="document-preview-section"><DocumentReview versionId={version.id} /></div>
       <section className="document-preview-section">
         <div className="section-heading"><div><h2>Structured preview</h2><p>Every block keeps a stable locator back to the uploaded source.</p></div><span className="section-counter">{blocks.length} blocks</span></div>
         {blocks.length ? <div className="document-block-list">{blocks.map((block) => (

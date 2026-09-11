@@ -1,9 +1,10 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–15.
-> Migration 15 establishes the new document-driven domain beside the legacy
-> tables. Semantic indexing, extraction, generation and reporting behaviour are
-> still introduced incrementally in later phases tracked in
+> This page documents the schema currently implemented by migrations 1–16.
+> Migration 15 establishes the document-driven foundation beside the legacy
+> tables; migration 16 completes persistence and guards for semantic indexing,
+> requirement extraction/review and grounded test-case generation/coverage.
+> Reporting and execution mapping remain later phases tracked in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
@@ -22,7 +23,7 @@ Identity fields on document versions and parsed block/evidence rows reject
 in-place updates. Set/version composite foreign keys prevent evidence from
 crossing document-set boundaries.
 
-The same migration reserves normalized, ownership-safe tables for later phases:
+The same migration introduced normalized, ownership-safe domain tables:
 
 - `document_chunks` for set-filtered full-text/vector retrieval;
 - `requirements`, `requirement_evidence`, `requirement_conflicts`,
@@ -34,8 +35,34 @@ The same migration reserves normalized, ownership-safe tables for later phases:
 
 An automation artifact can only reference an approved test case and must copy
 the exact expected-result hash. Once a run item exists, its test-case reference,
-expected-result snapshot and expected hash cannot be updated. Application APIs
-for these reserved Phase 3+ tables are intentionally not exposed yet.
+expected-result snapshot and expected hash cannot be updated.
+
+## Document RAG, requirements and test cases (migration 16)
+
+`document_index_status` tracks a set-owned index generation, input fingerprint,
+embedding model and file/chunk/warning counts. `document_chunks` now retains the
+source block, parent/flow metadata and raw content beside normalized embedded
+content. `document_chunk_source_blocks` supports traceability when a semantic
+unit spans multiple parser blocks.
+
+`document_context_snapshots` and `document_context_snapshot_items` store an
+append-only retrieval result with query/configuration, generation, model,
+content and scores. Re-indexing may replace live chunks while snapshot items
+remain historical. `document_ai_calls` stores instructions, prompt, strict
+schema, raw provider response, status, usage and latency for requirement and
+test-case phases. Update triggers make all three provenance tables immutable.
+
+Requirements gain extraction/source fingerprints, risk, assumptions and raw
+validated payload. `requirement_flow_steps` stores ordered business steps.
+Unique partial indexes make extraction retries idempotent. Approval triggers
+require at least one evidence link whose document version is `APPROVED`; an
+approved business version cannot have its meaning edited in place.
+
+Test cases gain generation identity, assumptions and deterministic dedupe
+records. Approval requires a link to an approved requirement with evidence.
+Approved title/scenario/expected fields are immutable, while review edits append
+a superseding version and copy evidence links. Coverage is not stored as an AI
+summary: the API rebuilds it from current requirements and test-case links.
 
 ## Phase 12 AI provenance
 

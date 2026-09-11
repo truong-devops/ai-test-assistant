@@ -25,6 +25,11 @@ export default async function DocumentSetPage({ params }: { params: Promise<{ id
         <div className="hero-identity"><span className="project-avatar" aria-hidden="true">D</span><div><p className="eyebrow">{set.product_name || `Document set #${set.id}`}</p><h1>{set.name}</h1><p>{[set.scope, set.description].filter(Boolean).join(" · ") || "No scope description has been added."}</p></div></div>
         <div className="hero-meta"><StatusBadge status={set.status} /></div>
       </section>
+      <section className="workflow-links" aria-label="Document-driven workflow">
+        <Link className="workflow-link" href={`/documents/${set.id}/index`}><strong>1. Semantic index</strong><span>Chunk inspector and retrieval diagnostics</span></Link>
+        <Link className="workflow-link" href={`/documents/${set.id}/requirements`}><strong>2. Requirements</strong><span>Inventory, evidence, conflicts, and review</span></Link>
+        <Link className="workflow-link" href={`/documents/${set.id}/test-cases`}><strong>3. Test cases</strong><span>Grounded cases and deterministic coverage</span></Link>
+      </section>
       <UploadDocument setId={set.id} maxBytes={documentMaxUploadBytes} />
       {documents.length ? (
         <section className="panel">

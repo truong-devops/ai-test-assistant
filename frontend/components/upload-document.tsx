@@ -100,7 +100,7 @@ export function UploadDocument({ setId, maxBytes = 16 * 1024 * 1024 }: { setId: 
             <small>{file ? `${file.name} · ${file.size.toLocaleString("en-US")} bytes` : "Choose a file or drop it here"}</small>
           </label>
         </div>
-        <p className="field-hint">Every upload starts as DRAFT. Source approval and test-case generation are introduced in later phases.</p>
+        <p className="field-hint">Every upload starts as DRAFT. Review the immutable source version before approving extracted requirements.</p>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         {success ? <p className="form-success" role="status">{success}</p> : null}
         <div className="connect-actions">

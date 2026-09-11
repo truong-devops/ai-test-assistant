@@ -1,7 +1,7 @@
 # Architecture
 
 > **Architecture status – 2026-09-11:** this document records the architecture
-> implemented by document-driven Phases 0–2 and the still-running code-first
+> implemented by document-driven Phases 0–5 and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
 > target architecture and its ordered backend/frontend work are defined in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
@@ -25,14 +25,14 @@ PR/MR source SHA -> technical automation -> sandbox run -> execution report
 - Repair may change automation implementation but not the requirement or
   expected-result snapshot.
 
-Phase 2 now implements document sets, immutable source versions, parser blocks,
-and their upload/preview path. The reserved schema also includes chunks,
-requirement evidence/review, test cases and coverage links, automation artifacts,
-and test runs. Semantic indexing and all requirement/test/report behaviours are
-still Phase 3+. The current project/analysis tables remain in use until their
-replacement phase meets its migration Definition of Done.
+Phases 2–5 implement document intake, semantic retrieval, requirement inventory,
+human source/requirement review, grounded business test cases and deterministic
+coverage audit. Automation artifacts, test runs, PR/MR mapping and report export
+remain reserved/future document-driven stages. The current project/analysis
+tables remain in use until their replacement phase meets its migration
+Definition of Done.
 
-## Implemented document intake architecture
+## Implemented document-driven architecture
 
 ```text
 Next.js Documents form -> same-origin proxy -> Go document handler/service
@@ -42,6 +42,21 @@ Next.js Documents form -> same-origin proxy -> Go document handler/service
 document parse worker -> leased version -> checksum verification
                       -> passive DOCX/Markdown parser
                       -> ordered blocks + source locators -> PARSED/FAILED
+
+explicit index action -> semantic chunks per identifier/flow/table row
+                      -> normalized embedding + retained raw evidence
+                      -> document-set/version filtered hybrid retrieval
+                      -> immutable context snapshots
+
+explicit extraction -> retrieve per semantic unit -> strict schema/rule extractor
+                    -> evidence-bound requirement + flow steps
+                    -> deterministic dedupe -> conflict/TBD inventory
+                    -> PO/BA review + immutable requirement version
+
+approved requirements -> generator per requirement/flow
+                      -> grounded expected result + steps + source links
+                      -> exact/semantic dedupe -> QA review/versioning
+                      -> database-derived coverage matrix
 ```
 
 API and worker use the same `document_data` volume. PostgreSQL contains only
@@ -50,8 +65,18 @@ limits archive entries, expanded bytes and XML size; it rejects traversal paths,
 macros and embedded executable extensions. Markdown requires UTF-8 without NUL
 bytes. Both parsers honor cancellation and the worker's bounded parse timeout.
 
-This flow does not call an LLM and does not inspect repository code. All uploads
-start as `DRAFT`; approval and semantic RAG begin in later phases.
+Parsing itself does not call an LLM and none of Phases 2–5 inspect repository
+code. All uploads start as `DRAFT`. Indexing may include draft sources with an
+explicit warning, but requirement/test-case approval is guarded by database
+triggers requiring approved source evidence. When the LLM is enabled,
+extraction/generation use context marked as untrusted, strict output schemas and
+persisted raw call/snapshot provenance. The disabled-provider development path
+uses deterministic draft generation.
+
+Index/extract/generate are explicit synchronous review actions in the current
+MVP. Parsing and the legacy PR/MR pipeline remain background-worker jobs. A
+future hardening phase may move large document AI jobs behind queue status APIs;
+current actions are bounded by HTTP and provider timeouts.
 
 ## Implemented baseline architecture
 

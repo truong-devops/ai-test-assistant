@@ -1,10 +1,10 @@
 # API
 
-> This page documents the API currently implemented. Document intake from the
-> new Phase 2 now runs beside the code-first baseline. Requirement review,
-> test-case coverage and XLSX report APIs remain planned. Follow
+> This page documents the API currently implemented. Document-driven Phases
+> 2–5 now run beside the code-first baseline. XLSX/Markdown export and mapping
+> approved business cases to PR/MR execution remain planned. Follow
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
-> for the target API and do not call its proposed routes until their phase is complete.
+> for the remaining target API.
 
 All responses use JSON. Errors have the shape `{"error":"message"}`.
 
@@ -92,6 +92,79 @@ such as `line:18`, `lines:20-25`, `word/body/p[12]`, or
 `word/body/table[4]`. A parser failure leaves the original file/version intact.
 XLSX import is not supported in Phase 2; XLSX report export is planned for
 Phase 6.
+
+## Document index and source review (Phase 3)
+
+- `POST /api/document-versions/{id}/review` accepts `reviewer_name`, decision
+  `APPROVED`/`REJECTED`, and `comment`.
+- `POST /api/document-sets/{id}/index` builds or incrementally reuses the index.
+- `GET /api/document-sets/{id}/index` returns status, generation, file/chunk/
+  skipped/warning counts and embedding model.
+- `GET /api/document-sets/{id}/chunks?type=&flow_type=&limit=` returns bounded
+  inspector data. The maximum limit is 500.
+- `POST /api/document-sets/{id}/retrieve` accepts `query`, optional
+  `identifier`, `chunk_type`, `flow_type`, `limit`, and version policy `LATEST`,
+  `LATEST_APPROVED`, or `ALL_INDEXED`.
+
+Retrieval returns `{"results":[...]}`. Each result includes immutable source
+identity, raw and normalized content, source locator, approval state, and exact,
+lexical, semantic, authority and total scores. SQL always applies the document
+set and version policy; callers cannot override ownership through the body.
+
+Indexing is idempotent for the same version checksums, embedding model and
+semantic-chunker version. Draft versions remain searchable under policies that
+allow them but increase `warning_count`; approved sources rank higher. Document
+text is untrusted prompt data and likely prompt-injection strings are flagged in
+chunk metadata. Approval is blocked until parsing succeeds, and an approved
+source cannot be revoked while an approved requirement depends on its evidence.
+
+## Requirement inventory and review (Phase 4)
+
+- `POST /api/document-sets/{id}/requirements/extract` extracts every semantic
+  unit and returns created/reused/conflict/open-question counts.
+- `GET /api/document-sets/{id}/requirements` accepts filters `document_id`,
+  `type`, `status`, `risk`, `actor`, and `flow_type`.
+- `GET /api/requirements/{id}` returns the requirement, evidence excerpts,
+  ordered flow steps and review history.
+- `POST /api/requirements/{id}/review` accepts reviewer, decision, comment and
+  optional edited business fields. An edit appends a new version.
+- `GET /api/document-sets/{id}/requirement-conflicts` returns source pairs.
+- `GET /api/document-sets/{id}/open-questions` returns TBD questions for PO/BA.
+
+Extraction requires a ready index. Every saved requirement is linked by the
+service to the actual retrieved block/version; model-supplied citation IDs are
+never trusted. Approval returns HTTP 409 if evidence is missing, its source
+version is not approved, or a conflict/TBD item is accepted without an explicit
+edit. Retry is idempotent by source and extraction fingerprint.
+
+With `LLM_PROVIDER=disabled`, the API uses a conservative deterministic draft
+extractor suitable for local development. `openai` or `gemini` enables the
+strict JSON-schema extractor. The explicit extraction action currently waits
+for completion and is bounded by HTTP/provider timeouts; it is not a queue-status
+endpoint.
+
+## Business test cases and coverage (Phase 5)
+
+- `POST /api/document-sets/{id}/test-cases/generate` generates from the latest
+  approved cited requirement baseline only.
+- `POST /api/document-sets/{id}/test-cases/regenerate` repeats generation
+  idempotently and reports created/reused/suppressed counts.
+- `GET /api/document-sets/{id}/test-cases` returns latest test-case versions.
+- `GET /api/test-cases/{id}` returns steps, requirement links, approved source
+  excerpts, and review history.
+- `POST /api/test-cases/{id}/review` accepts reviewer, decision, comment and
+  optional edited fields; editing appends a version and preserves links.
+- `POST /api/test-cases/bulk-review` accepts at most 200 IDs with one reviewer,
+  decision and comment.
+- `GET /api/document-sets/{id}/coverage` deterministically rebuilds the
+  requirement ↔ test-case matrix from database links.
+
+Expected results must equal an approved requirement statement or an explicit
+expected result from its approved flow step. Invented LLM expectations are
+rejected. Coverage exposes the approved denominator, covered/uncovered,
+conflict, TBD, rejected and duplicate counts separately. `baseline_complete`
+stays false while any approved requirement is uncovered or any current
+conflict/TBD exists—even if the approved-only ratio is 100%.
 
 ## Projects
 

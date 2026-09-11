@@ -16,6 +16,15 @@ import type {
   DocumentSet,
   SourceDocument,
   DocumentVersionDetail,
+  DocumentIndexStatus,
+  SemanticChunk,
+  Requirement,
+  RequirementDetail,
+  RequirementConflict,
+  OpenQuestion,
+  BusinessTestCase,
+  BusinessTestCaseDetail,
+  CoverageReport,
 } from "@/lib/types";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
@@ -32,6 +41,15 @@ export const documentRoutes = {
   documents: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/documents`,
   version: (documentId: string | number, version: string | number) =>
     `/api/documents/${encodeURIComponent(String(documentId))}/versions/${encodeURIComponent(String(version))}`,
+  index: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/index`,
+  chunks: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/chunks`,
+  requirements: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/requirements`,
+  requirement: (id: string | number) => `/api/requirements/${encodeURIComponent(String(id))}`,
+  conflicts: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/requirement-conflicts`,
+  questions: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/open-questions`,
+  testCases: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/test-cases`,
+  testCase: (id: string | number) => `/api/test-cases/${encodeURIComponent(String(id))}`,
+  coverage: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/coverage`,
 } as const;
 
 export class ApiError extends Error {
@@ -94,6 +112,42 @@ export async function getDocumentVersion(documentId: string | number, version: s
   return request<DocumentVersionDetail>(
     documentRoutes.version(documentId, version),
   );
+}
+
+export async function getDocumentIndex(setId: string | number): Promise<DocumentIndexStatus> {
+  return (await request<{ index: DocumentIndexStatus }>(documentRoutes.index(setId))).index;
+}
+
+export async function getDocumentChunks(setId: string | number): Promise<SemanticChunk[]> {
+  return (await request<{ chunks: SemanticChunk[] }>(documentRoutes.chunks(setId))).chunks;
+}
+
+export async function getRequirements(setId: string | number): Promise<Requirement[]> {
+  return (await request<{ requirements: Requirement[] }>(documentRoutes.requirements(setId))).requirements;
+}
+
+export async function getRequirement(id: string | number): Promise<RequirementDetail> {
+  return request<RequirementDetail>(documentRoutes.requirement(id));
+}
+
+export async function getRequirementConflicts(setId: string | number): Promise<RequirementConflict[]> {
+  return (await request<{ conflicts: RequirementConflict[] }>(documentRoutes.conflicts(setId))).conflicts;
+}
+
+export async function getOpenQuestions(setId: string | number): Promise<OpenQuestion[]> {
+  return (await request<{ open_questions: OpenQuestion[] }>(documentRoutes.questions(setId))).open_questions;
+}
+
+export async function getBusinessTestCases(setId: string | number): Promise<BusinessTestCase[]> {
+  return (await request<{ test_cases: BusinessTestCase[] }>(documentRoutes.testCases(setId))).test_cases;
+}
+
+export async function getBusinessTestCase(id: string | number): Promise<BusinessTestCaseDetail> {
+  return request<BusinessTestCaseDetail>(documentRoutes.testCase(id));
+}
+
+export async function getCoverage(setId: string | number): Promise<CoverageReport> {
+  return request<CoverageReport>(documentRoutes.coverage(setId));
 }
 
 export async function getProject(id: string): Promise<Project> {

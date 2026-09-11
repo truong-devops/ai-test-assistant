@@ -19,20 +19,21 @@ for the authoritative target direction and phase checklist.
 
 ## Current implementation status
 
-Document-driven refactor Phases 0–2 are now implemented alongside the earlier
-Phases 0–13 baseline. Users can create a product/scope document set, upload an
-immutable DOCX/Markdown version, and inspect deterministic parsed blocks with
-source locators in the Next.js Documents workspace. The API and worker share a
-persistent file volume; originals are checksummed and retained on parse failure.
+Document-driven refactor Phases 0–5 are now implemented alongside the earlier
+Phases 0–13 baseline. Users can upload immutable DOCX/Markdown versions, approve
+source versions, build a semantic document index, review cited requirements and
+conflict/TBD items, generate grounded business test cases, and inspect a
+deterministic requirement-to-test coverage matrix in the Next.js Documents
+workspace.
 
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
 isolated Docker validation, bounded repair, provenance and human review. These
-capabilities are being reused incrementally. Requirement extraction, document
-RAG, business test-case generation, coverage, approval, execution mapping and
-XLSX reporting are not implemented yet, so this is not the completed
-document-driven product.
+capabilities are being reused incrementally. PR/MR-to-business-test mapping,
+automation generated from approved business cases, the new execution taxonomy,
+and XLSX/Markdown reporting remain Phase 6+ work, so this is not yet the
+completed execution/reporting product.
 
 [PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
 the implemented/historical code-first baseline. New implementation work should
@@ -99,7 +100,7 @@ application-level user authentication/RBAC remains a tracked backlog item.
 
 ## Implemented baseline endpoints
 
-Document-driven Phase 2:
+Document-driven Phases 2–5:
 
 - `POST /api/document-sets`
 - `GET /api/document-sets`
@@ -107,6 +108,24 @@ Document-driven Phase 2:
 - `POST /api/document-sets/{id}/documents`
 - `GET /api/document-sets/{id}/documents`
 - `GET /api/documents/{id}/versions/{version}`
+- `POST /api/document-versions/{id}/review`
+- `POST /api/document-sets/{id}/index`
+- `GET /api/document-sets/{id}/index`
+- `GET /api/document-sets/{id}/chunks`
+- `POST /api/document-sets/{id}/retrieve`
+- `POST /api/document-sets/{id}/requirements/extract`
+- `GET /api/document-sets/{id}/requirements`
+- `GET /api/document-sets/{id}/requirement-conflicts`
+- `GET /api/document-sets/{id}/open-questions`
+- `GET /api/requirements/{id}`
+- `POST /api/requirements/{id}/review`
+- `POST /api/document-sets/{id}/test-cases/generate`
+- `POST /api/document-sets/{id}/test-cases/regenerate`
+- `GET /api/document-sets/{id}/test-cases`
+- `GET /api/document-sets/{id}/coverage`
+- `GET /api/test-cases/{id}`
+- `POST /api/test-cases/{id}/review`
+- `POST /api/test-cases/bulk-review`
 
 Legacy-compatible endpoints:
 

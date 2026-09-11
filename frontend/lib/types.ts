@@ -88,8 +88,61 @@ export type Requirement = {
   precondition: string;
   postcondition: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
+  risk: "LOW" | "MEDIUM" | "HIGH";
   status: "DRAFT" | "APPROVED" | "REJECTED" | "CONFLICT" | "TBD";
   confidence: number;
+  assumptions: string[];
+  supersedes_requirement_id?: number;
+  document_ids?: number[];
+};
+
+export type RequirementEvidence = {
+  id: number;
+  requirement_id: number;
+  document_set_id: number;
+  document_version_id: number;
+  document_block_id: number;
+  document_name: string;
+  version_number: number;
+  approval_status: "DRAFT" | "APPROVED" | "REJECTED";
+  source_locator: string;
+  excerpt: string;
+  excerpt_hash: string;
+};
+
+export type RequirementFlowStep = {
+  id: number;
+  requirement_id: number;
+  ordinal: number;
+  action: string;
+  expected_result: string;
+};
+
+export type RequirementDetail = {
+  requirement: Requirement;
+  evidence: RequirementEvidence[];
+  flow_steps: RequirementFlowStep[];
+  reviews: Array<{ id: number; reviewer_name: string; decision: string; comment: string; created_at: string }>;
+};
+
+export type RequirementConflict = {
+  id: number;
+  document_set_id: number;
+  left_requirement_id: number;
+  right_requirement_id: number;
+  reason: string;
+  status: "OPEN" | "RESOLVED" | "DISMISSED";
+  resolution: string;
+};
+
+export type OpenQuestion = {
+  id: number;
+  document_set_id: number;
+  requirement_id?: number;
+  question: string;
+  owner_role: string;
+  status: "OPEN" | "ANSWERED" | "DISMISSED";
+  answer: string;
 };
 
 export type BusinessTestCase = {
@@ -109,6 +162,90 @@ export type BusinessTestCase = {
   postcondition: string;
   status: "DRAFT" | "APPROVED" | "REJECTED";
   automation_status: "MANUAL" | "AUTOMATABLE" | "AUTOMATED" | "BLOCKED";
+  confidence: number;
+  generated_by: string;
+  assumptions: string[];
+  supersedes_test_case_id?: number;
+};
+
+export type BusinessTestCaseDetail = {
+  test_case: BusinessTestCase;
+  steps: Array<{ id: number; ordinal: number; action: string; expected_result: string }>;
+  requirements: Array<{
+    requirement_id: number;
+    requirement_key: string;
+    requirement_title: string;
+    coverage_type: string;
+    flow_type: string;
+  }>;
+  evidence: RequirementEvidence[];
+  reviews: Array<{ id: number; reviewer_name: string; decision: string; comment: string; created_at: string }>;
+};
+
+export type DocumentIndexStatus = {
+  document_set_id: number;
+  status: "NOT_INDEXED" | "INDEXING" | "READY" | "FAILED";
+  generation: number;
+  input_fingerprint?: string;
+  version_count: number;
+  skipped_version_count: number;
+  chunk_count: number;
+  warning_count: number;
+  embedding_model: string;
+  error_message?: string;
+  requested_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  updated_at?: string;
+};
+
+export type SemanticChunk = {
+  id: number;
+  document_set_id: number;
+  document_version_id: number;
+  document_block_id: number;
+  chunk_key: string;
+  parent_chunk_key: string;
+  chunk_type: string;
+  flow_type: "NONE" | "MAIN" | "ALTERNATE" | "EXCEPTION";
+  identifier: string;
+  title: string;
+  content: string;
+  raw_content: string;
+  content_hash: string;
+  source_locator: string;
+  embedding_model: string;
+  metadata: Record<string, unknown>;
+  approval_status: "DRAFT" | "APPROVED" | "REJECTED";
+  exact_score?: number;
+  lexical_score?: number;
+  semantic_score?: number;
+  authority_score?: number;
+  score?: number;
+};
+
+export type CoverageReport = {
+  document_set_id: number;
+  approved_denominator: number;
+  covered_count: number;
+  coverage_percent: number;
+  baseline_complete: boolean;
+  conflict_count: number;
+  tbd_count: number;
+  rejected_count: number;
+  duplicate_count: number;
+  uncovered_count: number;
+  matrix: Array<{
+    requirement_id: number;
+    requirement_key: string;
+    title: string;
+    status: string;
+    flow_type: string;
+    test_case_ids: number[];
+    test_types: string[];
+    covered: boolean;
+    warnings: string[];
+  }>;
 };
 
 export type AutomationArtifact = {

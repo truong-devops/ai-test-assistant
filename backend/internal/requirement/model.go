@@ -1,29 +1,60 @@
 package requirement
 
-import "time"
+import (
+	"encoding/json"
+	"errors"
+	"time"
+)
 
-// Requirement is the document-grounded business statement. Phase 4 will add
-// extraction and review behavior; Phase 1 defines the ownership boundary now
-// so automation code cannot reuse legacy changed-symbol recommendations as
-// business truth.
+const (
+	TypeFunctional          = "FUNCTIONAL"
+	TypeNonFunctional       = "NON_FUNCTIONAL"
+	TypeBusinessRule        = "BUSINESS_RULE"
+	TypeAcceptanceCriterion = "ACCEPTANCE_CRITERION"
+	TypeUseCase             = "USE_CASE"
+	TypeRegression          = "REGRESSION"
+
+	StatusDraft    = "DRAFT"
+	StatusApproved = "APPROVED"
+	StatusRejected = "REJECTED"
+	StatusConflict = "CONFLICT"
+	StatusTBD      = "TBD"
+
+	DecisionApproved = "APPROVED"
+	DecisionRejected = "REJECTED"
+)
+
+var (
+	ErrNotFound        = errors.New("requirement not found")
+	ErrInvalidInput    = errors.New("invalid requirement input")
+	ErrNoIndex         = errors.New("document index must be ready before requirement extraction")
+	ErrMissingEvidence = errors.New("requirement evidence is required")
+	ErrReviewBlocked   = errors.New("requirement cannot be approved")
+)
+
 type Requirement struct {
-	ID              int64     `json:"id"`
-	DocumentSetID   int64     `json:"document_set_id"`
-	RequirementKey  string    `json:"requirement_key"`
-	VersionNumber   int       `json:"version_number"`
-	Title           string    `json:"title"`
-	Statement       string    `json:"statement"`
-	RequirementType string    `json:"requirement_type"`
-	FlowType        string    `json:"flow_type"`
-	Actor           string    `json:"actor"`
-	Precondition    string    `json:"precondition"`
-	Postcondition   string    `json:"postcondition"`
-	Priority        string    `json:"priority"`
-	Status          string    `json:"status"`
-	Confidence      float64   `json:"confidence"`
-	SupersedesID    *int64    `json:"supersedes_requirement_id,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                int64           `json:"id"`
+	DocumentSetID     int64           `json:"document_set_id"`
+	RequirementKey    string          `json:"requirement_key"`
+	VersionNumber     int             `json:"version_number"`
+	Title             string          `json:"title"`
+	Statement         string          `json:"statement"`
+	RequirementType   string          `json:"requirement_type"`
+	FlowType          string          `json:"flow_type"`
+	Actor             string          `json:"actor"`
+	Precondition      string          `json:"precondition"`
+	Postcondition     string          `json:"postcondition"`
+	Priority          string          `json:"priority"`
+	Risk              string          `json:"risk"`
+	Status            string          `json:"status"`
+	Confidence        float64         `json:"confidence"`
+	SupersedesID      *int64          `json:"supersedes_requirement_id,omitempty"`
+	Assumptions       json.RawMessage `json:"assumptions"`
+	ExtractionKey     string          `json:"extraction_key,omitempty"`
+	SourceFingerprint string          `json:"source_fingerprint,omitempty"`
+	DocumentIDs       []int64         `json:"document_ids,omitempty"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 type Evidence struct {
@@ -32,7 +63,132 @@ type Evidence struct {
 	DocumentSetID     int64     `json:"document_set_id"`
 	DocumentVersionID int64     `json:"document_version_id"`
 	DocumentBlockID   int64     `json:"document_block_id"`
+	DocumentName      string    `json:"document_name,omitempty"`
+	VersionNumber     int       `json:"version_number,omitempty"`
+	ApprovalStatus    string    `json:"approval_status,omitempty"`
 	SourceLocator     string    `json:"source_locator"`
+	Excerpt           string    `json:"excerpt,omitempty"`
 	ExcerptHash       string    `json:"excerpt_hash"`
 	CreatedAt         time.Time `json:"created_at"`
+}
+
+type FlowStep struct {
+	ID             int64     `json:"id"`
+	RequirementID  int64     `json:"requirement_id"`
+	Ordinal        int       `json:"ordinal"`
+	Action         string    `json:"action"`
+	ExpectedResult string    `json:"expected_result"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type Conflict struct {
+	ID                 int64        `json:"id"`
+	DocumentSetID      int64        `json:"document_set_id"`
+	LeftRequirementID  int64        `json:"left_requirement_id"`
+	RightRequirementID int64        `json:"right_requirement_id"`
+	Reason             string       `json:"reason"`
+	Status             string       `json:"status"`
+	Resolution         string       `json:"resolution"`
+	CreatedAt          time.Time    `json:"created_at"`
+	ResolvedAt         *time.Time   `json:"resolved_at,omitempty"`
+	Left               *Requirement `json:"left,omitempty"`
+	Right              *Requirement `json:"right,omitempty"`
+}
+
+type OpenQuestion struct {
+	ID            int64      `json:"id"`
+	DocumentSetID int64      `json:"document_set_id"`
+	RequirementID *int64     `json:"requirement_id,omitempty"`
+	Question      string     `json:"question"`
+	OwnerRole     string     `json:"owner_role"`
+	Status        string     `json:"status"`
+	Answer        string     `json:"answer"`
+	CreatedAt     time.Time  `json:"created_at"`
+	AnsweredAt    *time.Time `json:"answered_at,omitempty"`
+}
+
+type Review struct {
+	ID            int64     `json:"id"`
+	RequirementID int64     `json:"requirement_id"`
+	ReviewerName  string    `json:"reviewer_name"`
+	Decision      string    `json:"decision"`
+	Comment       string    `json:"comment"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type Detail struct {
+	Requirement Requirement `json:"requirement"`
+	Evidence    []Evidence  `json:"evidence"`
+	FlowSteps   []FlowStep  `json:"flow_steps"`
+	Reviews     []Review    `json:"reviews"`
+}
+
+type Filter struct {
+	DocumentSetID   int64
+	DocumentID      int64
+	RequirementType string
+	Status          string
+	Risk            string
+	Actor           string
+	FlowType        string
+}
+
+type ReviewInput struct {
+	ReviewerName  string `json:"reviewer_name"`
+	Decision      string `json:"decision"`
+	Comment       string `json:"comment"`
+	Title         string `json:"title,omitempty"`
+	Statement     string `json:"statement,omitempty"`
+	Actor         string `json:"actor,omitempty"`
+	Precondition  string `json:"precondition,omitempty"`
+	Postcondition string `json:"postcondition,omitempty"`
+	Priority      string `json:"priority,omitempty"`
+	Risk          string `json:"risk,omitempty"`
+}
+
+type ExtractionSummary struct {
+	DocumentSetID     int64 `json:"document_set_id"`
+	ChunkCount        int   `json:"chunk_count"`
+	CreatedCount      int   `json:"created_count"`
+	ReusedCount       int   `json:"reused_count"`
+	ConflictCount     int   `json:"conflict_count"`
+	OpenQuestionCount int   `json:"open_question_count"`
+}
+
+type Proposal struct {
+	Identifier      string     `json:"identifier"`
+	Title           string     `json:"title"`
+	Statement       string     `json:"statement"`
+	RequirementType string     `json:"requirement_type"`
+	FlowType        string     `json:"flow_type"`
+	Actor           string     `json:"actor"`
+	Precondition    string     `json:"precondition"`
+	Postcondition   string     `json:"postcondition"`
+	Priority        string     `json:"priority"`
+	Risk            string     `json:"risk"`
+	Status          string     `json:"status"`
+	Confidence      float64    `json:"confidence"`
+	Assumptions     []string   `json:"assumptions"`
+	Steps           []FlowStep `json:"steps"`
+}
+
+type AICall struct {
+	DocumentSetID      int64
+	Phase              string
+	SubjectType        string
+	SubjectKey         string
+	ContextSnapshotID  *int64
+	Provider           string
+	ModelName          string
+	PromptVersion      string
+	Instructions       string
+	PromptText         string
+	RequestSchema      json.RawMessage
+	ResponseText       string
+	ProviderResponseID string
+	Status             string
+	ErrorMessage       string
+	InputTokens        int
+	OutputTokens       int
+	LatencyMS          int64
 }
