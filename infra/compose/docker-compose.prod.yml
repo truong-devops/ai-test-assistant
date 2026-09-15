@@ -128,6 +128,9 @@ services:
       BACKEND_API_ROLE: ${BACKEND_API_ROLE:-admin}
       BACKEND_API_ACTOR: ${BACKEND_API_ACTOR:-review-ui}
     tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    # Runtime user 1001 needs the same supplemental group as the non-root Go
+    # services to read the host-backed 0640 Compose secret.
+    group_add: ["65532"]
     networks: [app]
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
@@ -136,7 +139,9 @@ services:
         condition: service_healthy
     secrets: [api_auth_token]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      # Exercise the authenticated frontend -> API path, not only the Next.js
+      # process, so an unreadable/mismatched service token makes deploy fail.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/backend/api/document-metrics').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5

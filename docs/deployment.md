@@ -74,6 +74,11 @@ sudo chgrp 65532 secrets/*
 chmod 0640 secrets/*
 ```
 
+The frontend runs as UID `1001` and production Compose grants it supplemental
+group `65532` solely so it can read the same service-token secret. Its
+healthcheck calls the protected document-metrics endpoint through the frontend
+proxy, detecting unreadable or mismatched tokens during deployment.
+
 Set `DOCKER_GID` in `.env.production` to the group ID that owns
 `/var/run/docker.sock`; Docker Desktop commonly works with `0`, while Linux hosts
 often require the `docker` group ID.
