@@ -19,11 +19,11 @@ func NewRepository(pool *pgxpool.Pool) *PostgresRepository { return &PostgresRep
 func (r *PostgresRepository) CreateSet(ctx context.Context, input CreateSetInput) (Set, error) {
 	const query = `INSERT INTO document_sets (name, product_name, scope, description)
 		VALUES ($1,$2,$3,$4)
-		RETURNING id, name, product_name, scope, description, status, created_at, updated_at`
+		RETURNING id, name, product_name, scope, description, status, retention_days, archived_at, created_at, updated_at`
 	var result Set
 	if err := r.pool.QueryRow(ctx, query, input.Name, input.ProductName, input.Scope, input.Description).Scan(
 		&result.ID, &result.Name, &result.ProductName, &result.Scope, &result.Description, &result.Status,
-		&result.CreatedAt, &result.UpdatedAt); err != nil {
+		&result.RetentionDays, &result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt); err != nil {
 		if uniqueViolation(err) {
 			return Set{}, ErrAlreadyExists
 		}
@@ -33,7 +33,7 @@ func (r *PostgresRepository) CreateSet(ctx context.Context, input CreateSetInput
 }
 
 func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id, name, product_name, scope, description, status, created_at, updated_at
+	rows, err := r.pool.Query(ctx, `SELECT id, name, product_name, scope, description, status, retention_days, archived_at, created_at, updated_at
 		FROM document_sets ORDER BY created_at DESC, id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list document sets: %w", err)
@@ -43,7 +43,7 @@ func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
 	for rows.Next() {
 		var item Set
 		if err := rows.Scan(&item.ID, &item.Name, &item.ProductName, &item.Scope, &item.Description, &item.Status,
-			&item.CreatedAt, &item.UpdatedAt); err != nil {
+			&item.RetentionDays, &item.ArchivedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan document set: %w", err)
 		}
 		results = append(results, item)
@@ -56,14 +56,81 @@ func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
 
 func (r *PostgresRepository) GetSet(ctx context.Context, id int64) (Set, error) {
 	var result Set
-	err := r.pool.QueryRow(ctx, `SELECT id, name, product_name, scope, description, status, created_at, updated_at
+	err := r.pool.QueryRow(ctx, `SELECT id, name, product_name, scope, description, status, retention_days, archived_at, created_at, updated_at
 		FROM document_sets WHERE id=$1`, id).Scan(&result.ID, &result.Name,
-		&result.ProductName, &result.Scope, &result.Description, &result.Status, &result.CreatedAt, &result.UpdatedAt)
+		&result.ProductName, &result.Scope, &result.Description, &result.Status, &result.RetentionDays,
+		&result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Set{}, ErrNotFound
 	}
 	if err != nil {
 		return Set{}, fmt.Errorf("get document set: %w", err)
+	}
+	return result, nil
+}
+
+func (r *PostgresRepository) UpdateLifecycle(ctx context.Context, id int64, input LifecycleInput) (Set, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return Set{}, err
+	}
+	defer tx.Rollback(ctx)
+	var previousStatus string
+	var previousRetention int
+	if err = tx.QueryRow(ctx, `SELECT status,retention_days FROM document_sets WHERE id=$1 FOR UPDATE`, id).Scan(&previousStatus, &previousRetention); errors.Is(err, pgx.ErrNoRows) {
+		return Set{}, ErrNotFound
+	} else if err != nil {
+		return Set{}, err
+	}
+	action := "RETENTION_CHANGED"
+	if input.Status == SetStatusArchived && previousStatus != SetStatusArchived {
+		action = "ARCHIVED"
+	} else if input.Status == SetStatusActive && previousStatus == SetStatusArchived {
+		action = "RESTORED"
+	}
+	if _, err = tx.Exec(ctx, `UPDATE document_sets SET status=$2,retention_days=$3,
+		archived_at=CASE WHEN $2='ARCHIVED' THEN COALESCE(archived_at,NOW()) ELSE NULL END,updated_at=NOW()
+		WHERE id=$1`, id, input.Status, input.RetentionDays); err != nil {
+		return Set{}, err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO document_set_audit_log(document_set_id,actor,action,reason,before_state,after_state)
+		VALUES($1,$2,$3,$4,jsonb_build_object('status',$5::text,'retention_days',$6::integer),
+		jsonb_build_object('status',$7::text,'retention_days',$8::integer))`, id, input.Actor, action, input.Reason,
+		previousStatus, previousRetention, input.Status, input.RetentionDays); err != nil {
+		return Set{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return Set{}, err
+	}
+	return r.GetSet(ctx, id)
+}
+
+func (r *PostgresRepository) Metrics(ctx context.Context) (PipelineMetrics, error) {
+	var result PipelineMetrics
+	err := r.pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM document_sets WHERE status='ACTIVE'),
+		(SELECT count(*) FROM document_versions),
+		(SELECT count(*) FROM document_versions WHERE parse_status='PARSED'),
+		(SELECT count(*) FROM document_versions WHERE parse_status='FAILED'),
+		(SELECT count(*) FROM requirements WHERE status='APPROVED'),
+		(SELECT count(*) FROM requirement_extraction_jobs),
+		(SELECT count(*) FROM requirement_extraction_jobs WHERE status='FAILED'),
+		(SELECT count(*) FROM test_suites),
+		(SELECT count(*) FROM test_cases WHERE status='APPROVED'),
+		(SELECT count(*) FROM automation_artifacts),
+		(SELECT count(*) FROM test_runs),
+		(SELECT count(DISTINCT test_run_id) FROM test_run_items WHERE status IN
+			('PRODUCT_FAILED','AUTOMATION_ERROR','INFRA_ERROR','TIMED_OUT','BLOCKED')),
+		(SELECT count(*) FROM requirements WHERE status IN ('DRAFT','CONFLICT','TBD')) +
+		(SELECT count(*) FROM test_cases WHERE status='DRAFT') +
+		(SELECT count(*) FROM automation_artifacts WHERE status='DRAFT')`).Scan(
+		&result.DocumentSets, &result.DocumentVersions, &result.ParsedVersions,
+		&result.ParseFailures, &result.ApprovedRequirements, &result.ExtractionJobs,
+		&result.ExtractionFailures, &result.TestSuites, &result.ApprovedTestCases,
+		&result.AutomationArtifacts, &result.TestRuns, &result.RunsNeedingAttention,
+		&result.PendingApprovalActions)
+	if err != nil {
+		return PipelineMetrics{}, fmt.Errorf("load document pipeline metrics: %w", err)
 	}
 	return result, nil
 }

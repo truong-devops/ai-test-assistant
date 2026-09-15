@@ -22,7 +22,8 @@ type DocumentIndexService interface {
 }
 
 type RequirementWorkflowService interface {
-	Extract(context.Context, int64) (requirement.ExtractionSummary, error)
+	RequestExtraction(context.Context, int64, string) (requirement.ExtractionJob, error)
+	ExtractionStatus(context.Context, int64) (requirement.ExtractionJob, error)
 	List(context.Context, requirement.Filter) ([]requirement.Requirement, error)
 	Get(context.Context, int64) (requirement.Detail, error)
 	Review(context.Context, int64, requirement.ReviewInput) (requirement.Detail, error)
@@ -125,12 +126,32 @@ func (h requirementWorkflowHandler) extract(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	result, err := h.service.Extract(r.Context(), setID)
+	var input struct {
+		RequestedBy string `json:"requested_by"`
+	}
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := h.service.RequestExtraction(r.Context(), setID, input.RequestedBy)
 	if err != nil {
 		writeWorkflowError(w, err, "could not extract requirements")
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusAccepted, map[string]any{"job": result,
+		"status_url": "/api/document-sets/" + strconv.FormatInt(setID, 10) + "/requirements/extraction"})
+}
+
+func (h requirementWorkflowHandler) extractionStatus(w http.ResponseWriter, r *http.Request) {
+	setID, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	result, err := h.service.ExtractionStatus(r.Context(), setID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not get requirement extraction status")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"job": result})
 }
 
 func (h requirementWorkflowHandler) list(w http.ResponseWriter, r *http.Request) {

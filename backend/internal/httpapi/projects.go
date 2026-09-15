@@ -70,3 +70,29 @@ func (h projectHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, result)
 }
+
+func (h projectHandler) setPipelineMode(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	var input project.PipelineModeInput
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := h.service.SetPipelineMode(r.Context(), id, input)
+	if errors.Is(err, project.ErrInvalidInput) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not change project pipeline mode")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}

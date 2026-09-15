@@ -14,11 +14,13 @@ import type {
   ProvenanceBundle,
   ImpactBundle,
   DocumentSet,
+  DocumentPipelineMetrics,
   SourceDocument,
   DocumentVersionDetail,
   DocumentIndexStatus,
   SemanticChunk,
   Requirement,
+  RequirementExtractionJob,
   RequirementDetail,
   RequirementConflict,
   OpenQuestion,
@@ -31,6 +33,7 @@ import type {
   AutomationHistory,
 	TestRunDetail,
 } from "@/lib/types";
+import { backendAuthHeaders } from "@/lib/backend-auth";
 
 const backendOrigin = process.env.BACKEND_API_URL?.replace(/\/$/, "") ?? "http://localhost:8080";
 
@@ -49,6 +52,7 @@ export const documentRoutes = {
   index: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/index`,
   chunks: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/chunks`,
   requirements: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/requirements`,
+  requirementExtraction: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/requirements/extraction`,
   requirement: (id: string | number) => `/api/requirements/${encodeURIComponent(String(id))}`,
   conflicts: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/requirement-conflicts`,
   questions: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/open-questions`,
@@ -69,7 +73,7 @@ export class ApiError extends Error {
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${backendOrigin}${path}`, {
     cache: "no-store",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...backendAuthHeaders() },
   });
   if (!response.ok) {
     let message = `Request failed with HTTP ${response.status}`;
@@ -103,6 +107,10 @@ export async function getDocumentSets(): Promise<DocumentSet[]> {
   return (await request<{ document_sets: DocumentSet[] }>(documentRoutes.sets)).document_sets;
 }
 
+export async function getDocumentPipelineMetrics(): Promise<DocumentPipelineMetrics> {
+  return request<DocumentPipelineMetrics>("/api/document-metrics");
+}
+
 export async function getDocumentSet(id: string | number): Promise<DocumentSet> {
   return request<DocumentSet>(documentRoutes.set(id));
 }
@@ -129,6 +137,12 @@ export async function getDocumentChunks(setId: string | number): Promise<Semanti
 
 export async function getRequirements(setId: string | number): Promise<Requirement[]> {
   return (await request<{ requirements: Requirement[] }>(documentRoutes.requirements(setId))).requirements;
+}
+
+export async function getRequirementExtraction(setId: string | number): Promise<RequirementExtractionJob> {
+  return (await request<{ job: RequirementExtractionJob }>(
+    documentRoutes.requirementExtraction(setId),
+  )).job;
 }
 
 export async function getRequirement(id: string | number): Promise<RequirementDetail> {

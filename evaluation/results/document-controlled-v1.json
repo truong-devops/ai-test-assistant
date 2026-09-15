@@ -1,0 +1,90 @@
+{
+  "dataset": "document-controlled-v1",
+  "requirement_precision": {
+    "numerator": 3,
+    "denominator": 3,
+    "percent": 100
+  },
+  "requirement_recall": {
+    "numerator": 3,
+    "denominator": 3,
+    "percent": 100
+  },
+  "flow_coverage_recall": {
+    "ALTERNATE": {
+      "numerator": 1,
+      "denominator": 1,
+      "percent": 100
+    },
+    "EXCEPTION": {
+      "numerator": 1,
+      "denominator": 1,
+      "percent": 100
+    },
+    "MAIN": {
+      "numerator": 1,
+      "denominator": 1,
+      "percent": 100
+    },
+    "NONE": {
+      "numerator": 0,
+      "denominator": 0,
+      "percent": 0
+    }
+  },
+  "unsupported_claim_rate": {
+    "numerator": 0,
+    "denominator": 3,
+    "percent": 0
+  },
+  "citation_correctness": {
+    "numerator": 3,
+    "denominator": 3,
+    "percent": 100
+  },
+  "duplicate_test_case_rate": {
+    "numerator": 0,
+    "denominator": 3,
+    "percent": 0
+  },
+  "human_acceptance": {
+    "numerator": 2,
+    "denominator": 3,
+    "percent": 66.66666666666667
+  },
+  "mean_edit_distance": 3,
+  "mean_review_seconds": 49,
+  "automation_compile_rate": {
+    "numerator": 3,
+    "denominator": 3,
+    "percent": 100
+  },
+  "automation_execution_rate": {
+    "numerator": 2,
+    "denominator": 3,
+    "percent": 66.66666666666667
+  },
+  "product_failure_detection": {
+    "numerator": 2,
+    "denominator": 3,
+    "percent": 66.66666666666667
+  },
+  "variants": {
+    "CODE_FIRST": {
+      "cases": 1,
+      "accepted": 0,
+      "seeded_defects": 1,
+      "detected_defects": 0,
+      "acceptance_percent": 0,
+      "defect_detection_percent": 0
+    },
+    "DOC_ONLY_TEST_DESIGN": {
+      "cases": 2,
+      "accepted": 2,
+      "seeded_defects": 2,
+      "detected_defects": 2,
+      "acceptance_percent": 100,
+      "defect_detection_percent": 100
+    }
+  }
+}

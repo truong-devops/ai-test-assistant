@@ -3,12 +3,12 @@ import type { ReactNode } from "react";
 
 type Section = "overview" | "documents" | "projects" | "analyses" | "evaluations";
 
-const navigation: Array<{ href: string; label: string; section: Section; icon: string }> = [
+const navigation: Array<{ href: string; label: string; section: Section; icon: string; legacy?: boolean }> = [
   { href: "/", label: "Overview", section: "overview", icon: "overview" },
   { href: "/documents", label: "Documents", section: "documents", icon: "documents" },
   { href: "/projects", label: "Projects", section: "projects", icon: "projects" },
-  { href: "/analyses", label: "Review queue", section: "analyses", icon: "reviews" },
-  { href: "/evaluations", label: "Evaluation", section: "evaluations", icon: "evaluation" },
+  { href: "/analyses", label: "Change runs", section: "analyses", icon: "reviews" },
+  { href: "/evaluations", label: "Legacy evaluation", section: "evaluations", icon: "evaluation", legacy: true },
 ];
 
 function ProductMark() {
@@ -31,6 +31,7 @@ function NavIcon({ name }: { name: string }) {
 }
 
 export function AppShell({ active, children }: { active: Section; children: ReactNode }) {
+  const visibleNavigation = navigation.filter((item) => !item.legacy || process.env.NEXT_PUBLIC_ENABLE_LEGACY_NAV === "true");
   const current = navigation.find((item) => item.section === active) ?? navigation[0];
   return (
     <div className="app-frame">
@@ -47,7 +48,7 @@ export function AppShell({ active, children }: { active: Section; children: Reac
         </div>
         <p className="nav-label">Workspace</p>
         <nav className="sidebar-nav" aria-label="Primary navigation">
-          {navigation.map((item) => (
+          {visibleNavigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}

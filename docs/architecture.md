@@ -1,7 +1,7 @@
 # Architecture
 
-> **Architecture status – 2026-09-12:** this document records the architecture
-> implemented by document-driven Phases 0–9 and the still-running code-first
+> **Architecture status – 2026-09-16:** this document records the architecture
+> implemented by document-driven Phases 0–10, Phase 11 rollout controls, and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
 > target architecture and its ordered backend/frontend work are defined in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
@@ -25,11 +25,13 @@ PR/MR source SHA -> technical automation -> sandbox run -> execution report
 - Repair may change automation implementation but not the requirement or
   expected-result snapshot.
 
-Phases 2–9 implement document intake, semantic retrieval, requirement inventory,
+Phases 2–10 implement document intake, semantic retrieval, requirement inventory,
 human source/requirement review, grounded business test cases, deterministic
 coverage, PR/MR baseline snapshots, Go automation artifacts and immutable
 reports, source-SHA sandbox execution, typed results and evidence. Legacy
 project/analysis tables remain in use as the SCM trigger and technical pipeline.
+Phase 11 adds project migration mode, document-first metrics/navigation,
+service-token roles, lifecycle audit, coordinated backup and evaluation tooling.
 
 ## Implemented document-driven architecture
 
@@ -47,10 +49,11 @@ explicit index action -> semantic chunks per identifier/flow/table row
                       -> document-set/version filtered hybrid retrieval
                       -> immutable context snapshots
 
-explicit extraction -> retrieve per semantic unit -> strict schema/rule extractor
-                    -> evidence-bound requirement + flow steps
-                    -> deterministic dedupe -> conflict/TBD inventory
-                    -> PO/BA review + immutable requirement version
+explicit extraction -> HTTP 202 durable job bound to index generation
+worker -> retrieve per semantic unit -> strict schema/rule extractor
+       -> progress + evidence-bound requirement + flow steps
+       -> deterministic dedupe -> conflict/TBD inventory
+       -> PO/BA review + immutable requirement version
 
 approved requirements -> generator per requirement/flow
                       -> grounded expected result + steps + source links
@@ -65,6 +68,8 @@ approved artifacts complete -> leased document execution run
 per case -> source-SHA workspace -> clean baseline -> artifact overlay
          -> isolated Docker run -> typed result + bounded/redacted evidence
          -> infra-only retry or completed run
+automation error -> guarded repair queue -> semantic assertion/hash check
+                 -> draft artifact -> mandatory technical review
 suite/run snapshot -> Actual/Status/Evidence -> XLSX/Markdown + snapshot hashes
 ```
 
@@ -82,10 +87,10 @@ extraction/generation use context marked as untrusted, strict output schemas and
 persisted raw call/snapshot provenance. The disabled-provider development path
 uses deterministic draft generation.
 
-Index/extract/generate are explicit synchronous review actions in the current
-MVP. Parsing and the legacy PR/MR pipeline remain background-worker jobs. A
-future hardening phase may move large document AI jobs behind queue status APIs;
-current actions are bounded by HTTP and provider timeouts.
+Index and requirement extraction are background-worker actions; extraction
+returns a job and progress endpoint so provider latency is independent of HTTP
+timeouts. Test-case and initial automation generation remain explicit review
+actions and are bounded by provider timeouts.
 
 ## Implemented baseline architecture
 

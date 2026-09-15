@@ -224,6 +224,9 @@ a { color: inherit; text-decoration: none; }
 .repair-item details { margin-top: 8px; }
 .repair-item summary { color: var(--accent-dark); cursor: pointer; font-size: 10px; font-weight: 600; }
 .repair-codes { display: grid; gap: 8px; margin-top: 9px; }
+.repair-control { display: grid; min-width: 190px; gap: 6px; margin-top: 8px; }
+.repair-control p { margin: 0; }
+.repair-control .button { justify-self: start; }
 
 .evidence-list { display: grid; gap: 8px; }
 .evidence-card { overflow: hidden; border: 1px solid var(--line); border-radius: 5px; }

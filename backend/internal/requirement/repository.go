@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +20,151 @@ type Repository struct {
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
+
+func (r *Repository) EnqueueExtraction(ctx context.Context, setID, generation int64, total int,
+	requestedBy string,
+) (ExtractionJob, error) {
+	requestedBy = strings.TrimSpace(requestedBy)
+	if requestedBy == "" {
+		requestedBy = "USER"
+	}
+	const query = `INSERT INTO requirement_extraction_jobs
+		(document_set_id,index_generation,total_chunks,requested_by)
+		VALUES($1,$2,$3,$4)
+		ON CONFLICT(document_set_id) WHERE status IN ('PENDING','RUNNING')
+		DO UPDATE SET updated_at=NOW()
+		RETURNING id,document_set_id,index_generation,status,total_chunks,processed_chunks,
+		created_count,reused_count,conflict_count,open_question_count,requested_by,
+		attempt_count,error_message,created_at,started_at,finished_at`
+	var result ExtractionJob
+	if err := r.pool.QueryRow(ctx, query, setID, generation, total, requestedBy).
+		Scan(extractionJobDest(&result)...); err != nil {
+		return ExtractionJob{}, fmt.Errorf("enqueue requirement extraction: %w", err)
+	}
+	return result, nil
+}
+
+func (r *Repository) LatestExtraction(ctx context.Context, setID int64) (ExtractionJob, error) {
+	const query = `SELECT id,document_set_id,index_generation,status,total_chunks,processed_chunks,
+		created_count,reused_count,conflict_count,open_question_count,requested_by,
+		attempt_count,error_message,created_at,started_at,finished_at
+		FROM requirement_extraction_jobs WHERE document_set_id=$1
+		ORDER BY created_at DESC,id DESC LIMIT 1`
+	var result ExtractionJob
+	if err := r.pool.QueryRow(ctx, query, setID).Scan(extractionJobDest(&result)...); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ExtractionJob{}, ErrNotFound
+		}
+		return ExtractionJob{}, fmt.Errorf("get requirement extraction: %w", err)
+	}
+	return result, nil
+}
+
+func (r *Repository) ClaimExtraction(ctx context.Context, lease time.Duration) (ExtractionJob, error) {
+	const query = `WITH candidate AS (
+		SELECT id FROM requirement_extraction_jobs
+		WHERE (status='PENDING' AND next_attempt_at<=NOW() AND lease_expires_at IS NULL)
+		   OR (status='RUNNING' AND lease_expires_at<=NOW())
+		ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1
+	)
+	UPDATE requirement_extraction_jobs job SET status='RUNNING',
+		attempt_count=job.attempt_count+1,started_at=COALESCE(job.started_at,NOW()),
+		processed_chunks=0,created_count=0,reused_count=0,conflict_count=0,open_question_count=0,
+		error_message='',lease_expires_at=NOW()+$1::interval,updated_at=NOW()
+	FROM candidate WHERE job.id=candidate.id
+	RETURNING job.id,job.document_set_id,job.index_generation,job.status,job.total_chunks,
+		job.processed_chunks,job.created_count,job.reused_count,job.conflict_count,
+		job.open_question_count,job.requested_by,job.attempt_count,job.error_message,
+		job.created_at,job.started_at,job.finished_at`
+	var result ExtractionJob
+	if err := r.pool.QueryRow(ctx, query, lease.String()).Scan(extractionJobDest(&result)...); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ExtractionJob{}, ErrNotFound
+		}
+		return ExtractionJob{}, fmt.Errorf("claim requirement extraction: %w", err)
+	}
+	return result, nil
+}
+
+func (r *Repository) RenewExtractionLease(ctx context.Context, job ExtractionJob, lease time.Duration) error {
+	result, err := r.pool.Exec(ctx, `UPDATE requirement_extraction_jobs
+		SET lease_expires_at=NOW()+$3::interval,updated_at=NOW()
+		WHERE id=$1 AND status='RUNNING' AND attempt_count=$2`, job.ID, job.AttemptCount, lease.String())
+	if err != nil {
+		return fmt.Errorf("renew requirement extraction lease: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrLeaseLost
+	}
+	return nil
+}
+
+func (r *Repository) UpdateExtractionProgress(ctx context.Context, job ExtractionJob, summary ExtractionSummary) error {
+	result, err := r.pool.Exec(ctx, `UPDATE requirement_extraction_jobs SET
+		processed_chunks=$3,created_count=$4,reused_count=$5,conflict_count=$6,
+		open_question_count=$7,updated_at=NOW()
+		WHERE id=$1 AND status='RUNNING' AND attempt_count=$2`, job.ID, job.AttemptCount,
+		summary.ProcessedChunks, summary.CreatedCount, summary.ReusedCount,
+		summary.ConflictCount, summary.OpenQuestionCount)
+	if err != nil {
+		return fmt.Errorf("update requirement extraction progress: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrLeaseLost
+	}
+	return nil
+}
+
+func (r *Repository) CompleteExtraction(ctx context.Context, job ExtractionJob, summary ExtractionSummary) error {
+	result, err := r.pool.Exec(ctx, `UPDATE requirement_extraction_jobs SET status='COMPLETED',
+		processed_chunks=total_chunks,created_count=$3,reused_count=$4,conflict_count=$5,
+		open_question_count=$6,error_message='',lease_expires_at=NULL,finished_at=NOW(),updated_at=NOW()
+		WHERE id=$1 AND status='RUNNING' AND attempt_count=$2`, job.ID, job.AttemptCount,
+		summary.CreatedCount, summary.ReusedCount, summary.ConflictCount, summary.OpenQuestionCount)
+	if err != nil {
+		return fmt.Errorf("complete requirement extraction: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrLeaseLost
+	}
+	return nil
+}
+
+func (r *Repository) RetryOrFailExtraction(ctx context.Context, job ExtractionJob, processErr error,
+	maxAttempts int, retryDelay time.Duration,
+) error {
+	result, err := r.pool.Exec(ctx, `UPDATE requirement_extraction_jobs SET
+		status=CASE WHEN attempt_count<$3 THEN 'PENDING' ELSE 'FAILED' END,
+		error_message=$4,next_attempt_at=CASE WHEN attempt_count<$3 THEN NOW()+$5::interval ELSE next_attempt_at END,
+		lease_expires_at=NULL,finished_at=CASE WHEN attempt_count<$3 THEN NULL ELSE NOW() END,updated_at=NOW()
+		WHERE id=$1 AND status='RUNNING' AND attempt_count=$2`, job.ID, job.AttemptCount,
+		maxAttempts, truncateError(processErr), retryDelay.String())
+	if err != nil {
+		return fmt.Errorf("retry or fail requirement extraction: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrLeaseLost
+	}
+	return nil
+}
+
+func extractionJobDest(item *ExtractionJob) []any {
+	return []any{&item.ID, &item.DocumentSetID, &item.IndexGeneration, &item.Status,
+		&item.TotalChunks, &item.ProcessedChunks, &item.CreatedCount, &item.ReusedCount,
+		&item.ConflictCount, &item.OpenQuestionCount, &item.RequestedBy, &item.AttemptCount,
+		&item.ErrorMessage, &item.CreatedAt, &item.StartedAt, &item.FinishedAt}
+}
+
+func truncateError(err error) string {
+	if err == nil {
+		return ""
+	}
+	value := err.Error()
+	if len(value) > 8000 {
+		return value[:8000]
+	}
+	return value
+}
 
 func (r *Repository) SaveProposal(ctx context.Context, setID int64, chunk document.SemanticChunk,
 	proposal Proposal,

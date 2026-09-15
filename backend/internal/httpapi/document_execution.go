@@ -29,6 +29,10 @@ type AutomationService interface {
 	History(context.Context, int64) (automation.ArtifactHistory, error)
 	Review(context.Context, int64, automation.ReviewInput) (automation.ArtifactHistory, error)
 }
+type AutomationRepairService interface {
+	RequestRepair(context.Context, int64, automation.RepairRequest) (automation.RepairJob, error)
+	ListRepairs(context.Context, int64) ([]automation.RepairJob, error)
+}
 type ExecutionService interface {
 	Get(context.Context, int64) (execution.Run, error)
 	Request(context.Context, int64, execution.RequestInput) (execution.Run, error)
@@ -144,6 +148,8 @@ func (h scopeHandler) decide(w http.ResponseWriter, r *http.Request) {
 
 type automationHandler struct{ service AutomationService }
 
+type automationRepairHandler struct{ service AutomationRepairService }
+
 func (h automationHandler) generate(w http.ResponseWriter, r *http.Request) {
 	id, ok := positiveInt64Path(w, r, "id", "analysis")
 	if !ok {
@@ -187,6 +193,36 @@ func (h automationHandler) review(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h automationRepairHandler) request(w http.ResponseWriter, r *http.Request) {
+	id, ok := positiveInt64Path(w, r, "id", "test run item")
+	if !ok {
+		return
+	}
+	var input automation.RepairRequest
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := h.service.RequestRepair(r.Context(), id, input)
+	if err != nil {
+		writeDocumentExecutionError(w, err, "could not request automation repair")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (h automationRepairHandler) list(w http.ResponseWriter, r *http.Request) {
+	id, ok := positiveInt64Path(w, r, "id", "test run item")
+	if !ok {
+		return
+	}
+	result, err := h.service.ListRepairs(r.Context(), id)
+	if err != nil {
+		writeDocumentExecutionError(w, err, "could not list automation repairs")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"repair_jobs": result})
 }
 
 type executionHandler struct{ service ExecutionService }
@@ -244,7 +280,7 @@ func writeDocumentExecutionError(w http.ResponseWriter, err error, fallback stri
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, report.ErrInvalidInput), errors.Is(err, scope.ErrInvalidInput), errors.Is(err, automation.ErrInvalidInput), errors.Is(err, automation.ErrInvalidOutput), errors.Is(err, execution.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, scope.ErrUnsafeChange), errors.Is(err, automation.ErrBlocked), errors.Is(err, automation.ErrAlreadyReviewed), errors.Is(err, execution.ErrNotRequestable):
+	case errors.Is(err, scope.ErrUnsafeChange), errors.Is(err, automation.ErrBlocked), errors.Is(err, automation.ErrAlreadyReviewed), errors.Is(err, automation.ErrRepairNotEligible), errors.Is(err, automation.ErrRepairLimit), errors.Is(err, execution.ErrNotRequestable):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, fallback)

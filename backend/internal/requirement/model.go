@@ -22,6 +22,11 @@ const (
 
 	DecisionApproved = "APPROVED"
 	DecisionRejected = "REJECTED"
+
+	ExtractionPending   = "PENDING"
+	ExtractionRunning   = "RUNNING"
+	ExtractionCompleted = "COMPLETED"
+	ExtractionFailed    = "FAILED"
 )
 
 var (
@@ -30,7 +35,29 @@ var (
 	ErrNoIndex         = errors.New("document index must be ready before requirement extraction")
 	ErrMissingEvidence = errors.New("requirement evidence is required")
 	ErrReviewBlocked   = errors.New("requirement cannot be approved")
+	ErrExtractionBusy  = errors.New("requirement extraction is already running")
+	ErrLeaseLost       = errors.New("requirement extraction lease lost")
+	ErrStaleIndex      = errors.New("document index changed after extraction was queued")
 )
+
+type ExtractionJob struct {
+	ID                int64      `json:"id"`
+	DocumentSetID     int64      `json:"document_set_id"`
+	IndexGeneration   int64      `json:"index_generation"`
+	Status            string     `json:"status"`
+	TotalChunks       int        `json:"total_chunks"`
+	ProcessedChunks   int        `json:"processed_chunks"`
+	CreatedCount      int        `json:"created_count"`
+	ReusedCount       int        `json:"reused_count"`
+	ConflictCount     int        `json:"conflict_count"`
+	OpenQuestionCount int        `json:"open_question_count"`
+	RequestedBy       string     `json:"requested_by"`
+	AttemptCount      int        `json:"attempt_count"`
+	ErrorMessage      string     `json:"error_message,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	StartedAt         *time.Time `json:"started_at,omitempty"`
+	FinishedAt        *time.Time `json:"finished_at,omitempty"`
+}
 
 type Requirement struct {
 	ID                int64           `json:"id"`
@@ -149,6 +176,7 @@ type ReviewInput struct {
 type ExtractionSummary struct {
 	DocumentSetID     int64 `json:"document_set_id"`
 	ChunkCount        int   `json:"chunk_count"`
+	ProcessedChunks   int   `json:"processed_chunks"`
 	CreatedCount      int   `json:"created_count"`
 	ReusedCount       int   `json:"reused_count"`
 	ConflictCount     int   `json:"conflict_count"`

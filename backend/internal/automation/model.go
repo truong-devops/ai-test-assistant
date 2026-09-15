@@ -11,14 +11,26 @@ const (
 	StatusDraft     = "DRAFT"
 	StatusApproved  = "APPROVED"
 	StatusRejected  = "REJECTED"
+
+	RepairPending       = "PENDING"
+	RepairRunning       = "RUNNING"
+	RepairWaitingReview = "WAITING_REVIEW"
+	RepairApproved      = "APPROVED"
+	RepairRejected      = "REJECTED"
+	RepairUnrepairable  = "UNREPAIRABLE"
+	RepairFailed        = "FAILED"
+	RepairPromptVersion = "document-automation-repair-v1"
 )
 
 var (
-	ErrInvalidInput    = errors.New("invalid automation input")
-	ErrNotFound        = errors.New("automation subject not found")
-	ErrBlocked         = errors.New("automation generation blocked")
-	ErrInvalidOutput   = errors.New("invalid automation provider output")
-	ErrAlreadyReviewed = errors.New("automation artifact already reviewed")
+	ErrInvalidInput      = errors.New("invalid automation input")
+	ErrNotFound          = errors.New("automation subject not found")
+	ErrBlocked           = errors.New("automation generation blocked")
+	ErrInvalidOutput     = errors.New("invalid automation provider output")
+	ErrAlreadyReviewed   = errors.New("automation artifact already reviewed")
+	ErrRepairNotEligible = errors.New("only AUTOMATION_ERROR is eligible for technical repair")
+	ErrRepairLimit       = errors.New("automation repair attempt limit reached")
+	ErrRepairLeaseLost   = errors.New("automation repair lease lost")
 )
 
 // Artifact is a technical implementation of an approved, versioned test case.
@@ -76,6 +88,53 @@ type Review struct {
 type ArtifactHistory struct {
 	Artifacts []Artifact `json:"artifacts"`
 	Reviews   []Review   `json:"reviews"`
+}
+
+// RepairJob is a candidate-level technical repair. Its expected-result hash,
+// original assertions and change policy are immutable database guardrails.
+type RepairJob struct {
+	ID                    int64           `json:"id"`
+	TestRunItemID         int64           `json:"test_run_item_id"`
+	SourceArtifactID      int64           `json:"source_artifact_id"`
+	RepairedArtifactID    *int64          `json:"repaired_artifact_id,omitempty"`
+	AttemptNumber         int             `json:"attempt_number"`
+	Status                string          `json:"status"`
+	ErrorType             string          `json:"error_type"`
+	Reason                string          `json:"reason"`
+	RequestedBy           string          `json:"requested_by"`
+	AllowedChangePolicy   json.RawMessage `json:"allowed_change_policy"`
+	ExpectedResultHash    string          `json:"expected_result_hash"`
+	BeforeSourceHash      string          `json:"before_source_hash"`
+	AfterSourceHash       string          `json:"after_source_hash,omitempty"`
+	BeforeAssertions      []string        `json:"before_assertions"`
+	AfterAssertions       []string        `json:"after_assertions,omitempty"`
+	ModelName             string          `json:"model_name,omitempty"`
+	PromptVersion         string          `json:"prompt_version"`
+	ProviderResponseID    string          `json:"provider_response_id,omitempty"`
+	InputTokens           int             `json:"input_tokens"`
+	OutputTokens          int             `json:"output_tokens"`
+	MaxOutputTokens       int             `json:"max_output_tokens"`
+	MaxCostMicroUSD       int64           `json:"max_cost_microusd"`
+	EstimatedCostMicroUSD int64           `json:"estimated_cost_microusd"`
+	QueueAttemptCount     int             `json:"queue_attempt_count"`
+	ErrorMessage          string          `json:"error_message,omitempty"`
+	CreatedAt             time.Time       `json:"created_at"`
+	StartedAt             *time.Time      `json:"started_at,omitempty"`
+	FinishedAt            *time.Time      `json:"finished_at,omitempty"`
+}
+
+type RepairRequest struct {
+	RequestedBy string `json:"requested_by"`
+}
+
+type RepairSubject struct {
+	Job          RepairJob
+	Artifact     Artifact
+	ActualResult string
+	Evidence     json.RawMessage
+	TestCaseID   int64
+	AnalysisID   int64
+	PackageName  string
 }
 
 type proposedArtifact struct {

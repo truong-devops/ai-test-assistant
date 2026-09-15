@@ -9,6 +9,11 @@ import (
 
 const StatusActive = "active"
 
+const (
+	PipelineDocumentDriven = "DOCUMENT_DRIVEN"
+	PipelineLegacy         = "LEGACY"
+)
+
 type Project struct {
 	ID                int64     `json:"id"`
 	Name              string    `json:"name"`
@@ -18,10 +23,17 @@ type Project struct {
 	DefaultBranch     string    `json:"default_branch"`
 	Language          string    `json:"language"`
 	Status            string    `json:"status"`
+	PipelineMode      string    `json:"pipeline_mode"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 	// GitLabProjectID is accepted by older in-process callers and is not emitted.
 	GitLabProjectID int64 `json:"-"`
+}
+
+type PipelineModeInput struct {
+	Mode   string `json:"mode"`
+	Actor  string `json:"actor"`
+	Reason string `json:"reason"`
 }
 
 type CreateInput struct {

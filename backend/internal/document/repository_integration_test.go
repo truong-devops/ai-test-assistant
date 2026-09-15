@@ -41,6 +41,27 @@ func TestPostgresRepositoryDocumentLifecycleAndImmutability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = pool.Exec(context.Background(), `DELETE FROM document_sets WHERE id=$1`, set.ID) }()
+	if set.RetentionDays != 365 || set.ArchivedAt != nil {
+		t.Fatalf("new document set lifecycle=%+v", set)
+	}
+	set, err = service.UpdateLifecycle(ctx, set.ID, LifecycleInput{Status: SetStatusArchived,
+		RetentionDays: 180, Actor: "integration-test", Reason: "verify recoverable archive"})
+	if err != nil || set.Status != SetStatusArchived || set.ArchivedAt == nil || set.RetentionDays != 180 {
+		t.Fatalf("archived set=%+v error=%v", set, err)
+	}
+	if _, _, err = service.Upload(ctx, set.ID, UploadInput{DocumentName: "Blocked", DocumentType: TypeRequirements,
+		Filename: "blocked.md"}, strings.NewReader("# blocked")); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("upload to archived set error=%v", err)
+	}
+	set, err = service.UpdateLifecycle(ctx, set.ID, LifecycleInput{Status: SetStatusActive,
+		RetentionDays: 180, Actor: "integration-test", Reason: "continue lifecycle fixture"})
+	if err != nil || set.Status != SetStatusActive || set.ArchivedAt != nil {
+		t.Fatalf("restored set=%+v error=%v", set, err)
+	}
+	var lifecycleAudits int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM document_set_audit_log WHERE document_set_id=$1`, set.ID).Scan(&lifecycleAudits); err != nil || lifecycleAudits != 2 {
+		t.Fatalf("lifecycle audit count=%d error=%v", lifecycleAudits, err)
+	}
 
 	item, version, err := service.Upload(ctx, set.ID, UploadInput{
 		DocumentName: "Order requirements", DocumentType: TypeRequirements,
@@ -131,6 +152,10 @@ func TestPostgresRepositoryDocumentLifecycleAndImmutability(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE document_versions SET sha256=$2 WHERE id=$1`,
 		version.ID, strings.Repeat("f", 64)); err == nil {
 		t.Fatal("document version identity update succeeded, want immutable trigger error")
+	}
+	metrics, err := service.Metrics(ctx)
+	if err != nil || metrics.DocumentVersions < 3 || metrics.DocumentSets < 2 {
+		t.Fatalf("document pipeline metrics=%+v error=%v", metrics, err)
 	}
 }
 

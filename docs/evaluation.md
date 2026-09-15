@@ -58,3 +58,26 @@ generated hash and artifacts.
 
 Passing execution is not equivalent to a useful test. Report syntactic,
 compile, execution, coverage contribution, and human acceptance separately.
+
+## Document-driven quality report (Phase 11)
+
+Run the separate document-grounded evaluator with:
+
+```bash
+make evaluate-document
+```
+
+It reads `evaluation/datasets/document-controlled-v1.json` and writes
+`evaluation/results/document-controlled-v1.json`. The strict dataset format
+contains golden requirements, extracted requirements with support/citation
+labels, and test-case observations. Its output reports:
+
+- requirement precision/recall and main/alternate/exception flow recall;
+- unsupported-claim, citation-correctness and duplicate-test rates;
+- human acceptance, edit distance and review time;
+- automation compile/execution and seeded-defect detection rates;
+- separate `DOC_ONLY_TEST_DESIGN` and `CODE_FIRST` variant summaries.
+
+The bundled dataset is deliberately small and synthetic. It tests the metric
+implementation and output schema only; collect reviewed PTYC/URD annotations
+and real seeded-defect trials before using the report as thesis evidence.

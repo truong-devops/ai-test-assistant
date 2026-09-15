@@ -20,6 +20,13 @@ type DocumentService interface {
 	GetVersion(context.Context, int64, int) (document.Document, document.Version, []document.Block, error)
 }
 
+type DocumentMetricsService interface {
+	Metrics(context.Context) (document.PipelineMetrics, error)
+}
+type DocumentLifecycleService interface {
+	UpdateLifecycle(context.Context, int64, document.LifecycleInput) (document.Set, error)
+}
+
 type documentHandler struct {
 	service        DocumentService
 	maxUploadBytes int64
@@ -53,6 +60,42 @@ func (h documentHandler) listSets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"document_sets": results})
+}
+
+func (h documentHandler) metrics(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(DocumentMetricsService)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "document metrics are unavailable")
+		return
+	}
+	result, err := service.Metrics(r.Context())
+	if err != nil {
+		writeDocumentError(w, err, "could not load document pipeline metrics")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h documentHandler) lifecycle(w http.ResponseWriter, r *http.Request) {
+	id, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	service, ok := h.service.(DocumentLifecycleService)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "document lifecycle policy is unavailable")
+		return
+	}
+	var input document.LifecycleInput
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := service.UpdateLifecycle(r.Context(), id, input)
+	if err != nil {
+		writeDocumentError(w, err, "could not update document lifecycle")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h documentHandler) getSet(w http.ResponseWriter, r *http.Request) {

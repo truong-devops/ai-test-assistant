@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/automation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/execution"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/report"
 )
@@ -15,6 +16,43 @@ import (
 type reportServiceStub struct {
 	exportInput report.ExportInput
 	download    report.ExportArtifact
+}
+
+type automationRepairServiceStub struct {
+	requested automation.RepairRequest
+	jobs      []automation.RepairJob
+	err       error
+}
+
+func (s *automationRepairServiceStub) RequestRepair(_ context.Context, _ int64,
+	input automation.RepairRequest,
+) (automation.RepairJob, error) {
+	s.requested = input
+	return automation.RepairJob{ID: 11, Status: automation.RepairPending}, s.err
+}
+func (s *automationRepairServiceStub) ListRepairs(context.Context, int64) ([]automation.RepairJob, error) {
+	return s.jobs, s.err
+}
+
+func TestAutomationRepairEndpointsAreAsynchronous(t *testing.T) {
+	service := &automationRepairServiceStub{jobs: []automation.RepairJob{{ID: 11,
+		Status: automation.RepairWaitingReview}}}
+	request := httptest.NewRequest(http.MethodPost, "/api/test-run-items/9/repair",
+		strings.NewReader(`{"requested_by":"QA"}`))
+	request.SetPathValue("id", "9")
+	response := httptest.NewRecorder()
+	automationRepairHandler{service: service}.request(response, request)
+	if response.Code != http.StatusAccepted || service.requested.RequestedBy != "QA" {
+		t.Fatalf("status=%d request=%+v body=%s", response.Code, service.requested,
+			response.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/test-run-items/9/repairs", nil)
+	request.SetPathValue("id", "9")
+	response = httptest.NewRecorder()
+	automationRepairHandler{service: service}.list(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "WAITING_REVIEW") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 type executionServiceStub struct {

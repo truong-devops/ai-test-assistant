@@ -20,7 +20,40 @@ func NewService(repository *Repository, index *document.IndexService, extractor 
 	return &Service{repository: repository, index: index, extractor: extractor}
 }
 
+func (s *Service) RequestExtraction(ctx context.Context, setID int64, requestedBy string) (ExtractionJob, error) {
+	if setID <= 0 {
+		return ExtractionJob{}, ErrInvalidInput
+	}
+	status, err := s.index.Status(ctx, setID)
+	if err != nil {
+		return ExtractionJob{}, err
+	}
+	if status.Status != document.IndexReady {
+		return ExtractionJob{}, ErrNoIndex
+	}
+	return s.repository.EnqueueExtraction(ctx, setID, status.Generation, status.ChunkCount, requestedBy)
+}
+
+func (s *Service) ExtractionStatus(ctx context.Context, setID int64) (ExtractionJob, error) {
+	if setID <= 0 {
+		return ExtractionJob{}, ErrInvalidInput
+	}
+	return s.repository.LatestExtraction(ctx, setID)
+}
+
 func (s *Service) Extract(ctx context.Context, setID int64) (ExtractionSummary, error) {
+	return s.extract(ctx, setID, 0, nil)
+}
+
+func (s *Service) ExtractWithProgress(ctx context.Context, setID, expectedGeneration int64,
+	progress func(ExtractionSummary) error,
+) (ExtractionSummary, error) {
+	return s.extract(ctx, setID, expectedGeneration, progress)
+}
+
+func (s *Service) extract(ctx context.Context, setID, expectedGeneration int64,
+	progress func(ExtractionSummary) error,
+) (ExtractionSummary, error) {
 	if setID <= 0 {
 		return ExtractionSummary{}, ErrInvalidInput
 	}
@@ -30,6 +63,9 @@ func (s *Service) Extract(ctx context.Context, setID int64) (ExtractionSummary, 
 	}
 	if status.Status != document.IndexReady {
 		return ExtractionSummary{}, ErrNoIndex
+	}
+	if expectedGeneration > 0 && status.Generation != expectedGeneration {
+		return ExtractionSummary{}, ErrStaleIndex
 	}
 	chunks, err := s.index.AllChunks(ctx, setID)
 	if err != nil {
@@ -95,6 +131,12 @@ func (s *Service) Extract(ctx context.Context, setID int64) (ExtractionSummary, 
 				}
 			}
 			seen = append(seen, seenProposal{Proposal: candidate, Requirement: saved, Chunk: chunk})
+		}
+		summary.ProcessedChunks++
+		if progress != nil {
+			if err := progress(summary); err != nil {
+				return summary, err
+			}
 		}
 	}
 	return summary, nil

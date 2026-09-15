@@ -55,3 +55,63 @@ func TestRateLimiterDoesNotTrustForwardedAddress(t *testing.T) {
 }
 
 func testTime() time.Time { return time.Unix(100, 0) }
+
+func TestAuthorizationMiddlewareEnforcesTokenAndRole(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	handler := authorizationMiddleware(RouterOptions{AuthToken: "secret-token"}, next)
+	tests := []struct {
+		name, method, path, token, role string
+		want                            int
+	}{
+		{name: "health bypass", method: http.MethodGet, path: "/health", want: http.StatusNoContent},
+		{name: "missing token", method: http.MethodGet, path: "/api/document-sets", want: http.StatusUnauthorized},
+		{name: "viewer read", method: http.MethodGet, path: "/api/document-sets", token: "secret-token", role: "viewer", want: http.StatusNoContent},
+		{name: "viewer cannot upload", method: http.MethodPost, path: "/api/document-sets/1/documents", token: "secret-token", role: "viewer", want: http.StatusForbidden},
+		{name: "editor uploads", method: http.MethodPost, path: "/api/document-sets/1/documents", token: "secret-token", role: "editor", want: http.StatusNoContent},
+		{name: "editor cannot approve", method: http.MethodPost, path: "/api/document-versions/1/review", token: "secret-token", role: "editor", want: http.StatusForbidden},
+		{name: "reviewer approves", method: http.MethodPost, path: "/api/document-versions/1/review", token: "secret-token", role: "reviewer", want: http.StatusNoContent},
+		{name: "admin repairs", method: http.MethodPost, path: "/api/test-run-items/1/repair", token: "secret-token", role: "admin", want: http.StatusNoContent},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, test.path, nil)
+			if test.token != "" {
+				request.Header.Set("Authorization", "Bearer "+test.token)
+			}
+			if test.role != "" {
+				request.Header.Set("X-Authenticated-Role", test.role)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.want {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, test.want, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestLegacyDeprecationHeadersIdentifyOnlyCompatibilityRoutes(t *testing.T) {
+	handler := legacyDeprecationHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	for _, test := range []struct {
+		path       string
+		deprecated bool
+	}{
+		{path: "/api/analyses/1/generated-tests", deprecated: true},
+		{path: "/api/generated-tests/1/accept", deprecated: true},
+		{path: "/api/evaluations", deprecated: true},
+		{path: "/api/analyses/1/test-scope", deprecated: false},
+		{path: "/api/document-sets/1/test-cases", deprecated: false},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		got := response.Header().Get("Deprecation") == "true"
+		if got != test.deprecated {
+			t.Fatalf("path=%s deprecated=%v want=%v", test.path, got, test.deprecated)
+		}
+		if test.deprecated && response.Header().Get("Link") == "" {
+			t.Fatalf("path=%s has no successor Link header", test.path)
+		}
+	}
+}

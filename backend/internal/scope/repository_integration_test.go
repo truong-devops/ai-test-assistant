@@ -194,6 +194,19 @@ func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE test_exports SET generated_by='tampered' WHERE id=$1`, artifact.ID); err == nil {
 		t.Fatal("immutable export accepted an update")
 	}
+	if _, err := pool.Exec(ctx, `UPDATE projects SET pipeline_mode='LEGACY' WHERE id=$1`, project1); err != nil {
+		t.Fatal(err)
+	}
+	legacyAnalysis := insertAnalysis(t, pool, ctx, project1, suffix+2, json.RawMessage(`{"title":"Legacy compatibility"}`))
+	created, err = repository.SnapshotForAnalysis(ctx, job.AnalysisJob{ID: legacyAnalysis,
+		ProjectID: project1, SourceSHA: "legacy-source", RawEvent: json.RawMessage(`{"title":"Legacy compatibility"}`)})
+	if err != nil || created {
+		t.Fatalf("legacy project snapshot created=%v error=%v", created, err)
+	}
+	var snapshots int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM analysis_baseline_snapshots WHERE analysis_job_id=$1`, legacyAnalysis).Scan(&snapshots); err != nil || snapshots != 0 {
+		t.Fatalf("legacy project fabricated baseline snapshots=%d error=%v", snapshots, err)
+	}
 }
 
 func insertAnalysis(t *testing.T, pool *pgxpool.Pool, ctx context.Context, projectID, uuid int64, raw json.RawMessage) int64 {

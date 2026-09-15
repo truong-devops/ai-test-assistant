@@ -1,14 +1,17 @@
 # AI Test Assistant – Cơ chế hoạt động hiện tại và định hướng mới
 
-> **Trạng thái tài liệu – 12/09/2026:** Phase 0–9 của kiến trúc
+> **Trạng thái tài liệu – 16/09/2026:** Phase 0–10 của kiến trúc
 > **document-driven test generation + code execution** đã được triển khai song
 > song với pipeline PR/MR cũ. Hệ thống hiện nhận DOCX/Markdown, index semantic,
 > trích xuất và duyệt requirement có evidence, sinh/duyệt test case nghiệp vụ và
 > tính coverage từ database. Hệ thống cũng đã có XLSX/Markdown export, project
 > baseline, PR/MR test scope và Go automation artifact từ test case đã duyệt.
 > Automation đã chạy được trong Docker Sandbox tại đúng source SHA, lưu evidence
-> và phân loại product/automation/infra/timeout/blocked. Technical repair có
-> guardrail tiếp tục ở Phase 10. Xem checklist tại
+> và phân loại product/automation/infra/timeout/blocked. Requirement extraction
+> chạy bằng durable worker để tránh timeout/502; technical repair chỉ áp dụng
+> cho `AUTOMATION_ERROR` và khóa expected result. Phase 11 đã có phần lõi về
+> migration UI, hardening và evaluation nhưng còn nghiệm thu E2E hạ tầng thật.
+> Xem checklist tại
 > [docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 ## 1. Dự án sẽ dùng để làm gì?
@@ -36,7 +39,7 @@ phải là `FAILED` hoặc `NEEDS_CLARIFICATION`, không phải sửa expected r
 | Nguồn expected result | Phase 5 business test dùng approved evidence; legacy generated Go test vẫn tồn tại riêng | Chỉ từ bằng chứng tài liệu có truy vết |
 | Vai trò của code | Vừa tạo context, vừa là đối tượng chạy test | Chỉ dùng để xác định phạm vi kỹ thuật, viết automation và thực thi |
 | Đầu ra | Go generated test và sandbox result | Test case, coverage matrix, automated test, execution report và Excel |
-| Trạng thái chuyển đổi | Được giữ tương thích | Phase 0–9 đã xong; Phase 10–11 chưa làm |
+| Trạng thái chuyển đổi | Được giữ tương thích và có deprecation header | Phase 0–10 đã xong; Phase 11 đang nghiệm thu |
 
 Frontend `Documents` hiện có các màn hình index, requirement inventory/review,
 test-case review và coverage. Các màn hình Projects/Review cũ vẫn được giữ tương
@@ -217,7 +220,7 @@ nhân tạo draft, không phải nguồn xác nhận nghiệp vụ.
 
 ## 11. Phần đang chạy trong repository
 
-Document-driven pipeline hiện chạy tới Phase 9:
+Document-driven pipeline hiện chạy tới Phase 10:
 
 ```text
 DOCX/Markdown → parse blocks → semantic index → requirement inventory
@@ -252,8 +255,10 @@ baseline và tạo test run/scope. Code/diff chỉ cung cấp tín hiệu kỹ t
 artifact, lưu source SHA, image digest, environment fingerprint, bounded/redacted
 log và Actual Result. Chỉ assertion fail từ artifact đã duyệt mới được phân loại
 `PRODUCT_FAILED`; lỗi compile/setup là `AUTOMATION_ERROR`, lỗi môi trường là
-`INFRA_ERROR` và được retry riêng. Phase 10 mới bổ sung technical repair cho
-automation error.
+`INFRA_ERROR` và được retry riêng. Technical repair tạo job độc lập chỉ cho
+`AUTOMATION_ERROR`, giữ nguyên expected hash/assertion và luôn cần con người
+duyệt artifact mới. Overview document-first, project pipeline flag, metrics,
+RBAC service token và backup database + file storage được bổ sung ở Phase 11.
 
 ## 12. Cách trình bày ngắn với giảng viên
 

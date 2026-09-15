@@ -1,12 +1,12 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–17.
+> This page documents the schema currently implemented by migrations 1–21.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
 > Migration 17 adds immutable exports, execution-scope snapshots and separated
-> automation provenance. Sandbox result classification remains tracked in
-> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+> automation provenance; migrations 18–21 add typed execution, asynchronous
+> extraction, guarded repair, lifecycle and rollout controls.
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
 
@@ -96,6 +96,44 @@ be bound exactly once while the item is still `NOT_RUN`.
 screenshot references. `test_run_classification_reviews` append-audits every
 manual result override with previous/new taxonomy, reviewer and reason. Infra
 retry appends a new item attempt instead of overwriting execution history.
+
+## Requirement extraction queue (migration 19)
+
+`requirement_extraction_jobs` moves LLM extraction outside the API request. A
+job captures its document-index generation, total/processed chunk counts,
+created/reused/conflict/question counts, request actor, lease, retry schedule and
+terminal error. A partial unique index permits only one pending/running job per
+document set. Claim uses `FOR UPDATE SKIP LOCKED`; generation checks prevent a
+job from writing against a newer index.
+
+## Guarded automation repair (migration 20)
+
+`automation_repair_jobs` can reference only one failed `test_run_item` and
+records candidate status independently. The repository admits only
+`AUTOMATION_ERROR`; product/infra/pass outcomes cannot enter this queue. Each
+row keeps its source/repaired artifact, failure evidence link, before/after
+hash/assertions, model/prompt, token/cost budget, lease/retry and reviewer state.
+
+A trigger makes the test-run item, source artifact, attempt, allowed-change
+policy, expected-result hash, source hash, original assertions and budgets
+immutable. Valid provider output creates a new draft artifact; approval/reject
+of that artifact advances the corresponding repair job. Approval also appends
+a `NOT_RUN` item attempt and requeues its run; repair attempt limits are counted
+across the run/test-case chain so a rerun cannot reset the budget.
+
+## Pipeline rollout and document lifecycle (migration 21)
+
+`projects.pipeline_mode` is `DOCUMENT_DRIVEN` or `LEGACY`. Existing projects are
+backfilled to `LEGACY` without inventing requirement evidence; new projects use
+the document-driven default. `project_pipeline_mode_audit` records every
+operator change.
+
+Document sets gain bounded `retention_days` and `archived_at`.
+`document_set_audit_log` stores archive/restore/retention changes with actor,
+reason and before/after state. Archive is recoverable and prevents uploads;
+physical purge is deliberately not implemented until an operator-approved
+policy is defined. Coordinated backup stores PostgreSQL and document bytes at
+the same quiesced application point.
 
 ## Phase 12 AI provenance
 

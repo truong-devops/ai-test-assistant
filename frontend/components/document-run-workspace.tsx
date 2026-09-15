@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/status-badge";
-import type { TestRunDetail, TestRunItem } from "@/lib/types";
+import type { AutomationRepairJob, TestRunDetail, TestRunItem } from "@/lib/types";
 import { formatDuration, shortSHA } from "@/lib/presentation";
 
 const classifications = ["PASSED", "PRODUCT_FAILED", "AUTOMATION_ERROR", "INFRA_ERROR", "TIMED_OUT", "BLOCKED"] as const;
@@ -53,9 +54,48 @@ export function DocumentRunWorkspace({ run, documentSetId }: { run: TestRunDetai
 		{error ? <p className="form-error panel-message">{error}</p> : null}
 		{run.error_message ? <p className="notice"><strong>Execution error</strong>{run.error_message}</p> : null}
 		{run.environment_fingerprint ? <p className="table-subtitle panel-message">Image <span className="mono">{run.image_reference} · {run.image_digest}</span><br />Environment fingerprint <span className="mono">{run.environment_fingerprint}</span></p> : null}
-		<div className="table-wrap"><table className="data-table"><thead><tr><th>Case</th><th>Expected</th><th>Actual</th><th>Result</th><th>Evidence</th><th>Review classification</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id}><td><span className="table-title">{item.test_case_key}</span><span className="table-subtitle">{item.title} · attempt {item.attempt_number}<br />{item.command || "Not executed"}{item.duration_ms ? ` · ${formatDuration(item.duration_ms)}` : ""}</span></td><td>{item.expected_result}</td><td><pre className="evidence-content">{item.actual_result || "—"}</pre></td><td><StatusBadge status={item.status} />{item.exit_code !== undefined ? <span className="table-subtitle">exit {item.exit_code}</span> : null}</td><td>{item.evidence.length ? <details><summary>{item.evidence.length} record(s)</summary>{item.evidence.map((evidence) => <div key={evidence.id}><strong>{evidence.evidence_type}</strong><pre className="evidence-content">{evidence.content || evidence.storage_key}</pre></div>)}</details> : "—"}</td><td>{item.status !== "NOT_RUN" ? <><select value={overrides[item.id] ?? item.status} onChange={(event) => setOverrides({ ...overrides, [item.id]: event.target.value })}>{classifications.map((status) => <option key={status}>{status}</option>)}</select><button className="button secondary" disabled={pending} onClick={() => classify(item)}>Save audit</button></> : "—"}</td></tr>)}</tbody></table></div>
+		<div className="table-wrap"><table className="data-table"><thead><tr><th>Case</th><th>Expected</th><th>Actual</th><th>Result / technical repair</th><th>Evidence</th><th>Review classification</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id}><td><span className="table-title">{item.test_case_key}</span><span className="table-subtitle">{item.title} · attempt {item.attempt_number}<br />{item.command || "Not executed"}{item.duration_ms ? ` · ${formatDuration(item.duration_ms)}` : ""}</span></td><td>{item.expected_result}</td><td><pre className="evidence-content">{item.actual_result || "—"}</pre></td><td><StatusBadge status={item.status} />{item.exit_code !== undefined ? <span className="table-subtitle">exit {item.exit_code}</span> : null}<RepairControl item={item} operator={operator} documentSetId={documentSetId} /></td><td>{item.evidence.length ? <details><summary>{item.evidence.length} record(s)</summary>{item.evidence.map((evidence) => <div key={evidence.id}><strong>{evidence.evidence_type}</strong><pre className="evidence-content">{evidence.content || evidence.storage_key}</pre></div>)}</details> : "—"}</td><td>{item.status !== "NOT_RUN" ? <><select value={overrides[item.id] ?? item.status} onChange={(event) => setOverrides({ ...overrides, [item.id]: event.target.value })}>{classifications.map((status) => <option key={status}>{status}</option>)}</select><button className="button secondary" disabled={pending} onClick={() => classify(item)}>Save audit</button></> : "—"}</td></tr>)}</tbody></table></div>
 		{run.classification_reviews.length ? <details className="panel-message"><summary>Classification audit ({run.classification_reviews.length})</summary>{run.classification_reviews.map((review) => <p key={review.id}><strong>{review.previous_status} → {review.new_status}</strong> · {review.reviewer_name}<span className="table-subtitle">{review.reason}</span></p>)}</details> : null}
 	</section>;
+}
+
+function RepairControl({ item, operator, documentSetId }: { item: TestRunItem; operator: string; documentSetId: number }) {
+	const [jobs, setJobs] = useState<AutomationRepairJob[]>([]);
+	const [error, setError] = useState("");
+	const [pending, startTransition] = useTransition();
+	const load = useCallback(async () => {
+		if (item.status !== "AUTOMATION_ERROR") return;
+		const response = await fetch(`/api/backend/api/test-run-items/${item.id}/repairs`, { cache: "no-store" });
+		const body = (await response.json().catch(() => ({}))) as { repair_jobs?: AutomationRepairJob[]; error?: string };
+		if (!response.ok) setError(body.error ?? "Could not load repair history.");
+		else { setJobs(body.repair_jobs ?? []); setError(""); }
+	}, [item.id, item.status]);
+	useEffect(() => { void load(); }, [load]);
+	const active = jobs.some((job) => job.status === "PENDING" || job.status === "RUNNING");
+	useEffect(() => {
+		if (!active) return;
+		const timer = window.setInterval(() => void load(), 2000);
+		return () => window.clearInterval(timer);
+	}, [active, load]);
+	if (item.status === "PRODUCT_FAILED") return <span className="table-subtitle">Business failure: repair is forbidden.</span>;
+	if (item.status === "INFRA_ERROR") return <span className="table-subtitle">Infrastructure retry only; no LLM repair.</span>;
+	if (item.status !== "AUTOMATION_ERROR") return null;
+	const latest = jobs[0];
+	const request = () => {
+		if (!operator.trim()) { setError("Operator name is required to request repair."); return; }
+		startTransition(async () => {
+			const response = await fetch(`/api/backend/api/test-run-items/${item.id}/repair`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requested_by: operator.trim() }) });
+			const body = (await response.json().catch(() => ({}))) as AutomationRepairJob & { error?: string };
+			if (!response.ok) setError(body.error ?? "Could not request technical repair.");
+			else { setJobs((current) => [body, ...current.filter((job) => job.id !== body.id)]); setError(""); }
+		});
+	};
+	return <div className="repair-control">
+		<p className="table-subtitle"><strong>Guardrail:</strong> expected result/hash and semantic assertions are locked.</p>
+		{latest ? <details open={latest.status === "UNREPAIRABLE"}><summary>Repair #{latest.attempt_number} · {latest.status}</summary><p className="table-subtitle">Allowed: automation source, setup. Model: {latest.model_name || "pending"} · input {latest.input_tokens}, output {latest.output_tokens}/{latest.max_output_tokens} tokens · cost {latest.estimated_cost_microusd}/{latest.max_cost_microusd} µUSD.</p>{latest.error_message ? <p className="form-error">{latest.error_message}</p> : null}{latest.repaired_artifact_id ? <Link href={`/documents/${documentSetId}/test-cases/${item.test_case_id}`}>Review draft artifact #{latest.repaired_artifact_id}</Link> : null}</details> : null}
+		{!latest || latest.status === "UNREPAIRABLE" || latest.status === "FAILED" || latest.status === "REJECTED" ? <button className="button secondary" disabled={pending} onClick={request}>{pending ? "Queuing…" : "Repair automation"}</button> : null}
+		{error ? <p className="form-error">{error}</p> : null}
+	</div>;
 }
 
 function latestAttempts(items: TestRunItem[]): TestRunItem[] {

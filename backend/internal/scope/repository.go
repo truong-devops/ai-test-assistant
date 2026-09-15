@@ -116,6 +116,13 @@ type caseSnapshot struct {
 var explicitIDPattern = regexp.MustCompile(`(?i)\b(?:(?:UC|FR|BR|AC|NFR|REQ|US|STORY)(?:[-_][A-Z0-9]+|[0-9][A-Z0-9]*)|[A-Z][A-Z0-9]{1,9}-[0-9]+)(?:[.-][A-Z0-9]+)*\b`)
 
 func (r *Repository) SnapshotForAnalysis(ctx context.Context, analysis job.AnalysisJob) (bool, error) {
+	var pipelineMode string
+	if err := r.pool.QueryRow(ctx, `SELECT pipeline_mode FROM projects WHERE id=$1`, analysis.ProjectID).Scan(&pipelineMode); err != nil {
+		return false, err
+	}
+	if pipelineMode == "LEGACY" {
+		return false, nil
+	}
 	var setID, suiteID int64
 	var configuredMode string
 	err := r.pool.QueryRow(ctx, `SELECT document_set_id,test_suite_id,selection_mode FROM project_document_baselines WHERE project_id=$1`, analysis.ProjectID).Scan(&setID, &suiteID, &configuredMode)

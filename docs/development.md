@@ -62,10 +62,9 @@
 - New retrieval queries must apply `project_id` in SQL, not only after fetching
   results.
 - Legacy PR/MR LLM calls belong in background processors behind `llm.Provider`.
-  Phase 4–5 document extraction/generation are currently explicit synchronous
-  review actions bounded by server/provider timeouts; do not call them from page
-  rendering or automatic polling. Queue them before claiming large-set production
-  scalability.
+  Requirement extraction is also a durable leased job: POST only enqueues and
+  the UI polls its status/progress endpoint. Keep provider work out of page
+  rendering. Test-case generation remains an explicit bounded review action.
 - Keep `LLM_PROVIDER=disabled` when AI calls are not desired. In that mode,
   document extraction/test generation use deterministic conservative draft
   rules. To enable Phase 4–5 document AI and legacy AI stages,

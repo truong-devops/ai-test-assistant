@@ -195,6 +195,7 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	mux.HandleFunc("POST /api/projects", projects.create)
 	mux.HandleFunc("GET /api/projects", projects.list)
 	mux.HandleFunc("GET /api/projects/{id}", projects.get)
+	mux.HandleFunc("POST /api/projects/{id}/pipeline-mode", projects.setPipelineMode)
 	if knowledgeService != nil {
 		indexes := knowledgeHandler{service: knowledgeService}
 		mux.HandleFunc("POST /api/projects/{id}/index", indexes.requestIndex)
@@ -250,7 +251,9 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		documents := documentHandler{service: documentService, maxUploadBytes: documentMaxUploadBytes}
 		mux.HandleFunc("POST /api/document-sets", documents.createSet)
 		mux.HandleFunc("GET /api/document-sets", documents.listSets)
+		mux.HandleFunc("GET /api/document-metrics", documents.metrics)
 		mux.HandleFunc("GET /api/document-sets/{id}", documents.getSet)
+		mux.HandleFunc("POST /api/document-sets/{id}/lifecycle", documents.lifecycle)
 		mux.HandleFunc("POST /api/document-sets/{id}/documents", documents.upload)
 		mux.HandleFunc("GET /api/document-sets/{id}/documents", documents.listDocuments)
 		mux.HandleFunc("GET /api/documents/{id}/versions/{version}", documents.getVersion)
@@ -266,6 +269,7 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	if requirementService != nil {
 		requirements := requirementWorkflowHandler{service: requirementService}
 		mux.HandleFunc("POST /api/document-sets/{id}/requirements/extract", requirements.extract)
+		mux.HandleFunc("GET /api/document-sets/{id}/requirements/extraction", requirements.extractionStatus)
 		mux.HandleFunc("GET /api/document-sets/{id}/requirements", requirements.list)
 		mux.HandleFunc("GET /api/document-sets/{id}/requirement-conflicts", requirements.conflicts)
 		mux.HandleFunc("GET /api/document-sets/{id}/open-questions", requirements.questions)
@@ -300,6 +304,11 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		mux.HandleFunc("POST /api/analyses/{id}/automation/generate", automations.generate)
 		mux.HandleFunc("GET /api/test-cases/{id}/automation", automations.history)
 		mux.HandleFunc("POST /api/automation-artifacts/{id}/review", automations.review)
+		if repairService, ok := automationService.(AutomationRepairService); ok {
+			repairs := automationRepairHandler{service: repairService}
+			mux.HandleFunc("POST /api/test-run-items/{id}/repair", repairs.request)
+			mux.HandleFunc("GET /api/test-run-items/{id}/repairs", repairs.list)
+		}
 	}
 	if executionService != nil {
 		executions := executionHandler{service: executionService}
@@ -313,7 +322,8 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	}
 
 	limiter := newClientRateLimiter(options)
-	return requestLogger(logger, securityHeaders(limiter.middleware(mux)))
+	return requestLogger(logger, securityHeaders(limiter.middleware(
+		authorizationMiddleware(options, legacyDeprecationHeaders(mux)))))
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {

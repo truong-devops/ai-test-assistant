@@ -142,7 +142,8 @@ func main() {
 	reportService := report.NewService(report.NewRepository(database.Pool()))
 	automationService := automation.NewService(automation.NewRepository(database.Pool()),
 		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, providerName,
-		cfg.LLM.Model, cfg.LLM.MaxOutputTokens)
+		cfg.LLM.Model, cfg.LLM.MaxOutputTokens).ConfigureRepair(cfg.Repair.MaxAttempts,
+		cfg.Repair.MaxCostMicroUSD)
 	executionService := execution.NewService(execution.NewRepository(database.Pool()))
 	webhookService := gitlab.NewWebhookService(projectRepository, scopedEnqueuer)
 	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
@@ -160,7 +161,8 @@ func main() {
 			documentIndexService, requirementService, testCaseService, reportService,
 			scopeRepository, automationService, executionService,
 			httpapi.RouterOptions{RateLimitPerSecond: cfg.HTTP.RateLimitPerSecond,
-				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients}),
+				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients,
+				AuthToken: cfg.Auth.Token}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		WriteTimeout:      cfg.HTTP.WriteTimeout,

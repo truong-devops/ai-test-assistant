@@ -2,39 +2,41 @@ import Link from "next/link";
 import { AppShell, EmptyState, PageHeading } from "@/components/shell";
 import { Stat } from "@/components/stat";
 import { StatusBadge } from "@/components/status-badge";
-import { getAnalyses, getProjects, optional } from "@/lib/api";
+import { getAnalyses, getDocumentPipelineMetrics, optional } from "@/lib/api";
 import { formatDate, shortSHA } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const [projects, analyses] = await Promise.all([
-    optional(getProjects, []),
+  const [metrics, analyses] = await Promise.all([
+    optional(getDocumentPipelineMetrics, {
+      document_sets: 0, document_versions: 0, parsed_versions: 0, parse_failures: 0,
+      approved_requirements: 0, extraction_jobs: 0, extraction_failures: 0,
+      test_suites: 0, approved_test_cases: 0, automation_artifacts: 0,
+      test_runs: 0, runs_needing_attention: 0, pending_approval_actions: 0,
+    }),
     optional(getAnalyses, []),
   ]);
-  const waiting = analyses.filter((analysis) => analysis.status === "WAITING_REVIEW");
-  const accepted = analyses.filter((analysis) => analysis.status === "ACCEPTED");
-  const attention = analyses.filter((analysis) => ["FAILED", "REJECTED"].includes(analysis.status));
 
   return (
     <AppShell active="overview">
       <PageHeading
         eyebrow="Workspace overview"
-        title="Test review activity"
-        description="Monitor connected projects, merge/pull-request analyses, sandbox validation and recorded review decisions from one workspace."
-        actions={<Link className="button secondary" href="/analyses">Open review queue</Link>}
+        title="Document-driven testing"
+        description="Build an approved business baseline from documents, generate traceable test cases, then run approved automation against pull-request changes."
+        actions={<Link className="button" href="/documents">Open documents</Link>}
       />
       <div className="summary-grid">
-        <Stat label="Connected projects" value={projects.length} detail="GitLab and GitHub sources" />
-        <Stat label="Awaiting review" value={waiting.length} detail="Human decision required" tone={waiting.length ? "warning" : "plain"} />
-        <Stat label="Accepted analyses" value={accepted.length} detail="All latest candidates accepted" tone={accepted.length ? "accent" : "plain"} />
-        <Stat label="Needs attention" value={attention.length} detail="Failed or rejected outcomes" tone={attention.length ? "warning" : "plain"} />
+        <Stat label="Documents" value={metrics.document_versions} detail={`${metrics.parsed_versions} parsed · ${metrics.parse_failures} failed`} />
+        <Stat label="Approved requirements" value={metrics.approved_requirements} detail={`${metrics.pending_approval_actions} approval action(s) pending`} tone={metrics.pending_approval_actions ? "warning" : "plain"} />
+        <Stat label="Test suites / cases" value={`${metrics.test_suites} / ${metrics.approved_test_cases}`} detail={`${metrics.automation_artifacts} automation artifact(s)`} tone={metrics.approved_test_cases ? "accent" : "plain"} />
+        <Stat label="Sandbox runs" value={metrics.test_runs} detail={`${metrics.runs_needing_attention} need attention`} tone={metrics.runs_needing_attention ? "warning" : "plain"} />
       </div>
       <div className="content-grid">
         <section className="panel">
           <div className="panel-header">
-            <div><h2>Recent analysis activity</h2><p>Latest merge-request analysis jobs across all projects.</p></div>
-            <Link className="button secondary" href="/analyses">View all</Link>
+            <div><h2>Recent code-change runs</h2><p>Pull-request changes use the approved document test baseline; code is technical execution context only.</p></div>
+            <Link className="button secondary" href="/analyses">View change runs</Link>
           </div>
           {analyses.length ? (
             <div className="table-wrap">
@@ -52,21 +54,21 @@ export default async function OverviewPage() {
                 </tbody>
               </table>
             </div>
-          ) : <div className="panel-body"><EmptyState title="No analysis jobs yet" message="Connect a GitLab or GitHub project and send a change-request webhook to begin building review evidence." /></div>}
+          ) : <div className="panel-body"><EmptyState title="No change runs yet" message="Approve a document-derived suite, bind it to a project, then send a GitHub or GitLab webhook." action={<Link className="button" href="/documents">Create document baseline</Link>} /></div>}
         </section>
         <aside className="stack">
           <section className="panel side-section">
-            <p className="eyebrow">Review guidance</p>
-            <h2>Validate before accepting</h2>
-            <p className="page-description">A passing sandbox run confirms execution only. Check the scenario, retrieved context and assertions before recording a decision.</p>
+            <p className="eyebrow">Source of truth</p>
+            <h2>Business meaning comes from documents</h2>
+            <p className="page-description">Repository code may help implement and execute automation, but it cannot create or change the approved requirement, expected result, or semantic assertions.</p>
           </section>
           <section className="panel side-section">
             <p className="eyebrow">Workflow</p>
-            <h2>From change to decision</h2>
+            <h2>From evidence to report</h2>
             <ol className="repair-list">
-              <li className="repair-item"><span className="repair-dot">1</span><h4>Analyze</h4><p>Map changed Go symbols and project evidence.</p></li>
-              <li className="repair-item"><span className="repair-dot">2</span><h4>Validate</h4><p>Run generated tests in an isolated sandbox.</p></li>
-              <li className="repair-item"><span className="repair-dot">3</span><h4>Review</h4><p>Record the final human judgement.</p></li>
+              <li className="repair-item"><span className="repair-dot">1</span><h4>Approve evidence</h4><p>Parse documents, extract requirements and approve the business baseline.</p></li>
+              <li className="repair-item"><span className="repair-dot">2</span><h4>Design tests</h4><p>Generate cited test cases and review coverage before automation.</p></li>
+              <li className="repair-item"><span className="repair-dot">3</span><h4>Execute changes</h4><p>Use PR impact to run approved artifacts in the sandbox and export XLSX evidence.</p></li>
             </ol>
           </section>
         </aside>

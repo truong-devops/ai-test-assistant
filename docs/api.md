@@ -1,13 +1,29 @@
 # API
 
 > This page documents the API currently implemented. Document-driven Phases
-> 2–9 now run beside the code-first baseline. XLSX/Markdown export, approved
-> baseline mapping, document-grounded Go automation and typed sandbox execution
-> are implemented. Follow
+> 2–10 and the Phase 11 rollout controls run beside the code-first baseline.
+> XLSX/Markdown export, approved baseline mapping, document-grounded Go
+> automation and typed sandbox execution are implemented. Follow
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 > for the remaining target API.
 
 All responses use JSON. Errors have the shape `{"error":"message"}`.
+
+## Authentication and roles
+
+Production endpoints require `Authorization: Bearer <API_AUTH_TOKEN>`. The
+trusted frontend/reverse proxy also sends `X-Authenticated-Role` with one of:
+
+- `viewer`: read endpoints;
+- `editor`: create/upload/extract/generate mutations;
+- `reviewer`: approval, classification, execution, export, repair, lifecycle
+  and pipeline-mode decisions;
+- `admin`: all operations.
+
+`/health`, `/ready`, and SCM webhooks are exempt because webhooks use their own
+provider signature/secret. `X-Authenticated-Role` is trusted only after the
+service bearer token succeeds. This is service-to-service authorization; an
+OIDC-aware reverse proxy remains responsible for authenticating actual users.
 
 ## Document-driven sandbox execution
 
@@ -19,6 +35,11 @@ All responses use JSON. Errors have the shape `{"error":"message"}`.
   automatically.
 - `POST /api/test-run-items/{id}/classification` accepts `status`,
   `reviewer_name` and mandatory `reason`; the override is append-audited.
+- `POST /api/test-run-items/{id}/repair` queues bounded technical repair only
+  when the current status is exactly `AUTOMATION_ERROR`.
+- `GET /api/test-run-items/{id}/repairs` returns the candidate-level history,
+  allowed-change policy, immutable expected hash/assertions, before/after hash,
+  model, prompt version, token/cost usage and draft artifact link.
 
 The worker runs the repository baseline before adding each approved artifact.
 Only an approved assertion mismatch can become `PRODUCT_FAILED`. Compilation or
@@ -26,6 +47,13 @@ test setup failures become `AUTOMATION_ERROR`; runtime/container/dependency
 failures become `INFRA_ERROR`; timeout, missing automation and successful runs
 remain separate outcomes. Infra errors use the execution retry queue, not LLM
 repair.
+
+Repair never accepts `PRODUCT_FAILED`, `INFRA_ERROR`, or `PASSED`. Provider
+output that changes expected hash, test-case identity, semantic assertions,
+target path, package, or production source becomes `UNREPAIRABLE`. A valid
+technical change creates a new `DRAFT` artifact in `WAITING_REVIEW`; it is not
+silently approved. Approval appends a new run-item attempt and queues a sandbox
+rerun without overwriting the earlier failure or its evidence.
 
 ## Phase 12 evidence
 
@@ -40,8 +68,8 @@ index/chunk counts. Full prompt/source payloads are intentionally omitted.
 Downloads an `ai-provenance-v1` JSON bundle containing the analysis plus exact
 instructions, prompts, schemas, provider responses, and denormalized context
 snapshots. The response uses an attachment filename. Until Phase 18 adds
-application authentication/RBAC, this endpoint must remain behind the same
-trusted private boundary as the rest of the MVP.
+end-user OIDC, this endpoint must remain behind the authenticated service and
+trusted private reverse proxy.
 
 ## Phase 13 change impact
 
@@ -74,6 +102,11 @@ write endpoint.
 - `POST /api/document-sets` creates a source boundary and returns HTTP 201.
 - `GET /api/document-sets` returns `{"document_sets":[...]}`.
 - `GET /api/document-sets/{id}` returns one set or HTTP 404.
+- `GET /api/document-metrics` returns aggregate parse, extraction, approval,
+  suite/artifact and execution counters for the document-first overview.
+- `POST /api/document-sets/{id}/lifecycle` updates `ACTIVE`/`ARCHIVED` and
+  retention days (30–3650) with mandatory actor/reason audit. Archive is
+  recoverable and blocks new uploads; it does not physically purge files.
 - `POST /api/document-sets/{id}/documents` accepts a multipart upload and
   returns HTTP 202 because parsing is asynchronous.
 - `GET /api/document-sets/{id}/documents` lists logical documents with their
@@ -139,8 +172,12 @@ source cannot be revoked while an approved requirement depends on its evidence.
 
 ## Requirement inventory and review (Phase 4)
 
-- `POST /api/document-sets/{id}/requirements/extract` extracts every semantic
-  unit and returns created/reused/conflict/open-question counts.
+- `POST /api/document-sets/{id}/requirements/extract` validates the ready index,
+  enqueues a durable extraction job and returns HTTP 202 with `job` and
+  `status_url`.
+- `GET /api/document-sets/{id}/requirements/extraction` returns the latest job,
+  index generation, chunk progress, created/reused/conflict/open-question
+  counts, attempts and terminal error.
 - `GET /api/document-sets/{id}/requirements` accepts filters `document_id`,
   `type`, `status`, `risk`, `actor`, and `flow_type`.
 - `GET /api/requirements/{id}` returns the requirement, evidence excerpts,
@@ -156,11 +193,13 @@ never trusted. Approval returns HTTP 409 if evidence is missing, its source
 version is not approved, or a conflict/TBD item is accepted without an explicit
 edit. Retry is idempotent by source and extraction fingerprint.
 
-With `LLM_PROVIDER=disabled`, the API uses a conservative deterministic draft
+With `LLM_PROVIDER=disabled`, the worker uses a conservative deterministic draft
 extractor suitable for local development. `openai` or `gemini` enables the
-strict JSON-schema extractor. The explicit extraction action currently waits
-for completion and is bounded by HTTP/provider timeouts; it is not a queue-status
-endpoint.
+strict JSON-schema extractor. LLM calls run under
+`REQUIREMENT_EXTRACTION_TIMEOUT`; the browser polls status, so reverse-proxy
+HTTP write timeouts no longer turn a long extraction into 502. The job is bound
+to the index generation captured at enqueue and fails safely if that generation
+changes.
 
 ## Business test cases and coverage (Phase 5)
 
@@ -216,6 +255,9 @@ be changed by provider output.
 - `POST /api/projects` creates a project and returns HTTP 201.
 - `GET /api/projects` returns `{"projects": [...]}`.
 - `GET /api/projects/{id}` returns a project or HTTP 404.
+- `POST /api/projects/{id}/pipeline-mode` accepts `DOCUMENT_DRIVEN` or `LEGACY`
+  plus mandatory `actor` and `reason`. Existing projects migrate as `LEGACY`;
+  newly created projects default to `DOCUMENT_DRIVEN`.
 
 Create request:
 
@@ -240,6 +282,10 @@ through the configured provider client. `provider` is inferred as `github` for
 `github.com` URLs and otherwise defaults to `gitlab`; missing `name` and
 `default_branch` are filled from the provider response. Private repositories
 require the corresponding server-side token.
+
+Legacy evaluation/generated-test/legacy-repair compatibility endpoints remain
+readable but return `Deprecation: true` and a `Link` header pointing to
+`/api/document-sets`. They do not fabricate requirement citations for old data.
 
 ## GitLab webhook
 
@@ -408,9 +454,9 @@ generated-test version, and are bounded by `MAX_REPAIR_ATTEMPTS`.
 - `POST /api/generated-tests/{id}/accept` stores an `ACCEPTED` decision.
 - `POST /api/generated-tests/{id}/reject` stores a `REJECTED` decision.
 
-Both decision routes accept exactly one JSON object. The reviewer name is
-optional in this unauthenticated MVP and defaults to `local-reviewer`; the
-comment is optional:
+Both decision routes accept exactly one JSON object. They are legacy-compatible
+routes protected by the service token/RBAC layer. The reviewer name defaults to
+`local-reviewer` when omitted; the comment is optional:
 
 ```json
 {

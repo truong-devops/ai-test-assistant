@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, EmptyState } from "@/components/shell";
 import { RequirementInventory } from "@/components/requirement-inventory";
-import { WorkflowAction } from "@/components/workflow-action";
-import { ApiError, getDocuments, getDocumentSet, getOpenQuestions, getRequirement, getRequirementConflicts, getRequirements } from "@/lib/api";
+import { RequirementExtractionAction } from "@/components/requirement-extraction-action";
+import { ApiError, getDocuments, getDocumentSet, getOpenQuestions, getRequirement, getRequirementConflicts, getRequirementExtraction, getRequirements, optional } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +16,9 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const [requirements, conflicts, questions, documents] = await Promise.all([
+  const [requirements, conflicts, questions, documents, extraction] = await Promise.all([
     getRequirements(id), getRequirementConflicts(id), getOpenQuestions(id), getDocuments(id),
+    optional(() => getRequirementExtraction(id), undefined),
   ]);
   const conflictDetails = await Promise.all(conflicts.map(async (conflict) => ({ conflict,
     left: await getRequirement(conflict.left_requirement_id), right: await getRequirement(conflict.right_requirement_id),
@@ -27,7 +28,7 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
   return (
     <AppShell active="documents">
       <div className="breadcrumb"><Link href="/documents">Documents</Link><span>/</span><Link href={`/documents/${id}`}>{set.name}</Link><span>/</span><span>Requirements</span></div>
-      <div className="page-heading"><div><p className="eyebrow">Phase 4 · Human-owned baseline</p><h1>Requirement inventory</h1><p className="page-description">Requirements are extracted from semantic units, remain draft by default, and carry citations back to immutable source blocks.</p></div><WorkflowAction endpoint={`/api/document-sets/${id}/requirements/extract`} label="Extract requirements" pendingLabel="Extracting…" /></div>
+      <div className="page-heading"><div><p className="eyebrow">Phase 4 · Human-owned baseline</p><h1>Requirement inventory</h1><p className="page-description">Requirements are extracted from semantic units, remain draft by default, and carry citations back to immutable source blocks.</p></div><RequirementExtractionAction setId={id} initialJob={extraction} /></div>
       <div className="summary-grid"><article className="stat-card accent"><p>Total inventory</p><strong>{requirements.length}</strong><small>Stored requirements</small></article><article className="stat-card"><p>Approved baseline</p><strong>{approved}</strong><small>Eligible for test generation</small></article><article className="stat-card"><p>Draft</p><strong>{drafts}</strong><small>Awaiting PO/BA review</small></article><article className={conflicts.length + questions.length ? "stat-card warning" : "stat-card"}><p>Needs clarification</p><strong>{conflicts.length + questions.length}</strong><small>{conflicts.length} conflicts · {questions.length} TBD</small></article></div>
       {requirements.length ? <RequirementInventory setId={set.id} requirements={requirements} documents={documents} /> : <EmptyState title="No requirement inventory" message="Build the semantic index first, then extract requirements. No source is approved automatically." />}
       {conflictDetails.length ? <section className="document-preview-section"><div className="section-heading"><div><h2>Source conflicts</h2><p>Conflicting statements remain separate until a reviewer resolves them.</p></div></div><div className="conflict-list">{conflictDetails.map(({ conflict, left, right }) => <article className="panel" key={conflict.id}><div className="panel-header"><div><h3>Conflict #{conflict.id}</h3><p>{conflict.reason}</p></div></div><div className="conflict-grid"><div><strong>{left.requirement.requirement_key}</strong><p>{left.requirement.statement}</p>{left.evidence.map((item) => <code key={item.id}>{item.document_name} v{item.version_number} · {item.source_locator}</code>)}</div><div><strong>{right.requirement.requirement_key}</strong><p>{right.requirement.statement}</p>{right.evidence.map((item) => <code key={item.id}>{item.document_name} v{item.version_number} · {item.source_locator}</code>)}</div></div></article>)}</div></section> : null}

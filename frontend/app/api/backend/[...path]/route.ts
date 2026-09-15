@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { backendAuthHeaders } from "@/lib/backend-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const { path } = await context.params;
   const incoming = new URL(request.url);
   const target = `${backendOrigin}/${path.map(encodeURIComponent).join("/")}${incoming.search}`;
-  const headers = new Headers({ Accept: "application/json" });
+  const headers = new Headers({ Accept: "application/json", ...backendAuthHeaders() });
   const contentType = request.headers.get("content-type");
   const requestID = request.headers.get("x-request-id");
   if (contentType) headers.set("content-type", contentType);

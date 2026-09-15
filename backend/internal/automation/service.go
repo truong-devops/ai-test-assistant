@@ -30,15 +30,27 @@ type Provider interface {
 }
 
 type Service struct {
-	repository          *Repository
-	retriever           ContextRetriever
-	provider            Provider
-	providerName, model string
-	maxTokens           int
+	repository            *Repository
+	retriever             ContextRetriever
+	provider              Provider
+	providerName, model   string
+	maxTokens             int
+	maxRepairAttempts     int
+	maxRepairCostMicroUSD int64
 }
 
 func NewService(repository *Repository, retriever ContextRetriever, provider Provider, providerName, model string, maxTokens int) *Service {
-	return &Service{repository: repository, retriever: retriever, provider: provider, providerName: providerName, model: model, maxTokens: maxTokens}
+	return &Service{repository: repository, retriever: retriever, provider: provider, providerName: providerName, model: model, maxTokens: maxTokens, maxRepairAttempts: 2, maxRepairCostMicroUSD: 100000}
+}
+
+func (s *Service) ConfigureRepair(maxAttempts int, maxCostMicroUSD int64) *Service {
+	if maxAttempts >= 0 && maxAttempts <= 3 {
+		s.maxRepairAttempts = maxAttempts
+	}
+	if maxCostMicroUSD >= 0 {
+		s.maxRepairCostMicroUSD = maxCostMicroUSD
+	}
+	return s
 }
 
 func (s *Service) Generate(ctx context.Context, analysisID int64, input GenerateInput) (GenerationResult, error) {
@@ -122,6 +134,18 @@ func (s *Service) History(ctx context.Context, testCaseID int64) (ArtifactHistor
 }
 func (s *Service) Review(ctx context.Context, id int64, input ReviewInput) (ArtifactHistory, error) {
 	return s.repository.Review(ctx, id, input)
+}
+
+func (s *Service) RequestRepair(ctx context.Context, itemID int64, input RepairRequest) (RepairJob, error) {
+	if s.maxRepairAttempts == 0 {
+		return RepairJob{}, ErrRepairNotEligible
+	}
+	return s.repository.RequestRepair(ctx, itemID, input, s.maxRepairAttempts, s.maxTokens,
+		s.maxRepairCostMicroUSD)
+}
+
+func (s *Service) ListRepairs(ctx context.Context, itemID int64) ([]RepairJob, error) {
+	return s.repository.ListRepairs(ctx, itemID)
 }
 
 func renderPrompt(subject Subject, source knowledge.KnowledgeChunk, business, technical []byte) string {

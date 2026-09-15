@@ -8,6 +8,7 @@ export type Project = {
   default_branch: string;
   language: string;
   status: string;
+  pipeline_mode: "DOCUMENT_DRIVEN" | "LEGACY";
   created_at: string;
   updated_at: string;
 };
@@ -19,8 +20,26 @@ export type DocumentSet = {
   scope: string;
   description: string;
   status: "ACTIVE" | "ARCHIVED";
+  retention_days: number;
+  archived_at?: string;
   created_at: string;
   updated_at: string;
+};
+
+export type DocumentPipelineMetrics = {
+  document_sets: number;
+  document_versions: number;
+  parsed_versions: number;
+  parse_failures: number;
+  approved_requirements: number;
+  extraction_jobs: number;
+  extraction_failures: number;
+  test_suites: number;
+  approved_test_cases: number;
+  automation_artifacts: number;
+  test_runs: number;
+  runs_needing_attention: number;
+  pending_approval_actions: number;
 };
 
 export type DocumentVersion = {
@@ -94,6 +113,23 @@ export type Requirement = {
   assumptions: string[];
   supersedes_requirement_id?: number;
   document_ids?: number[];
+};
+
+export type RequirementExtractionJob = {
+  id: number;
+  document_set_id: number;
+  index_generation: number;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  total_chunks: number;
+  processed_chunks: number;
+  created_count: number;
+  reused_count: number;
+  conflict_count: number;
+  open_question_count: number;
+  requested_by: string;
+  attempt_count: number;
+  error_message?: string;
+  created_at: string;
 };
 
 export type RequirementEvidence = {
@@ -325,6 +361,35 @@ export type AnalysisTestScope = {
 export type AutomationHistory = {
   artifacts: AutomationArtifact[];
   reviews: Array<{ id: number; automation_artifact_id: number; reviewer_name: string; decision: string; comment: string; created_at: string }>;
+};
+
+export type AutomationRepairJob = {
+  id: number;
+  test_run_item_id: number;
+  source_artifact_id: number;
+  repaired_artifact_id?: number;
+  attempt_number: number;
+  status: "PENDING" | "RUNNING" | "WAITING_REVIEW" | "APPROVED" | "REJECTED" | "UNREPAIRABLE" | "FAILED";
+  error_type: "AUTOMATION_ERROR";
+  reason: string;
+  requested_by: string;
+  allowed_change_policy: { mutable: string[]; immutable: string[] };
+  expected_result_hash: string;
+  before_source_hash: string;
+  after_source_hash?: string;
+  before_assertions: string[];
+  after_assertions?: string[];
+  model_name?: string;
+  prompt_version: string;
+  provider_response_id?: string;
+  input_tokens: number;
+  output_tokens: number;
+  max_output_tokens: number;
+  max_cost_microusd: number;
+  estimated_cost_microusd: number;
+  queue_attempt_count: number;
+  error_message?: string;
+  created_at: string;
 };
 
 export type TestRun = {
