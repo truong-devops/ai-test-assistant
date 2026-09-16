@@ -30,3 +30,41 @@ func TestParseResponseRejectsUnsupportedStatusAndTrailingJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestParseResponseNormalizesSafeProviderAliasesAndPercentConfidence(t *testing.T) {
+	input := strings.NewReplacer(
+		`"requirement_type":"USE_CASE"`, `"requirement_type":"user story"`,
+		`"flow_type":"MAIN"`, `"flow_type":"main-flow"`,
+		`"priority":"HIGH"`, `"priority":"critical"`,
+		`"risk":"HIGH"`, `"risk":"cao"`,
+		`"status":"DRAFT"`, `"status":"pending_review"`,
+		`"confidence":0.91`, `"confidence":91`,
+	).Replace(validRequirementResponse)
+	result, err := ParseResponse(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := result.Requirements[0]
+	if item.RequirementType != TypeUseCase || item.FlowType != "MAIN" ||
+		item.Priority != "HIGH" || item.Risk != "HIGH" || item.Status != StatusDraft ||
+		item.Confidence != 0.91 {
+		t.Fatalf("normalized proposal=%+v", item)
+	}
+}
+
+func TestParseResponseReportsInvalidProviderFieldPrecisely(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{strings.Replace(validRequirementResponse, `"flow_type":"MAIN"`, `"flow_type":"UNKNOWN_FLOW"`, 1), `invalid flow_type "UNKNOWN_FLOW"`},
+		{strings.Replace(validRequirementResponse, `"confidence":0.91`, `"confidence":101`, 1), "invalid confidence"},
+		{strings.Replace(validRequirementResponse, `"status":"DRAFT"`, `"status":"APPROVED"`, 1), `invalid status "APPROVED"`},
+	}
+	for _, test := range tests {
+		_, err := ParseResponse(test.input)
+		if !errors.Is(err, ErrInvalidProviderOutput) || !strings.Contains(err.Error(), test.want) {
+			t.Fatalf("error=%v, want ErrInvalidProviderOutput containing %q", err, test.want)
+		}
+	}
+}
