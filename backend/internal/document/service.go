@@ -71,6 +71,34 @@ func (s *Service) GetSet(ctx context.Context, id int64) (Set, error) {
 	return s.repository.GetSet(ctx, id)
 }
 
+func (s *Service) Metrics(ctx context.Context) (PipelineMetrics, error) {
+	repository, ok := s.repository.(interface {
+		Metrics(context.Context) (PipelineMetrics, error)
+	})
+	if !ok {
+		return PipelineMetrics{}, ErrUnsupported
+	}
+	return repository.Metrics(ctx)
+}
+
+func (s *Service) UpdateLifecycle(ctx context.Context, id int64, input LifecycleInput) (Set, error) {
+	input.Status = strings.ToUpper(strings.TrimSpace(input.Status))
+	input.Actor = strings.TrimSpace(input.Actor)
+	input.Reason = strings.TrimSpace(input.Reason)
+	if id <= 0 || input.Actor == "" || input.Reason == "" ||
+		(input.Status != SetStatusActive && input.Status != SetStatusArchived) ||
+		input.RetentionDays < 30 || input.RetentionDays > 3650 {
+		return Set{}, ErrInvalidInput
+	}
+	repository, ok := s.repository.(interface {
+		UpdateLifecycle(context.Context, int64, LifecycleInput) (Set, error)
+	})
+	if !ok {
+		return Set{}, ErrUnsupported
+	}
+	return repository.UpdateLifecycle(ctx, id, input)
+}
+
 func (s *Service) Upload(ctx context.Context, setID int64, input UploadInput,
 	source io.Reader,
 ) (Document, Version, error) {

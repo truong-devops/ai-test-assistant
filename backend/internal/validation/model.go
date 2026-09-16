@@ -40,3 +40,9 @@ type SandboxResult struct {
 	TimedOut        bool
 	OutputTruncated bool
 }
+
+type SandboxEnvironment struct {
+	ImageReference string
+	ImageDigest    string
+	Fingerprint    string
+}

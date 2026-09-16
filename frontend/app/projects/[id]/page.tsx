@@ -4,7 +4,9 @@ import { AppShell, EmptyState } from "@/components/shell";
 import { ReindexAction } from "@/components/index-action";
 import { Stat } from "@/components/stat";
 import { StatusBadge } from "@/components/status-badge";
-import { ApiError, getAnalyses, getIndexStatus, getProject, optional } from "@/lib/api";
+import { BaselineSelector } from "@/components/baseline-selector";
+import { PipelineModeSelector } from "@/components/pipeline-mode-selector";
+import { ApiError, getAnalyses, getIndexStatus, getProject, getProjectBaseline, optional } from "@/lib/api";
 import { formatDate } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +20,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const [index, analyses] = await Promise.all([optional(() => getIndexStatus(project.id), null), optional(getAnalyses, [])]);
+  const [index, analyses, baseline] = await Promise.all([optional(() => getIndexStatus(project.id), null), optional(getAnalyses, []), getProjectBaseline(project.id)]);
   const projectAnalyses = analyses.filter((analysis) => analysis.project_id === project.id);
 
   return (
@@ -46,7 +48,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           <div className="panel-header"><div><h2>Analysis history</h2><p>Review-ready and in-flight merge-request jobs for this project.</p></div></div>
           {projectAnalyses.length ? <div className="table-wrap"><table className="data-table"><thead><tr><th>Merge / pull request</th><th>Status</th><th>Created</th></tr></thead><tbody>{projectAnalyses.map((analysis) => <tr key={analysis.id}><td><Link href={`/analyses/${analysis.id}`}><span className="table-title">{analysis.title || `Change request #${analysis.merge_request_iid}`}</span><span className="table-subtitle">Source {analysis.source_branch || "—"} → {analysis.target_branch || "—"}</span></Link></td><td><StatusBadge status={analysis.status} /></td><td>{formatDate(analysis.created_at)}</td></tr>)}</tbody></table></div> : <div className="panel-body"><EmptyState title="No analyses yet" message={`When ${project.provider === "github" ? "GitHub" : "GitLab"} delivers a change-request webhook, its trace will appear here.`} /></div>}
         </section>
-        <aside className="stack"><section className="panel side-section"><p className="eyebrow">Knowledge index</p><h2>Refresh project evidence</h2><p className="page-description">A re-index creates a new generation safely. Existing review records remain intact.</p><div style={{ marginTop: 16 }}><ReindexAction projectId={project.id} /></div>{index?.error_message ? <p className="form-error">{index.error_message}</p> : null}</section></aside>
+		<aside className="stack"><PipelineModeSelector projectId={project.id} initialMode={project.pipeline_mode} /><BaselineSelector projectId={project.id} view={baseline} /><section className="panel side-section"><p className="eyebrow">Knowledge index</p><h2>Refresh project evidence</h2><p className="page-description">A re-index creates a new generation safely. Existing review records remain intact.</p><div style={{ marginTop: 16 }}><ReindexAction projectId={project.id} /></div>{index?.error_message ? <p className="form-error">{index.error_message}</p> : null}</section></aside>
       </div>
     </AppShell>
   );

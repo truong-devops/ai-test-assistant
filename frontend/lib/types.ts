@@ -8,6 +8,7 @@ export type Project = {
   default_branch: string;
   language: string;
   status: string;
+  pipeline_mode: "DOCUMENT_DRIVEN" | "LEGACY";
   created_at: string;
   updated_at: string;
 };
@@ -19,8 +20,26 @@ export type DocumentSet = {
   scope: string;
   description: string;
   status: "ACTIVE" | "ARCHIVED";
+  retention_days: number;
+  archived_at?: string;
   created_at: string;
   updated_at: string;
+};
+
+export type DocumentPipelineMetrics = {
+  document_sets: number;
+  document_versions: number;
+  parsed_versions: number;
+  parse_failures: number;
+  approved_requirements: number;
+  extraction_jobs: number;
+  extraction_failures: number;
+  test_suites: number;
+  approved_test_cases: number;
+  automation_artifacts: number;
+  test_runs: number;
+  runs_needing_attention: number;
+  pending_approval_actions: number;
 };
 
 export type DocumentVersion = {
@@ -88,8 +107,78 @@ export type Requirement = {
   precondition: string;
   postcondition: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
+  risk: "LOW" | "MEDIUM" | "HIGH";
   status: "DRAFT" | "APPROVED" | "REJECTED" | "CONFLICT" | "TBD";
   confidence: number;
+  assumptions: string[];
+  supersedes_requirement_id?: number;
+  document_ids?: number[];
+};
+
+export type RequirementExtractionJob = {
+  id: number;
+  document_set_id: number;
+  index_generation: number;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  total_chunks: number;
+  processed_chunks: number;
+  created_count: number;
+  reused_count: number;
+  conflict_count: number;
+  open_question_count: number;
+  requested_by: string;
+  attempt_count: number;
+  error_message?: string;
+  created_at: string;
+};
+
+export type RequirementEvidence = {
+  id: number;
+  requirement_id: number;
+  document_set_id: number;
+  document_version_id: number;
+  document_block_id: number;
+  document_name: string;
+  version_number: number;
+  approval_status: "DRAFT" | "APPROVED" | "REJECTED";
+  source_locator: string;
+  excerpt: string;
+  excerpt_hash: string;
+};
+
+export type RequirementFlowStep = {
+  id: number;
+  requirement_id: number;
+  ordinal: number;
+  action: string;
+  expected_result: string;
+};
+
+export type RequirementDetail = {
+  requirement: Requirement;
+  evidence: RequirementEvidence[];
+  flow_steps: RequirementFlowStep[];
+  reviews: Array<{ id: number; reviewer_name: string; decision: string; comment: string; created_at: string }>;
+};
+
+export type RequirementConflict = {
+  id: number;
+  document_set_id: number;
+  left_requirement_id: number;
+  right_requirement_id: number;
+  reason: string;
+  status: "OPEN" | "RESOLVED" | "DISMISSED";
+  resolution: string;
+};
+
+export type OpenQuestion = {
+  id: number;
+  document_set_id: number;
+  requirement_id?: number;
+  question: string;
+  owner_role: string;
+  status: "OPEN" | "ANSWERED" | "DISMISSED";
+  answer: string;
 };
 
 export type BusinessTestCase = {
@@ -109,6 +198,90 @@ export type BusinessTestCase = {
   postcondition: string;
   status: "DRAFT" | "APPROVED" | "REJECTED";
   automation_status: "MANUAL" | "AUTOMATABLE" | "AUTOMATED" | "BLOCKED";
+  confidence: number;
+  generated_by: string;
+  assumptions: string[];
+  supersedes_test_case_id?: number;
+};
+
+export type BusinessTestCaseDetail = {
+  test_case: BusinessTestCase;
+  steps: Array<{ id: number; ordinal: number; action: string; expected_result: string }>;
+  requirements: Array<{
+    requirement_id: number;
+    requirement_key: string;
+    requirement_title: string;
+    coverage_type: string;
+    flow_type: string;
+  }>;
+  evidence: RequirementEvidence[];
+  reviews: Array<{ id: number; reviewer_name: string; decision: string; comment: string; created_at: string }>;
+};
+
+export type DocumentIndexStatus = {
+  document_set_id: number;
+  status: "NOT_INDEXED" | "INDEXING" | "READY" | "FAILED";
+  generation: number;
+  input_fingerprint?: string;
+  version_count: number;
+  skipped_version_count: number;
+  chunk_count: number;
+  warning_count: number;
+  embedding_model: string;
+  error_message?: string;
+  requested_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  updated_at?: string;
+};
+
+export type SemanticChunk = {
+  id: number;
+  document_set_id: number;
+  document_version_id: number;
+  document_block_id: number;
+  chunk_key: string;
+  parent_chunk_key: string;
+  chunk_type: string;
+  flow_type: "NONE" | "MAIN" | "ALTERNATE" | "EXCEPTION";
+  identifier: string;
+  title: string;
+  content: string;
+  raw_content: string;
+  content_hash: string;
+  source_locator: string;
+  embedding_model: string;
+  metadata: Record<string, unknown>;
+  approval_status: "DRAFT" | "APPROVED" | "REJECTED";
+  exact_score?: number;
+  lexical_score?: number;
+  semantic_score?: number;
+  authority_score?: number;
+  score?: number;
+};
+
+export type CoverageReport = {
+  document_set_id: number;
+  approved_denominator: number;
+  covered_count: number;
+  coverage_percent: number;
+  baseline_complete: boolean;
+  conflict_count: number;
+  tbd_count: number;
+  rejected_count: number;
+  duplicate_count: number;
+  uncovered_count: number;
+  matrix: Array<{
+    requirement_id: number;
+    requirement_key: string;
+    title: string;
+    status: string;
+    flow_type: string;
+    test_case_ids: number[];
+    test_types: string[];
+    covered: boolean;
+    warnings: string[];
+  }>;
 };
 
 export type AutomationArtifact = {
@@ -117,9 +290,106 @@ export type AutomationArtifact = {
   version_number: number;
   framework: string;
   file_path: string;
+  source: string;
   source_hash: string;
   expected_result_hash: string;
   status: "DRAFT" | "APPROVED" | "REJECTED" | "UNREPAIRABLE";
+  analysis_job_id?: number;
+  setup: string;
+  assertions: string[];
+  test_case_snapshot: Record<string, unknown>;
+  business_context: Record<string, unknown>;
+  technical_context: KnowledgeChunk[];
+  business_context_hash: string;
+  technical_context_hash: string;
+  model_name: string;
+  prompt_version: string;
+  created_at: string;
+};
+
+export type TestExport = {
+  id: number;
+  document_set_id: number;
+  test_suite_id: number;
+  test_run_id?: number;
+  format: "XLSX" | "MARKDOWN";
+  filename: string;
+  content_type: string;
+  content_hash: string;
+  snapshot_hash: string;
+  row_count: number;
+  generated_by: string;
+  created_at: string;
+  download_url: string;
+};
+
+export type ProjectDocumentBaseline = {
+  project_id: number;
+  document_set_id: number;
+  document_set_name: string;
+  test_suite_id: number;
+  test_suite_name: string;
+  selection_mode: "FULL_APPROVED" | "MAPPED_WITH_FULL_FALLBACK";
+  selected_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BaselineView = {
+  bound: boolean;
+  baseline?: ProjectDocumentBaseline;
+  candidates: Array<{ document_set_id: number; document_set_name: string; test_suite_id: number; test_suite_name: string; approved_test_cases: number }>;
+};
+
+export type AnalysisTestScope = {
+  analysis_job_id: number;
+  project_id: number;
+  document_set_id: number;
+  test_suite_id: number;
+  test_run_id: number;
+  baseline_hash: string;
+  explicit_identifiers: string[];
+  selection_mode: "FULL_APPROVED" | "EXPLICIT_TRACE" | "FULL_BASELINE_FALLBACK";
+  mapping_confidence: number;
+  warning?: string;
+  items: Array<{ id: number; test_case_id: number; test_case_key: string; title: string; test_type: string; risk: string; expected_result: string; expected_result_hash: string; automation_status: string; included: boolean; selection_reason: string; confidence: number; explanation: string; updated_at: string }>;
+  decisions: Array<{ id: number; scope_item_id: number; reviewer_name: string; included: boolean; comment: string; created_at: string }>;
+	signals: Array<{ id: number; signal_type: "PATH" | "MODULE" | "SYMBOL"; signal_value: string; confidence: number; explanation: string; created_at: string }>;
+  created_at: string;
+};
+
+export type AutomationHistory = {
+  artifacts: AutomationArtifact[];
+  reviews: Array<{ id: number; automation_artifact_id: number; reviewer_name: string; decision: string; comment: string; created_at: string }>;
+};
+
+export type AutomationRepairJob = {
+  id: number;
+  test_run_item_id: number;
+  source_artifact_id: number;
+  repaired_artifact_id?: number;
+  attempt_number: number;
+  status: "PENDING" | "RUNNING" | "WAITING_REVIEW" | "APPROVED" | "REJECTED" | "UNREPAIRABLE" | "FAILED";
+  error_type: "AUTOMATION_ERROR";
+  reason: string;
+  requested_by: string;
+  allowed_change_policy: { mutable: string[]; immutable: string[] };
+  expected_result_hash: string;
+  before_source_hash: string;
+  after_source_hash?: string;
+  before_assertions: string[];
+  after_assertions?: string[];
+  model_name?: string;
+  prompt_version: string;
+  provider_response_id?: string;
+  input_tokens: number;
+  output_tokens: number;
+  max_output_tokens: number;
+  max_cost_microusd: number;
+  estimated_cost_microusd: number;
+  queue_attempt_count: number;
+  error_message?: string;
+  created_at: string;
 };
 
 export type TestRun = {
@@ -131,10 +401,42 @@ export type TestRun = {
   target_sha: string;
   environment: string;
   environment_fingerprint: string;
+	image_reference: string;
+	image_digest: string;
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+	execution_requested_at?: string;
+	execution_requested_by: string;
+	attempt_count: number;
+	error_message?: string;
   requested_at: string;
   started_at?: string;
   finished_at?: string;
+};
+
+export type TestRunItem = {
+	id: number;
+	test_run_id: number;
+	test_case_id: number;
+	test_case_key: string;
+	title: string;
+	expected_result: string;
+	expected_result_hash: string;
+	automation_artifact_id?: number;
+	automation_source_hash: string;
+	attempt_number: number;
+	status: "NOT_RUN" | "PASSED" | "PRODUCT_FAILED" | "AUTOMATION_ERROR" | "INFRA_ERROR" | "TIMED_OUT" | "BLOCKED";
+	actual_result: string;
+	command: string;
+	exit_code?: number;
+	duration_ms: number;
+	output_truncated: boolean;
+	created_at: string;
+	evidence: Array<{ id: number; evidence_type: string; content?: string; storage_key?: string; content_hash: string; created_at: string }>;
+};
+
+export type TestRunDetail = TestRun & {
+	items: TestRunItem[];
+	classification_reviews: Array<{ id: number; test_run_item_id: number; reviewer_name: string; previous_status: string; new_status: string; reason: string; created_at: string }>;
 };
 
 export type IndexStatus = {

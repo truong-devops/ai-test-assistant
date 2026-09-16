@@ -5,10 +5,12 @@ LOG_TAIL ?= 100
 READY_URL ?= http://127.0.0.1:8080/ready
 PROD_COMPOSE = docker compose --env-file "$(ENV_FILE)" -f "$(COMPOSE_FILE)"
 
-.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test sandbox-security-check frontend-install frontend-typecheck frontend-build evaluate evaluate-import rebuild rebuild-be rebuild-fe rebuild-worker rebuild-all prod-help prod-config prod-up prod-migrate prod-gemini-setup prod-gemini-up prod-gemini-smoke prod-rebuild-api prod-rebuild-worker prod-rebuild-backend prod-rebuild-frontend prod-rebuild-app prod-rebuild-all prod-worker-restart prod-status prod-logs prod-worker-logs prod-worker-logs-follow backup restore
+.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test sandbox-security-check frontend-install frontend-typecheck frontend-build evaluate evaluate-document evaluate-import rebuild rebuild-be rebuild-fe rebuild-worker rebuild-all prod-help prod-config prod-up prod-migrate prod-gemini-setup prod-gemini-up prod-gemini-smoke prod-rebuild-api prod-rebuild-worker prod-rebuild-backend prod-rebuild-frontend prod-rebuild-app prod-rebuild-all prod-worker-restart prod-status prod-logs prod-worker-logs prod-worker-logs-follow backup restore
 
 EVALUATION_DATASET ?= evaluation/datasets/controlled-v1.json
 EVALUATION_OUTPUT ?= evaluation/results/controlled-v1
+DOCUMENT_EVALUATION_DATASET ?= evaluation/datasets/document-controlled-v1.json
+DOCUMENT_EVALUATION_OUTPUT ?= evaluation/results/document-controlled-v1.json
 EVALUATION_DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/ai_test_assistant?sslmode=disable
 
 dev-up: sandbox-build
@@ -19,7 +21,7 @@ sandbox-build:
 
 sandbox-test: sandbox-build
 	./scripts/sandbox-smoke.sh
-	cd backend && RUN_SANDBOX_TESTS=1 SANDBOX_TEST_IMAGE="$${SANDBOX_IMAGE:-ai-test-assistant-sandbox:phase7}" go test -count=1 -tags=sandbox ./internal/validation ./internal/repair
+	cd backend && RUN_SANDBOX_TESTS=1 SANDBOX_TEST_IMAGE="$${SANDBOX_IMAGE:-ai-test-assistant-sandbox:phase7}" go test -count=1 -tags=sandbox ./internal/validation ./internal/repair ./internal/execution
 
 sandbox-security-check:
 	./scripts/sandbox-security-check.sh
@@ -40,12 +42,16 @@ test: frontend-typecheck
 test-integration:
 	cd backend && TEST_DATABASE_URL="$${TEST_DATABASE_URL}" go test -p 1 -tags=integration ./internal/...
 
+evaluate-document:
+	mkdir -p evaluation/results
+	cd backend && go run ./cmd/document-evaluate -input "../$(DOCUMENT_EVALUATION_DATASET)" -output "../$(DOCUMENT_EVALUATION_OUTPUT)"
+
 lint:
 	cd backend && go vet ./...
 	cd examples/go-microservices && go vet ./...
 
 build: frontend-build
-	cd backend && go build ./cmd/api ./cmd/worker ./cmd/evaluate ./cmd/healthcheck
+	cd backend && go build ./cmd/api ./cmd/worker ./cmd/evaluate ./cmd/document-evaluate ./cmd/healthcheck
 
 prod-help:
 	@echo "Production commands:"

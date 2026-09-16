@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -148,6 +149,28 @@ func (r *DockerRunner) Run(ctx context.Context, request SandboxRequest) (Sandbox
 	return SandboxResult{ExitCode: exitCode, Duration: duration,
 		Stdout: sanitizeOutput(stdout.String()), Stderr: sanitizeOutput(stderr.String()),
 		OutputTruncated: stdout.Truncated() || stderr.Truncated()}, nil
+}
+
+// Describe resolves the immutable local image ID and fingerprints every sandbox
+// setting that can affect an execution. The execution record can therefore be
+// reproduced without treating a mutable image tag as sufficient evidence.
+func (r *DockerRunner) Describe(ctx context.Context, command []string) (SandboxEnvironment, error) {
+	var output, errorOutput bytes.Buffer
+	if err := r.executor.Run(ctx, &output, &errorOutput, r.config.Binary, "image", "inspect",
+		"--format={{.Id}}", r.config.Image); err != nil {
+		return SandboxEnvironment{}, fmt.Errorf("inspect sandbox image: %w: %s", err,
+			compactDockerError(errorOutput.String()))
+	}
+	digest := strings.TrimSpace(output.String())
+	if digest == "" {
+		return SandboxEnvironment{}, fmt.Errorf("sandbox image inspect returned an empty digest")
+	}
+	material := strings.Join([]string{r.config.Image, digest, strings.Join(command, "\x00"),
+		strconv.Itoa(r.config.MemoryMB), strconv.FormatFloat(r.config.CPUs, 'f', -1, 64),
+		strconv.Itoa(r.config.PIDsLimit), r.config.Timeout.String()}, "\x00")
+	sum := sha256.Sum256([]byte(material))
+	return SandboxEnvironment{ImageReference: r.config.Image, ImageDigest: digest,
+		Fingerprint: hex.EncodeToString(sum[:])}, nil
 }
 
 func (r *DockerRunner) createArguments(containerName string, command []string) []string {

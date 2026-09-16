@@ -1,10 +1,17 @@
 # AI Test Assistant – Cơ chế hoạt động hiện tại và định hướng mới
 
-> **Trạng thái tài liệu – 11/09/2026:** Phase 0–2 của kiến trúc
+> **Trạng thái tài liệu – 16/09/2026:** Phase 0–10 của kiến trúc
 > **document-driven test generation + code execution** đã được triển khai song
-> song với pipeline PR/MR cũ. Hệ thống hiện tạo document set, nhận DOCX/Markdown,
-> lưu version bất biến và preview block/source locator. Document RAG, requirement
-> inventory, sinh/duyệt test case và XLSX vẫn thuộc Phase 3–6. Xem checklist tại
+> song với pipeline PR/MR cũ. Hệ thống hiện nhận DOCX/Markdown, index semantic,
+> trích xuất và duyệt requirement có evidence, sinh/duyệt test case nghiệp vụ và
+> tính coverage từ database. Hệ thống cũng đã có XLSX/Markdown export, project
+> baseline, PR/MR test scope và Go automation artifact từ test case đã duyệt.
+> Automation đã chạy được trong Docker Sandbox tại đúng source SHA, lưu evidence
+> và phân loại product/automation/infra/timeout/blocked. Requirement extraction
+> chạy bằng durable worker để tránh timeout/502; technical repair chỉ áp dụng
+> cho `AUTOMATION_ERROR` và khóa expected result. Phase 11 đã có phần lõi về
+> migration UI, hardening và evaluation nhưng còn nghiệm thu E2E hạ tầng thật.
+> Xem checklist tại
 > [docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 ## 1. Dự án sẽ dùng để làm gì?
@@ -27,15 +34,16 @@ phải là `FAILED` hoặc `NEEDS_CLARIFICATION`, không phải sửa expected r
 
 | Nội dung | Code hiện tại | Kiến trúc mục tiêu |
 | --- | --- | --- |
-| Điểm bắt đầu | PR/MR webhook vẫn hoạt động | Upload tài liệu đã có; PR/MR kích hoạt lần chạy ở Phase 7 |
-| Nguồn test scenario | Diff, changed symbol và code/docs RAG | Requirement, use case, business rule, acceptance criteria, lỗi cũ |
-| Nguồn expected result | AI suy luận từ code context | Chỉ từ bằng chứng tài liệu có truy vết |
+| Điểm bắt đầu | PR/MR webhook cũ vẫn hoạt động; document workflow bắt đầu từ upload | Upload tài liệu; PR/MR kích hoạt lần chạy ở Phase 7 |
+| Nguồn test scenario | Document requirement inventory đã có; legacy pipeline vẫn dùng diff | Requirement, use case, business rule, acceptance criteria, lỗi cũ |
+| Nguồn expected result | Phase 5 business test dùng approved evidence; legacy generated Go test vẫn tồn tại riêng | Chỉ từ bằng chứng tài liệu có truy vết |
 | Vai trò của code | Vừa tạo context, vừa là đối tượng chạy test | Chỉ dùng để xác định phạm vi kỹ thuật, viết automation và thực thi |
 | Đầu ra | Go generated test và sandbox result | Test case, coverage matrix, automated test, execution report và Excel |
-| Trạng thái chuyển đổi | Được giữ tương thích | Phase 0–2 đã xong; Phase 3–11 chưa làm |
+| Trạng thái chuyển đổi | Được giữ tương thích và có deprecation header | Phase 0–10 đã xong; Phase 11 đang nghiệm thu |
 
-Frontend hiện có thêm workspace `Documents`; các màn hình Projects/Review cũ vẫn
-được giữ tương thích trong khi các phase sau tiếp tục chuyển đổi.
+Frontend `Documents` hiện có các màn hình index, requirement inventory/review,
+test-case review và coverage. Các màn hình Projects/Review cũ vẫn được giữ tương
+thích trong khi các phase thực thi và export tiếp tục chuyển đổi.
 
 ## 3. Đầu vào của kiến trúc mục tiêu
 
@@ -212,7 +220,22 @@ nhân tạo draft, không phải nguồn xác nhận nghiệp vụ.
 
 ## 11. Phần đang chạy trong repository
 
-Code hiện tại vẫn gồm:
+Document-driven pipeline hiện chạy tới Phase 10:
+
+```text
+DOCX/Markdown → parse blocks → semantic index → requirement inventory
+→ source/requirement review → grounded test cases → coverage audit → test review
+→ PR/MR baseline snapshot → approved Go automation → Docker Sandbox
+→ typed result/evidence → XLSX/Markdown
+```
+
+Khi không cấu hình LLM, môi trường local dùng extractor/generator deterministic
+để kiểm thử luồng và tạo draft bảo thủ. Khi bật OpenAI/Gemini, output phải qua
+strict schema và grounding guard trước khi lưu; trong cả hai chế độ chỉ
+requirement có evidence từ document version đã duyệt mới được phê duyệt và đưa
+vào sinh test.
+
+Pipeline code-first cũ vẫn chạy song song:
 
 ```text
 PR/MR webhook
@@ -226,9 +249,16 @@ PR/MR webhook
 → human review
 ```
 
-Các API, migration và màn hình hiện tại được giữ làm baseline để refactor từng
-phase, tránh viết lại toàn hệ thống một lần. Chỉ coi pipeline mới đã hoàn thành
-khi checklist và Definition of Done trong kế hoạch chuyển đổi được đánh dấu.
+Các phần legacy được giữ tương thích, nhưng PR/MR mới snapshot approved business
+baseline và tạo test run/scope. Code/diff chỉ cung cấp tín hiệu kỹ thuật, không
+được dùng để thay expected result. Worker document execution chạy baseline trước
+artifact, lưu source SHA, image digest, environment fingerprint, bounded/redacted
+log và Actual Result. Chỉ assertion fail từ artifact đã duyệt mới được phân loại
+`PRODUCT_FAILED`; lỗi compile/setup là `AUTOMATION_ERROR`, lỗi môi trường là
+`INFRA_ERROR` và được retry riêng. Technical repair tạo job độc lập chỉ cho
+`AUTOMATION_ERROR`, giữ nguyên expected hash/assertion và luôn cần con người
+duyệt artifact mới. Overview document-first, project pipeline flag, metrics,
+RBAC service token và backup database + file storage được bổ sung ở Phase 11.
 
 ## 12. Cách trình bày ngắn với giảng viên
 

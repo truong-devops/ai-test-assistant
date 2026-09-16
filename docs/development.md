@@ -11,7 +11,7 @@
   requirement/scenario/expected-result snapshot.
 - Coverage must be calculated from persisted requirement-flow/test-case links,
   not from an LLM claim.
-- Phase 2 accepts DOCX and Markdown only. Keep parser input passive: never run
+- Document intake accepts DOCX and Markdown only. Keep parser input passive: never run
   macros, embedded executables, document links, or uploaded code. XLSX input is
   deferred; do not silently treat the Phase 6 report template as a requirement
   source.
@@ -19,9 +19,16 @@
   `DOCUMENT_MAX_UPLOAD_BYTES` defaults to 16 MiB (hard maximum 256 MiB), and
   `DOCUMENT_PARSE_TIMEOUT` defaults to 60 seconds (hard maximum 10 minutes).
   Docker Compose mounts the `document_data` volume for both processes.
-- Every upload is a new immutable version and starts as `DRAFT`. There is no
-  Phase 2 approval or delete endpoint; preserve original files after parser
-  failure and include document storage in operational backups.
+- Every upload is a new immutable version and starts as `DRAFT`. Phase 3 adds an
+  explicit source review endpoint; there is still no delete endpoint. Preserve
+  original files after parser failure and include document storage in backups.
+- Increment `SemanticChunkerVersion` whenever chunk identity/metadata semantics
+  change so an unchanged document checksum cannot incorrectly reuse an old index.
+- Document retrieval SQL must always apply `document_set_id` and an explicit
+  version policy. Do not rely on filtering results in application memory.
+- Never accept citation IDs from an LLM. Requirement evidence is attached by the
+  service from the semantic chunk actually processed, and test expected results
+  must match an approved requirement statement or its explicit flow-step result.
 - Run parser tests against the maintained synthetic DOCX/Markdown fixtures. A
   local sample can also be checked without committing it:
 
@@ -54,9 +61,13 @@
   sending repository content to an external service.
 - New retrieval queries must apply `project_id` in SQL, not only after fetching
   results.
-- LLM calls belong in background processors behind `llm.Provider`; HTTP handlers
-  only read persisted results.
-- Keep `LLM_PROVIDER=disabled` when AI calls are not desired. To enable Phases 5-6,
+- Legacy PR/MR LLM calls belong in background processors behind `llm.Provider`.
+  Requirement extraction is also a durable leased job: POST only enqueues and
+  the UI polls its status/progress endpoint. Keep provider work out of page
+  rendering. Test-case generation remains an explicit bounded review action.
+- Keep `LLM_PROVIDER=disabled` when AI calls are not desired. In that mode,
+  document extraction/test generation use deterministic conservative draft
+  rules. To enable Phase 4–5 document AI and legacy AI stages,
   use `LLM_PROVIDER=openai` or `LLM_PROVIDER=gemini` with `LLM_API_KEY` and an
   explicit `LLM_MODEL` from a private environment or secret manager. Leave
   `LLM_BASE_URL` empty for the provider default. Never commit the key.
@@ -66,9 +77,26 @@
   guesses a price.
 - Every AI task must have a versioned prompt and strict output validation. Code,
   diffs, and retrieved documentation are untrusted prompt data.
-- Phase 6 may parse generated Go source but must not write it into a checkout or
-  execute it. Compilation and execution require the isolated Phase 7 sandbox.
-- Build and run the Phase 7 Docker cases with `make sandbox-test`. Sandbox
+- Run the Phase 3–5 focused workflow tests with PostgreSQL available:
+
+  ```bash
+  cd backend
+  TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/ai_test_assistant?sslmode=disable \
+    go test -count=1 -tags=integration ./internal/document ./internal/requirement ./internal/testcase
+  ```
+
+  The integration fixture verifies UC-B08 main/two alternate/two exception
+  flows, approved-source guards, idempotent retries and deterministic coverage.
+- Document-driven Phase 8 parses generated Go source without touching production
+  files. Phase 9 writes an approved artifact only into a bounded temporary
+  source-SHA workspace, runs the clean baseline first, then executes inside the
+  isolated Docker sandbox. The older numbered sandbox phases below describe the
+  retained code-first pipeline.
+- Keep project baseline snapshots, export snapshots and automation generation
+  calls append-only. A missing explicit requirement mapping must select the full
+  approved suite, never an inferred subset.
+- Build and run both legacy and document-driven Docker cases with
+  `make sandbox-test`. Sandbox
   containers must keep network disabled, run as non-root, drop all capabilities,
   use a read-only root filesystem, and enforce CPU/memory/PID/time limits.
 - The Compose worker is a trusted control-plane process with Docker socket

@@ -1,9 +1,11 @@
 # Review console redesign status
 
-> This records the implemented legacy review console. Phase 2 has since added a
-> Documents workspace for set creation, drag/drop upload, parse state and source
-> preview. Requirement, business test-case and execution-report UX is not yet implemented; follow
-> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+> This records the implemented legacy review console. The document-driven
+> workspace now includes document upload/review, asynchronous requirement
+> extraction, business test-case review, execution evidence and repair controls.
+> Current status is tracked in
+> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md);
+> the details below are retained as historical evidence only.
 
 Status: **implemented and locally verified on 2026-08-28**.
 

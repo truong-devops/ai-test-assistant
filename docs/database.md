@@ -1,10 +1,12 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–15.
-> Migration 15 establishes the new document-driven domain beside the legacy
-> tables. Semantic indexing, extraction, generation and reporting behaviour are
-> still introduced incrementally in later phases tracked in
-> [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+> This page documents the schema currently implemented by migrations 1–21.
+> Migration 15 establishes the document-driven foundation beside the legacy
+> tables; migration 16 completes persistence and guards for semantic indexing,
+> requirement extraction/review and grounded test-case generation/coverage.
+> Migration 17 adds immutable exports, execution-scope snapshots and separated
+> automation provenance; migrations 18–21 add typed execution, asynchronous
+> extraction, guarded repair, lifecycle and rollout controls.
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
 
@@ -22,7 +24,7 @@ Identity fields on document versions and parsed block/evidence rows reject
 in-place updates. Set/version composite foreign keys prevent evidence from
 crossing document-set boundaries.
 
-The same migration reserves normalized, ownership-safe tables for later phases:
+The same migration introduced normalized, ownership-safe domain tables:
 
 - `document_chunks` for set-filtered full-text/vector retrieval;
 - `requirements`, `requirement_evidence`, `requirement_conflicts`,
@@ -34,8 +36,104 @@ The same migration reserves normalized, ownership-safe tables for later phases:
 
 An automation artifact can only reference an approved test case and must copy
 the exact expected-result hash. Once a run item exists, its test-case reference,
-expected-result snapshot and expected hash cannot be updated. Application APIs
-for these reserved Phase 3+ tables are intentionally not exposed yet.
+expected-result snapshot and expected hash cannot be updated.
+
+## Document RAG, requirements and test cases (migration 16)
+
+`document_index_status` tracks a set-owned index generation, input fingerprint,
+embedding model and file/chunk/warning counts. `document_chunks` now retains the
+source block, parent/flow metadata and raw content beside normalized embedded
+content. `document_chunk_source_blocks` supports traceability when a semantic
+unit spans multiple parser blocks.
+
+`document_context_snapshots` and `document_context_snapshot_items` store an
+append-only retrieval result with query/configuration, generation, model,
+content and scores. Re-indexing may replace live chunks while snapshot items
+remain historical. `document_ai_calls` stores instructions, prompt, strict
+schema, raw provider response, status, usage and latency for requirement and
+test-case phases. Update triggers make all three provenance tables immutable.
+
+Requirements gain extraction/source fingerprints, risk, assumptions and raw
+validated payload. `requirement_flow_steps` stores ordered business steps.
+Unique partial indexes make extraction retries idempotent. Approval triggers
+require at least one evidence link whose document version is `APPROVED`; an
+approved business version cannot have its meaning edited in place.
+
+Test cases gain generation identity, assumptions and deterministic dedupe
+records. Approval requires a link to an approved requirement with evidence.
+Approved title/scenario/expected fields are immutable, while review edits append
+a superseding version and copy evidence links. Coverage is not stored as an AI
+summary: the API rebuilds it from current requirements and test-case links.
+
+## Export, execution scope and automation (migration 17)
+
+`test_exports` stores XLSX/Markdown bytes with an immutable JSON snapshot,
+content hash and snapshot hash. Reports can target a suite/run and retain all
+execution rounds on a separate history sheet.
+
+`project_document_baselines` binds a repository to one approved document
+set/test suite. On webhook enqueue, `analysis_baseline_snapshots` copies the
+approved document versions, requirements and test cases before technical
+analysis. `analysis_test_scope_items` stores selection reasons/confidence,
+`analysis_scope_signals` records path/module/symbol evidence, and
+`analysis_scope_decisions` audits manual changes. Uncertain mapping uses a full
+approved-suite fallback instead of silently narrowing coverage.
+
+`automation_generation_calls` stores business and technical context separately.
+`automation_artifacts` stores the immutable test-case snapshot, setup/assertions
+and separate context hashes. Contract fields cannot be updated; regeneration
+creates a new artifact version. `automation_artifact_reviews` records approval.
+
+## Document-driven execution (migration 18)
+
+Migration 18 turns `test_runs` into an independently leased execution queue.
+It stores who/when requested execution, retry/lease state, immutable local image
+ID, image reference, error and environment fingerprint. `test_run_items` keeps
+one immutable expected/artifact snapshot per attempt; an approved artifact may
+be bound exactly once while the item is still `NOT_RUN`.
+
+`test_run_evidence` retains bounded/redacted stdout, stderr and artifact or
+screenshot references. `test_run_classification_reviews` append-audits every
+manual result override with previous/new taxonomy, reviewer and reason. Infra
+retry appends a new item attempt instead of overwriting execution history.
+
+## Requirement extraction queue (migration 19)
+
+`requirement_extraction_jobs` moves LLM extraction outside the API request. A
+job captures its document-index generation, total/processed chunk counts,
+created/reused/conflict/question counts, request actor, lease, retry schedule and
+terminal error. A partial unique index permits only one pending/running job per
+document set. Claim uses `FOR UPDATE SKIP LOCKED`; generation checks prevent a
+job from writing against a newer index.
+
+## Guarded automation repair (migration 20)
+
+`automation_repair_jobs` can reference only one failed `test_run_item` and
+records candidate status independently. The repository admits only
+`AUTOMATION_ERROR`; product/infra/pass outcomes cannot enter this queue. Each
+row keeps its source/repaired artifact, failure evidence link, before/after
+hash/assertions, model/prompt, token/cost budget, lease/retry and reviewer state.
+
+A trigger makes the test-run item, source artifact, attempt, allowed-change
+policy, expected-result hash, source hash, original assertions and budgets
+immutable. Valid provider output creates a new draft artifact; approval/reject
+of that artifact advances the corresponding repair job. Approval also appends
+a `NOT_RUN` item attempt and requeues its run; repair attempt limits are counted
+across the run/test-case chain so a rerun cannot reset the budget.
+
+## Pipeline rollout and document lifecycle (migration 21)
+
+`projects.pipeline_mode` is `DOCUMENT_DRIVEN` or `LEGACY`. Existing projects are
+backfilled to `LEGACY` without inventing requirement evidence; new projects use
+the document-driven default. `project_pipeline_mode_audit` records every
+operator change.
+
+Document sets gain bounded `retention_days` and `archived_at`.
+`document_set_audit_log` stores archive/restore/retention changes with actor,
+reason and before/after state. Archive is recoverable and prevents uploads;
+physical purge is deliberately not implemented until an operator-approved
+policy is defined. Coordinated backup stores PostgreSQL and document bytes at
+the same quiesced application point.
 
 ## Phase 12 AI provenance
 

@@ -5,14 +5,17 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analysis"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/automation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/execution"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
@@ -25,6 +28,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/requirement"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
@@ -130,6 +134,23 @@ func main() {
 	}
 	documentRepository := document.NewRepository(database.Pool())
 	documentProcessor := document.NewProcessor(documentStore, document.NewStructuredParser(), documentRepository)
+	documentIndexService := document.NewIndexService(document.NewIndexRepository(database.Pool()), embedder)
+	providerName := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
+	var requirementExtractor requirement.Extractor = requirement.DeterministicExtractor{}
+	if providerName != "" && providerName != "disabled" && providerName != "none" {
+		requirementExtractor = requirement.NewLLMExtractor(llmProvider, providerName,
+			cfg.LLM.Model, cfg.LLM.MaxOutputTokens)
+	}
+	requirementRepository := requirement.NewRepository(database.Pool())
+	requirementService := requirement.NewService(requirementRepository, documentIndexService, requirementExtractor)
+	automationRepository := automation.NewRepository(database.Pool())
+	automationRepairProcessor := automation.NewRepairProcessor(automationRepository, llmProvider,
+		providerName, cfg.LLM.Model, cfg.LLM.InputCostPerMillionUSD,
+		cfg.LLM.OutputCostPerMillionUSD)
+	executionRepository := execution.NewRepository(database.Pool())
+	executionProcessor := execution.NewProcessor(projectRepository,
+		validation.NewWorkspaceManager(sourceClient, validation.WorkspaceOptions{}), sandboxRunner,
+		executionRepository, cfg.Sandbox.Timeout, cfg.Worker.MaxAttempts, cfg.Worker.RetryDelay)
 	options := job.WorkerOptions{
 		PollInterval:  cfg.Worker.PollInterval,
 		RetryDelay:    cfg.Worker.RetryDelay,
@@ -159,6 +180,22 @@ func main() {
 				LeaseDuration: options.LeaseDuration, MaxAttempts: options.MaxAttempts,
 				ParseTimeout: cfg.Document.ParseTimeout,
 			}),
+		requirement.NewWorker(logger.With("phase", "requirement-extraction"), requirementRepository,
+			requirementService, requirement.WorkerOptions{
+				PollInterval: options.PollInterval, RetryDelay: options.RetryDelay,
+				LeaseDuration: options.LeaseDuration, MaxAttempts: options.MaxAttempts,
+				ProcessTimeout: cfg.Requirement.ExtractionTimeout,
+			}),
+		automation.NewRepairWorker(logger.With("phase", "document-automation-repair"),
+			automationRepository, automationRepairProcessor, automation.RepairWorkerOptions{
+				PollInterval: options.PollInterval, RetryDelay: options.RetryDelay,
+				LeaseDuration: options.LeaseDuration, ProcessTimeout: cfg.LLM.RequestTimeout,
+				MaxAttempts: options.MaxAttempts,
+			}),
+		execution.NewWorker(logger.With("phase", "document-execution"), executionRepository,
+			executionProcessor, execution.WorkerOptions{PollInterval: options.PollInterval,
+				RetryDelay: options.RetryDelay, LeaseDuration: options.LeaseDuration,
+				MaxAttempts: options.MaxAttempts}),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -26,10 +26,12 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	LogLevel        string
 	HTTP            HTTPConfig
+	Auth            AuthConfig
 	GitLab          GitLabConfig
 	GitHub          GitHubConfig
 	Embedding       EmbeddingConfig
 	LLM             LLMConfig
+	Requirement     RequirementConfig
 	Worker          WorkerConfig
 	Document        DocumentConfig
 	Sandbox         SandboxConfig
@@ -44,6 +46,10 @@ type HTTPConfig struct {
 	RateLimitPerSecond  float64
 	RateLimitBurst      int
 	RateLimitMaxClients int
+}
+
+type AuthConfig struct {
+	Token string
 }
 
 type GitLabConfig struct {
@@ -90,6 +96,10 @@ type LLMConfig struct {
 	OutputCostPerMillionUSD float64
 }
 
+type RequirementConfig struct {
+	ExtractionTimeout time.Duration
+}
+
 type SandboxConfig struct {
 	Image     string
 	Timeout   time.Duration
@@ -99,7 +109,8 @@ type SandboxConfig struct {
 }
 
 type RepairConfig struct {
-	MaxAttempts int
+	MaxAttempts     int
+	MaxCostMicroUSD int64
 }
 
 func Load() (Config, error) {
@@ -127,6 +138,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	apiAuthToken, err := secretEnv("API_AUTH_TOKEN")
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		AppEnv:          envOrDefault("APP_ENV", "development"),
 		HTTPAddr:        envOrDefault("HTTP_ADDR", defaultHTTPAddr),
@@ -139,6 +154,7 @@ func Load() (Config, error) {
 			IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20,
 			RateLimitPerSecond: 20, RateLimitBurst: 40, RateLimitMaxClients: 10000,
 		},
+		Auth: AuthConfig{Token: apiAuthToken},
 		GitLab: GitLabConfig{
 			BaseURL:        envOrDefault("GITLAB_BASE_URL", "https://gitlab.com"),
 			Token:          gitLabToken,
@@ -161,6 +177,7 @@ func Load() (Config, error) {
 			RequestTimeout: 60 * time.Second, MaxOutputTokens: 6000,
 			InputCostPerMillionUSD: 0, OutputCostPerMillionUSD: 0,
 		},
+		Requirement: RequirementConfig{ExtractionTimeout: 30 * time.Minute},
 		Worker: WorkerConfig{
 			PollInterval:  2 * time.Second,
 			RetryDelay:    5 * time.Second,
@@ -176,11 +193,14 @@ func Load() (Config, error) {
 			Image:   envOrDefault("SANDBOX_IMAGE", "ai-test-assistant-sandbox:phase7"),
 			Timeout: 60 * time.Second, MemoryMB: 512, CPULimit: 1, PIDsLimit: 128,
 		},
-		Repair: RepairConfig{MaxAttempts: 2},
+		Repair: RepairConfig{MaxAttempts: 2, MaxCostMicroUSD: 100000},
 	}
 
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required")
+	}
+	if strings.EqualFold(cfg.AppEnv, "production") && strings.TrimSpace(cfg.Auth.Token) == "" {
+		return Config{}, errors.New("API_AUTH_TOKEN is required in production")
 	}
 	if cfg.LogLevel != "debug" && cfg.LogLevel != "info" && cfg.LogLevel != "warn" && cfg.LogLevel != "error" {
 		return Config{}, errors.New("LOG_LEVEL must be debug, info, warn, or error")
@@ -309,6 +329,13 @@ func Load() (Config, error) {
 		}
 		cfg.LLM.RequestTimeout = parsed
 	}
+	if value := os.Getenv("REQUIREMENT_EXTRACTION_TIMEOUT"); value != "" {
+		parsed, err := positiveDuration("REQUIREMENT_EXTRACTION_TIMEOUT", value)
+		if err != nil || parsed > 2*time.Hour {
+			return Config{}, errors.New("REQUIREMENT_EXTRACTION_TIMEOUT must be a positive duration no greater than 2h")
+		}
+		cfg.Requirement.ExtractionTimeout = parsed
+	}
 	if value := os.Getenv("LLM_MAX_OUTPUT_TOKENS"); value != "" {
 		parsed, err := strconv.Atoi(value)
 		if err != nil || parsed < 100 || parsed > 10000 {
@@ -362,6 +389,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("MAX_REPAIR_ATTEMPTS must be between 0 and 3")
 		}
 		cfg.Repair.MaxAttempts = parsed
+	}
+	if value := os.Getenv("MAX_REPAIR_COST_MICRO_USD"); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed < 0 || parsed > 100_000_000 {
+			return Config{}, fmt.Errorf("MAX_REPAIR_COST_MICRO_USD must be between 0 and 100000000")
+		}
+		cfg.Repair.MaxCostMicroUSD = parsed
 	}
 
 	return cfg, nil

@@ -5,6 +5,7 @@ package document
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -40,6 +41,27 @@ func TestPostgresRepositoryDocumentLifecycleAndImmutability(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = pool.Exec(context.Background(), `DELETE FROM document_sets WHERE id=$1`, set.ID) }()
+	if set.RetentionDays != 365 || set.ArchivedAt != nil {
+		t.Fatalf("new document set lifecycle=%+v", set)
+	}
+	set, err = service.UpdateLifecycle(ctx, set.ID, LifecycleInput{Status: SetStatusArchived,
+		RetentionDays: 180, Actor: "integration-test", Reason: "verify recoverable archive"})
+	if err != nil || set.Status != SetStatusArchived || set.ArchivedAt == nil || set.RetentionDays != 180 {
+		t.Fatalf("archived set=%+v error=%v", set, err)
+	}
+	if _, _, err = service.Upload(ctx, set.ID, UploadInput{DocumentName: "Blocked", DocumentType: TypeRequirements,
+		Filename: "blocked.md"}, strings.NewReader("# blocked")); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("upload to archived set error=%v", err)
+	}
+	set, err = service.UpdateLifecycle(ctx, set.ID, LifecycleInput{Status: SetStatusActive,
+		RetentionDays: 180, Actor: "integration-test", Reason: "continue lifecycle fixture"})
+	if err != nil || set.Status != SetStatusActive || set.ArchivedAt != nil {
+		t.Fatalf("restored set=%+v error=%v", set, err)
+	}
+	var lifecycleAudits int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM document_set_audit_log WHERE document_set_id=$1`, set.ID).Scan(&lifecycleAudits); err != nil || lifecycleAudits != 2 {
+		t.Fatalf("lifecycle audit count=%d error=%v", lifecycleAudits, err)
+	}
 
 	item, version, err := service.Upload(ctx, set.ID, UploadInput{
 		DocumentName: "Order requirements", DocumentType: TypeRequirements,
@@ -131,6 +153,10 @@ func TestPostgresRepositoryDocumentLifecycleAndImmutability(t *testing.T) {
 		version.ID, strings.Repeat("f", 64)); err == nil {
 		t.Fatal("document version identity update succeeded, want immutable trigger error")
 	}
+	metrics, err := service.Metrics(ctx)
+	if err != nil || metrics.DocumentVersions < 3 || metrics.DocumentSets < 2 {
+		t.Fatalf("document pipeline metrics=%+v error=%v", metrics, err)
+	}
 }
 
 func TestDocumentSchemaRejectsExpectedResultMutationAfterRun(t *testing.T) {
@@ -146,7 +172,7 @@ func TestDocumentSchemaRejectsExpectedResultMutationAfterRun(t *testing.T) {
 	}
 	defer pool.Close()
 
-	var setID, suiteID, caseID, artifactID, runID, itemID int64
+	var setID, documentID, versionID, blockID, requirementID, suiteID, caseID, artifactID, runID, itemID int64
 	name := "snapshot-integration-" + time.Now().Format("20060102150405.000000000")
 	if err := pool.QueryRow(ctx, `INSERT INTO document_sets(name) VALUES($1) RETURNING id`, name).Scan(&setID); err != nil {
 		t.Fatal(err)
@@ -155,6 +181,36 @@ func TestDocumentSchemaRejectsExpectedResultMutationAfterRun(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM test_runs WHERE id=$1`, runID)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM document_sets WHERE id=$1`, setID)
 	}()
+	if err := pool.QueryRow(ctx, `INSERT INTO documents(document_set_id,name,document_type)
+		VALUES($1,'Approved source','REQUIREMENTS') RETURNING id`, setID).Scan(&documentID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO document_versions
+		(document_id,document_set_id,version_number,original_filename,media_type,size_bytes,
+		 sha256,storage_key,approval_status,parse_status)
+		VALUES($1,$2,1,'approved.md','text/markdown',1,$3,$4,'APPROVED','PARSED') RETURNING id`,
+		documentID, setID, strings.Repeat("e", 64), fmt.Sprintf("integration/%d/approved.md", setID)).Scan(&versionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO document_blocks
+		(document_version_id,ordinal,block_type,content,source_locator)
+		VALUES($1,1,'PARAGRAPH','Order is created','line:1') RETURNING id`, versionID).Scan(&blockID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO requirements
+		(document_set_id,requirement_key,title,statement,requirement_type)
+		VALUES($1,'REQ-ORDER','Create order','Order is created','FUNCTIONAL') RETURNING id`, setID).Scan(&requirementID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO requirement_evidence
+		(requirement_id,document_set_id,document_version_id,document_block_id,source_locator,excerpt_hash)
+		VALUES($1,$2,$3,$4,'line:1',$5)`, requirementID, setID, versionID, blockID,
+		strings.Repeat("f", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE requirements SET status='APPROVED' WHERE id=$1`, requirementID); err != nil {
+		t.Fatal(err)
+	}
 	if err := pool.QueryRow(ctx, `INSERT INTO test_suites(document_set_id,name) VALUES($1,'Order') RETURNING id`, setID).Scan(&suiteID); err != nil {
 		t.Fatal(err)
 	}
@@ -163,6 +219,11 @@ func TestDocumentSchemaRejectsExpectedResultMutationAfterRun(t *testing.T) {
 		(test_suite_id,document_set_id,test_case_key,title,test_type,expected_result,expected_result_hash)
 		VALUES($1,$2,'TC-001','Successful order','HAPPY','Order is created',$3) RETURNING id`,
 		suiteID, setID, hash).Scan(&caseID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO test_case_requirement_links
+		(test_case_id,requirement_id,document_set_id,coverage_type) VALUES($1,$2,$3,'DIRECT')`,
+		caseID, requirementID, setID); err != nil {
 		t.Fatal(err)
 	}
 	artifactHash := strings.Repeat("d", 64)

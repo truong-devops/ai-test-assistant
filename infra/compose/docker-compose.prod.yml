@@ -82,10 +82,23 @@ services:
       GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-hash-v1}
+      LLM_PROVIDER: ${LLM_PROVIDER:-disabled}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY_FILE: /run/secrets/llm_api_key
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_FALLBACK_MODELS: ${LLM_FALLBACK_MODELS:-}
+      LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-60s}
+      REQUIREMENT_EXTRACTION_TIMEOUT: ${REQUIREMENT_EXTRACTION_TIMEOUT:-30m}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-6000}
+      MAX_REPAIR_ATTEMPTS: ${MAX_REPAIR_ATTEMPTS:-2}
+      MAX_REPAIR_COST_MICRO_USD: ${MAX_REPAIR_COST_MICRO_USD:-100000}
+      API_AUTH_TOKEN_FILE: /run/secrets/api_auth_token
+      LLM_INPUT_COST_PER_MTOK_USD: ${LLM_INPUT_COST_PER_MTOK_USD:-0}
+      LLM_OUTPUT_COST_PER_MTOK_USD: ${LLM_OUTPUT_COST_PER_MTOK_USD:-0}
       DOCUMENT_STORAGE_PATH: /var/lib/ai-test-assistant/documents
       DOCUMENT_MAX_UPLOAD_BYTES: ${DOCUMENT_MAX_UPLOAD_BYTES:-16777216}
       DOCUMENT_PARSE_TIMEOUT: ${DOCUMENT_PARSE_TIMEOUT:-60s}
-    secrets: [database_url, gitlab_token, gitlab_webhook_secret, github_token, github_webhook_secret]
+    secrets: [database_url, gitlab_token, gitlab_webhook_secret, github_token, github_webhook_secret, llm_api_key, api_auth_token]
     tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
     networks: [app, data]
     ports:
@@ -110,15 +123,25 @@ services:
     environment:
       BACKEND_API_URL: http://api:8080
       DOCUMENT_MAX_UPLOAD_BYTES: ${DOCUMENT_MAX_UPLOAD_BYTES:-16777216}
+      NEXT_PUBLIC_ENABLE_LEGACY_NAV: ${NEXT_PUBLIC_ENABLE_LEGACY_NAV:-false}
+      BACKEND_API_TOKEN_FILE: /run/secrets/api_auth_token
+      BACKEND_API_ROLE: ${BACKEND_API_ROLE:-admin}
+      BACKEND_API_ACTOR: ${BACKEND_API_ACTOR:-review-ui}
     tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    # Runtime user 1001 needs the same supplemental group as the non-root Go
+    # services to read the host-backed 0640 Compose secret.
+    group_add: ["65532"]
     networks: [app]
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3000}:3000"
     depends_on:
       api:
         condition: service_healthy
+    secrets: [api_auth_token]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      # Exercise the authenticated frontend -> API path, not only the Next.js
+      # process, so an unreadable/mismatched service token makes deploy fail.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/backend/api/document-metrics').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -148,6 +171,7 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_FALLBACK_MODELS: ${LLM_FALLBACK_MODELS:-}
       LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-60s}
+      REQUIREMENT_EXTRACTION_TIMEOUT: ${REQUIREMENT_EXTRACTION_TIMEOUT:-30m}
       LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-6000}
       LLM_INPUT_COST_PER_MTOK_USD: ${LLM_INPUT_COST_PER_MTOK_USD:-0}
       LLM_OUTPUT_COST_PER_MTOK_USD: ${LLM_OUTPUT_COST_PER_MTOK_USD:-0}
@@ -164,8 +188,10 @@ services:
       SANDBOX_CPU_LIMIT: ${SANDBOX_CPU_LIMIT:-1.0}
       SANDBOX_PIDS_LIMIT: ${SANDBOX_PIDS_LIMIT:-128}
       MAX_REPAIR_ATTEMPTS: ${MAX_REPAIR_ATTEMPTS:-2}
+      MAX_REPAIR_COST_MICRO_USD: ${MAX_REPAIR_COST_MICRO_USD:-100000}
+      API_AUTH_TOKEN_FILE: /run/secrets/api_auth_token
       HOME: /tmp
-    secrets: [database_url, gitlab_token, github_token, llm_api_key]
+    secrets: [database_url, gitlab_token, github_token, llm_api_key, api_auth_token]
     group_add: ["${DOCKER_GID:?DOCKER_GID is required}"]
     tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=256m"]
     networks: [app, data]
@@ -183,6 +209,17 @@ services:
       dockerfile: infra/docker/Dockerfile.sandbox
     profiles: ["tools"]
 
+  document-maintenance:
+    image: alpine:3.21.3
+    profiles: ["tools"]
+    network_mode: none
+    volumes:
+      - document_data:/documents
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    logging: *default-logging
+
 secrets:
   postgres_password:
     file: ${POSTGRES_PASSWORD_SECRET_FILE:?POSTGRES_PASSWORD_SECRET_FILE is required}
@@ -198,6 +235,8 @@ secrets:
     file: ${GITHUB_WEBHOOK_SECRET_FILE:?GITHUB_WEBHOOK_SECRET_FILE is required}
   llm_api_key:
     file: ${LLM_API_KEY_SECRET_FILE:?LLM_API_KEY_SECRET_FILE is required}
+  api_auth_token:
+    file: ${API_AUTH_TOKEN_SECRET_FILE:?API_AUTH_TOKEN_SECRET_FILE is required}
 
 networks:
   app:

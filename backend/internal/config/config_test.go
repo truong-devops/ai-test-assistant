@@ -39,6 +39,7 @@ func TestLoad(t *testing.T) {
 	t.Setenv("LLM_PROVIDER", "openai")
 	t.Setenv("LLM_BASE_URL", "https://llm.example.com/v1")
 	t.Setenv("LLM_API_KEY", "llm-key")
+	t.Setenv("API_AUTH_TOKEN", "backend-token")
 	t.Setenv("LLM_MODEL", "fixture-model")
 	t.Setenv("LLM_FALLBACK_MODELS", " fallback-one, fallback-two ")
 	t.Setenv("LLM_REQUEST_TIMEOUT", "45s")
@@ -51,6 +52,7 @@ func TestLoad(t *testing.T) {
 	t.Setenv("SANDBOX_CPU_LIMIT", "1.5")
 	t.Setenv("SANDBOX_PIDS_LIMIT", "96")
 	t.Setenv("MAX_REPAIR_ATTEMPTS", "3")
+	t.Setenv("MAX_REPAIR_COST_MICRO_USD", "250000")
 
 	cfg, err := Load()
 	if err != nil {
@@ -87,6 +89,12 @@ func TestLoad(t *testing.T) {
 		cfg.LLM.RequestTimeout != 45*time.Second || cfg.LLM.MaxOutputTokens != 1500 ||
 		cfg.LLM.InputCostPerMillionUSD != 2.5 || cfg.LLM.OutputCostPerMillionUSD != 10 {
 		t.Fatalf("Load() LLM config = %+v", cfg.LLM)
+	}
+	if cfg.Repair.MaxAttempts != 3 || cfg.Repair.MaxCostMicroUSD != 250000 {
+		t.Fatalf("Load() repair config = %+v", cfg.Repair)
+	}
+	if cfg.Auth.Token != "backend-token" {
+		t.Fatalf("Load() auth token was not loaded")
 	}
 	if cfg.Sandbox.Image != "sandbox:test" || cfg.Sandbox.Timeout != 45*time.Second ||
 		cfg.Sandbox.MemoryMB != 768 || cfg.Sandbox.CPULimit != 1.5 || cfg.Sandbox.PIDsLimit != 96 {
@@ -224,6 +232,24 @@ func TestLoadRejectsUnboundedRepairConfiguration(t *testing.T) {
 	t.Setenv("MAX_REPAIR_ATTEMPTS", "4")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want repair bound error")
+	}
+}
+
+func TestLoadRejectsUnboundedRepairCost(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("MAX_REPAIR_COST_MICRO_USD", "100000001")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want repair cost bound error")
+	}
+}
+
+func TestLoadRequiresBackendAuthenticationInProduction(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("API_AUTH_TOKEN", "")
+	t.Setenv("API_AUTH_TOKEN_FILE", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want production authentication error")
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -234,5 +235,59 @@ func TestGeminiProviderDoesNotFallbackAfterPermanentFailure(t *testing.T) {
 	})
 	if err == nil || calls != 1 {
 		t.Fatalf("Generate() error=%v calls=%d", err, calls)
+	}
+}
+
+func TestGeminiProviderRetriesInvalidStructuredSchemaAsJSON(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var request geminiRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if calls == 1 {
+			if request.ResponseFormat.Schema == nil {
+				t.Fatal("first request did not enforce the structured schema")
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":{"message":"Request contains an invalid argument.","code":"invalid_request"}}`)
+			return
+		}
+		if request.ResponseFormat.Schema != nil {
+			t.Fatalf("fallback schema = %#v, want omitted", request.ResponseFormat.Schema)
+		}
+		if request.ResponseFormat.MIMEType != "application/json" ||
+			!strings.Contains(request.SystemInstruction, `"requirements"`) {
+			t.Fatalf("fallback request = %#v", request)
+		}
+		fmt.Fprint(w, `{"id":"fallback","model":"test-model","status":"completed",`+
+			`"steps":[{"type":"model_output","content":[`+
+			`{"type":"text","text":"{\"requirements\":[]}"}]}]}`)
+	}))
+	defer server.Close()
+
+	provider, err := NewGeminiProvider(server.URL, "key", "test-model", time.Second, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := Request{
+		Instructions: "return requirements", Input: "input", SchemaName: "requirements",
+		Schema: map[string]any{"type": "object", "properties": map[string]any{
+			"requirements": map[string]any{"type": "array"},
+		}},
+	}
+	response, err := provider.Generate(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Output != `{"requirements":[]}` {
+		t.Fatalf("calls=%d response=%+v", calls, response)
+	}
+	if _, err = provider.Generate(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("calls=%d, want one rejected schema request followed by two JSON fallbacks", calls)
 	}
 }

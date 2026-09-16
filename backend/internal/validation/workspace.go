@@ -45,10 +45,13 @@ func NewWorkspaceManager(source RepositorySource, options WorkspaceOptions) *Wor
 }
 
 type Workspace struct {
-	Root string
-	base string
-	once sync.Once
-	err  error
+	Root     string
+	base     string
+	files    map[string]struct{}
+	bytes    int64
+	maxBytes int64
+	once     sync.Once
+	err      error
 }
 
 func (w *Workspace) Cleanup() error {
@@ -56,15 +59,46 @@ func (w *Workspace) Cleanup() error {
 	return w.err
 }
 
+func (w *Workspace) AddGeneratedFile(filePath string, contents []byte) error {
+	target, err := safeRepositoryPath(filePath)
+	if err != nil {
+		return fmt.Errorf("invalid generated test path: %w", err)
+	}
+	if _, exists := w.files[target]; exists {
+		return fmt.Errorf("%w: %s", ErrGeneratedTargetExists, target)
+	}
+	if w.bytes+int64(len(contents)) > w.maxBytes {
+		return fmt.Errorf("repository snapshot with generated test exceeds %d bytes", w.maxBytes)
+	}
+	if err := writeWorkspaceFile(w.Root, target, contents); err != nil {
+		return err
+	}
+	w.files[target] = struct{}{}
+	w.bytes += int64(len(contents))
+	return nil
+}
+
 func (m *WorkspaceManager) Prepare(ctx context.Context, repository scm.Repository, ref string,
 	generated generation.GeneratedTest,
 ) (*Workspace, error) {
+	workspace, err := m.PrepareSource(ctx, repository, ref)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(generated.Code)) > m.maxBytes {
+		_ = workspace.Cleanup()
+		return nil, fmt.Errorf("repository snapshot with generated test exceeds %d bytes", m.maxBytes)
+	}
+	if err := workspace.AddGeneratedFile(generated.FilePath, []byte(generated.Code)); err != nil {
+		_ = workspace.Cleanup()
+		return nil, err
+	}
+	return workspace, nil
+}
+
+func (m *WorkspaceManager) PrepareSource(ctx context.Context, repository scm.Repository, ref string) (*Workspace, error) {
 	if repository.ProviderProjectID <= 0 || strings.TrimSpace(ref) == "" {
 		return nil, fmt.Errorf("workspace project ID and ref are required")
-	}
-	target, err := safeRepositoryPath(generated.FilePath)
-	if err != nil {
-		return nil, fmt.Errorf("invalid generated test path: %w", err)
 	}
 	entries, err := m.source.ListRepositoryTree(ctx, repository, ref)
 	if err != nil {
@@ -81,9 +115,6 @@ func (m *WorkspaceManager) Prepare(ctx context.Context, repository scm.Repositor
 			return nil, fmt.Errorf("duplicate repository entry %q", entryPath)
 		}
 		seen[entryPath] = struct{}{}
-		if entryPath == target {
-			return nil, fmt.Errorf("%w: %s", ErrGeneratedTargetExists, target)
-		}
 		if entry.Type == "blob" && entry.Mode != "120000" {
 			blobs = append(blobs, entry)
 		}
@@ -96,7 +127,8 @@ func (m *WorkspaceManager) Prepare(ctx context.Context, repository scm.Repositor
 	if err != nil {
 		return nil, fmt.Errorf("create validation workspace: %w", err)
 	}
-	workspace := &Workspace{Root: filepath.Join(base, "workspace"), base: base}
+	workspace := &Workspace{Root: filepath.Join(base, "workspace"), base: base, files: seen,
+		maxBytes: m.maxBytes}
 	failed := true
 	defer func() {
 		if failed {
@@ -110,10 +142,7 @@ func (m *WorkspaceManager) Prepare(ctx context.Context, repository scm.Repositor
 		return nil, fmt.Errorf("set validation workspace permissions: %w", err)
 	}
 
-	totalBytes := int64(len(generated.Code))
-	if totalBytes > m.maxBytes {
-		return nil, fmt.Errorf("repository snapshot with generated test exceeds %d bytes", m.maxBytes)
-	}
+	totalBytes := int64(0)
 	for _, entry := range blobs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -130,9 +159,7 @@ func (m *WorkspaceManager) Prepare(ctx context.Context, repository scm.Repositor
 			return nil, err
 		}
 	}
-	if err := writeWorkspaceFile(workspace.Root, target, []byte(generated.Code)); err != nil {
-		return nil, fmt.Errorf("write generated test: %w", err)
-	}
+	workspace.bytes = totalBytes
 	failed = false
 	return workspace, nil
 }

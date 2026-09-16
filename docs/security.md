@@ -1,24 +1,25 @@
 # Phase 11 security review
 
 This review records implemented controls and residual risks. It is not a claim
-that the unauthenticated MVP is safe for public internet exposure.
+that service-token authentication replaces an end-user identity system or makes
+the application safe for direct public internet exposure.
 
-It covers the legacy baseline and the implemented Phase 2 DOCX/Markdown intake.
-XLSX import, report exports and document approval/RBAC introduce additional
-future trust boundaries tracked in
+It covers the legacy baseline and implemented document-driven Phases 2–11.
+XLSX export, PR/MR execution mapping, technical repair and service RBAC are
+included; remaining production gates are tracked in
 [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 ## Trust boundaries
 
 | Component | Trust level | Important controls | Residual risk |
 |---|---|---|---|
-| API/frontend | Trusted application | input size/schema checks, rate limit, security headers, non-root/read-only containers | no user authentication/RBAC yet |
+| API/frontend | Trusted application | bearer service authentication, role checks, input caps, rate limit, security headers, non-root/read-only containers | shared token is not individual identity; OIDC proxy is still required |
 | Worker | Trusted control plane | non-root UID, dropped Linux capabilities, secret files, job leases | Docker socket can control the host daemon |
 | Generated test sandbox | Hostile workload | no network, non-root, read-only root, no-new-privileges, all capabilities dropped, CPU/RAM/PID/time/output limits | Docker/kernel/runtime vulnerability remains possible |
 | GitLab/GitHub repository content | Untrusted external input | response limits, path validation, AST parsing, sensitive-content filters | prompt injection and heuristic secret-filter gaps |
-| Uploaded documents | Untrusted external input | exact body/file caps, private randomized object keys, SHA-256, passive parser, DOCX archive/XML caps, traversal/macro/executable rejection | no malware scanner and no per-user authorization yet |
-| LLM provider/output | External/untrusted | provider interface, timeout/size caps, strict JSON schema, path/source validation | repository content leaves the deployment when provider is enabled |
-| PostgreSQL | Trusted state | isolated Compose network, file secret, migrations, backup checksum | DB role separation and immutable audit storage are pending |
+| Uploaded documents | Untrusted external input | exact body/file caps, private randomized object keys, SHA-256, passive parser, prompt-injection flag, DOCX archive/XML caps, traversal/macro/executable rejection | no malware scanner and no per-user authorization yet |
+| LLM provider/output | External/untrusted | provider interface, timeout/size caps, strict JSON schema, untrusted-context boundary, service-owned citations, expected-result grounding | document/repository content leaves the deployment when provider is enabled |
+| PostgreSQL | Trusted state | isolated Compose network, file secret, migrations, immutable business guards, coordinated backup checksum | DB role separation and off-host immutable audit storage are pending |
 
 ## Sandbox findings
 
@@ -53,11 +54,17 @@ bytes, bounded request bodies, strict JSON decoding, and a bounded-memory token
 bucket provide basic abuse resistance. Health/readiness endpoints bypass the
 rate limiter so orchestration can recover.
 
+Production API routes require a constant-time checked bearer token. A role
+header maps to `viewer`, `editor`, `reviewer`, or `admin`; review, execute,
+classification, export, repair, lifecycle, baseline and pipeline-mode mutations
+require reviewer or admin. Health/readiness and provider-signed webhooks bypass
+this token by design.
+
 The limiter keys on the direct peer address and does not trust
-`X-Forwarded-For`. A trusted reverse proxy must authenticate users, normalize
-forwarded headers, enforce client-level limits, terminate TLS, and protect
-state-changing routes against CSRF. These controls do not replace the open
-authentication/RBAC backlog.
+`X-Forwarded-For`. A trusted reverse proxy must authenticate actual users,
+derive the role/actor, normalize forwarded headers, enforce client-level limits,
+terminate TLS, and protect state-changing routes against CSRF. Possession of
+the shared service token alone does not establish a human identity.
 
 ## Phase 12 provenance findings
 
@@ -65,9 +72,9 @@ LLM evidence hashes only safe runtime configuration and never includes provider
 API keys, SCM tokens, webhook secrets, or database credentials. Historical
 prompts, responses, and denormalized source chunks are intentionally retained
 for thesis reproducibility and therefore remain sensitive project data. The
-full `/api/analyses/{id}/export` endpoint must remain behind the authenticated
-private reverse proxy until Phase 18 implements application-level RBAC. A
-retention/archive policy is still required before long-term production use.
+full `/api/analyses/{id}/export` endpoint remains behind the authenticated
+service and private reverse proxy. Archive/retention audit exists, but physical
+purge and a final long-term retention decision are still required.
 
 ## Document intake findings
 
@@ -79,11 +86,41 @@ individual XML size and total expanded size are bounded; unsafe paths,
 links or executes embedded content, runs under a timeout, verifies the stored
 size and checksum, and records failure without deleting the source version.
 
-All uploads remain `DRAFT` because application authentication/RBAC and approval
-routes are not implemented. Keep the UI/API on the trusted private boundary.
-The `document_data` volume must be backed up with its matching PostgreSQL state;
-the current backup script only covers PostgreSQL, so coordinated backup/restore
-remains an explicit Phase 11 blocker for production recovery claims.
+All uploads start as `DRAFT`; source, requirement and test-case reviews require
+the service role, but reviewer names remain audit labels until the reverse proxy
+binds them to an authenticated user. Archive blocks new uploads and records
+actor/reason. Backup now quiesces writers and packages PostgreSQL with the exact
+matching `document_data` snapshot plus inner/outer checksums.
+
+## Document AI and business-evidence findings
+
+Semantic chunks retain raw uploaded text but embed normalized text. Retrieval is
+filtered by document set and version policy in SQL. Prompt-like document text is
+flagged and always enclosed as untrusted evidence; it is never interpreted as
+system instructions. Every document AI call stores an immutable context snapshot
+and raw validated response for audit.
+
+The service, not the model, binds requirements to the processed document block.
+Database triggers reject approving a requirement without evidence from an
+approved source version and reject approving a test case without an approved,
+cited requirement. LLM-generated expected results must exactly match approved
+business evidence. These controls prevent code or model output from silently
+becoming business truth, but they do not replace human review.
+
+Index and requirement extraction use durable worker queues. Extraction captures
+the index generation, renews a lease, persists per-chunk progress and retries
+without holding an HTTP request, removing the reverse-proxy 502 failure mode.
+Per-call output limits, HTTP rate limits and per-repair cost limits exist; a
+total token/cost quota per user/document set remains open before multi-tenant use.
+
+## Guarded technical repair findings
+
+Only a run item classified exactly as `AUTOMATION_ERROR` and bound to an
+approved artifact with the same expected hash can enter repair. A database
+trigger freezes expected hash, semantic assertions, source hash, allowed-change
+policy and budgets. Provider output is schema/Go/path/package checked and its
+normalized assertions must match the original. Unsafe or unchanged output is a
+candidate-level `UNREPAIRABLE`; `PRODUCT_FAILED` never enters the repair queue.
 
 ## Phase 13 impact-analysis findings
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,7 @@ type GeminiProvider struct {
 	maxOutputTokens int
 	client          *http.Client
 	retryBaseDelay  time.Duration
+	schemaFallbacks sync.Map
 }
 
 func NewGeminiProvider(baseURL, apiKey, model string, timeout time.Duration, maxOutputTokens int) (*GeminiProvider, error) {
@@ -103,7 +105,7 @@ type geminiGenerationConfig struct {
 type geminiTextResponseFormat struct {
 	Type     string         `json:"type"`
 	MIMEType string         `json:"mime_type"`
-	Schema   map[string]any `json:"schema"`
+	Schema   map[string]any `json:"schema,omitempty"`
 }
 
 type geminiResponse struct {
@@ -133,11 +135,26 @@ func (p *GeminiProvider) Generate(ctx context.Context, request Request) (Respons
 		strings.TrimSpace(request.SchemaName) == "" || len(request.Schema) == 0 {
 		return Response{}, fmt.Errorf("invalid LLM request")
 	}
+	encodedSchema, err := json.Marshal(request.Schema)
+	if err != nil {
+		return Response{}, fmt.Errorf("encode Gemini response schema: %w", err)
+	}
+	fallbackRequest := geminiJSONFallbackRequest(request, encodedSchema)
 	var lastErr error
 	attempted := make([]string, 0, len(p.models))
 	for index, model := range p.models {
 		attempted = append(attempted, model)
-		response, err := p.generateWithModel(ctx, request, model)
+		fallbackKey := model + "\x00" + string(encodedSchema)
+		_, useFallback := p.schemaFallbacks.Load(fallbackKey)
+		activeRequest := request
+		if useFallback {
+			activeRequest = fallbackRequest
+		}
+		response, err := p.generateWithModel(ctx, activeRequest, model)
+		if !useFallback && isGeminiSchemaRejection(err) {
+			p.schemaFallbacks.Store(fallbackKey, struct{}{})
+			response, err = p.generateWithModel(ctx, fallbackRequest, model)
+		}
 		if err == nil {
 			return response, nil
 		}
@@ -193,8 +210,21 @@ func (p *GeminiProvider) generateWithModel(ctx context.Context, request Request,
 		return Response{}, fmt.Errorf("%w: response exceeds size limit", ErrMalformedResponse)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return Response{}, &geminiAPIError{statusCode: response.StatusCode,
+		apiError := &geminiAPIError{statusCode: response.StatusCode,
 			status: response.Status, message: providerErrorSnippet(responseBody)}
+		var envelope struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(responseBody, &envelope) == nil {
+			apiError.code = strings.TrimSpace(envelope.Error.Code)
+			if message := strings.TrimSpace(envelope.Error.Message); message != "" {
+				apiError.message = message
+			}
+		}
+		return Response{}, apiError
 	}
 	var decoded geminiResponse
 	if err := json.Unmarshal(responseBody, &decoded); err != nil {
@@ -244,11 +274,25 @@ func (p *GeminiProvider) generateWithModel(ctx context.Context, request Request,
 type geminiAPIError struct {
 	statusCode int
 	status     string
+	code       string
 	message    string
 }
 
 func (e *geminiAPIError) Error() string {
 	return fmt.Sprintf("Gemini API returned %s: %s", e.status, e.message)
+}
+
+func isGeminiSchemaRejection(err error) bool {
+	var apiErr *geminiAPIError
+	return errors.As(err, &apiErr) && apiErr.statusCode == http.StatusBadRequest &&
+		apiErr.code == "invalid_request"
+}
+
+func geminiJSONFallbackRequest(request Request, encodedSchema []byte) Request {
+	request.Instructions += "\nThe response must be exactly one JSON object matching this JSON Schema. " +
+		"Do not add Markdown fences or explanatory text. JSON Schema: " + string(encodedSchema)
+	request.Schema = nil
+	return request
 }
 
 func isTransientGeminiError(err error) bool {

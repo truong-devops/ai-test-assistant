@@ -1,0 +1,18 @@
+{
+  "name": "document-controlled-v1",
+  "requirements": [
+    {"key":"REQ-ORDER-001","flow_type":"MAIN"},
+    {"key":"REQ-ORDER-002","flow_type":"ALTERNATE"},
+    {"key":"REQ-ORDER-003","flow_type":"EXCEPTION"}
+  ],
+  "extracted_requirements": [
+    {"key":"REQ-ORDER-001","flow_type":"MAIN","supported":true,"citation_correct":true},
+    {"key":"REQ-ORDER-002","flow_type":"ALTERNATE","supported":true,"citation_correct":true},
+    {"key":"REQ-ORDER-003","flow_type":"EXCEPTION","supported":true,"citation_correct":true}
+  ],
+  "test_cases": [
+    {"key":"TC-ORDER-001","signature":"valid cart creates order","variant":"DOC_ONLY_TEST_DESIGN","human_accepted":true,"edit_distance":0,"review_seconds":35,"automation_attempted":true,"automation_compiled":true,"automation_passed":true,"seeded_defect":true,"defect_detected":true},
+    {"key":"TC-ORDER-002","signature":"empty cart is rejected","variant":"DOC_ONLY_TEST_DESIGN","human_accepted":true,"edit_distance":1,"review_seconds":42,"automation_attempted":true,"automation_compiled":true,"automation_passed":true,"seeded_defect":true,"defect_detected":true},
+    {"key":"TC-LEGACY-001","signature":"valid cart creates order","variant":"CODE_FIRST","human_accepted":false,"edit_distance":8,"review_seconds":70,"automation_attempted":true,"automation_compiled":true,"automation_passed":false,"seeded_defect":true,"defect_detected":false}
+  ]
+}

@@ -1,8 +1,9 @@
 # Kế hoạch chuyển đổi sang Document-Driven Testing
 
 - **Ngày chốt định hướng:** 10/09/2026
-- **Cập nhật triển khai:** 11/09/2026
-- **Trạng thái:** Phase 0–2 hoàn thành; Phase 3 là phase tiếp theo
+- **Cập nhật triển khai:** 16/09/2026
+- **Trạng thái:** Phase 0–10 hoàn thành; Phase 11 đã triển khai phần lõi và còn
+  các bước nghiệm thu tích hợp với hạ tầng thật
 - **Phạm vi:** Backend Go, Frontend Next.js, PostgreSQL/pgvector, LLM,
   GitHub/GitLab và Docker Sandbox
 
@@ -102,11 +103,11 @@ Approved test case + PR/MR source SHA
 - [x] AI provenance gồm prompt/response/context/token/latency.
 - [x] Next.js review console.
 - [x] Đã có document upload/versioning/parsing cho DOCX và Markdown.
-- [ ] Chưa có requirement inventory/review.
-- [ ] Chưa có document-grounded test-case domain.
-- [ ] Chưa có coverage audit ngược với tài liệu gốc.
-- [ ] Chưa có XLSX execution report exporter.
-- [ ] Chưa tách product failure khỏi automation/infra error.
+- [x] Đã có requirement inventory/review với evidence, conflict và TBD.
+- [x] Đã có document-grounded test-case domain và versioned review.
+- [x] Đã có coverage audit tái tạo từ requirement/test-case links.
+- [x] Đã có XLSX/Markdown execution report exporter với immutable snapshot/hash.
+- [x] Đã tách product failure khỏi automation/infra error.
 
 ## 5. Trạng thái tổng thể
 
@@ -115,15 +116,15 @@ Approved test case + PR/MR source SHA
 | 0 | Chốt định hướng và tài liệu | N/A | N/A | `DONE` |
 | 1 | Domain model và migration nền | Đã làm | Đã làm | `DONE` |
 | 2 | Upload, lưu trữ và parse tài liệu | Đã làm | Đã làm | `DONE` |
-| 3 | Semantic chunking và document RAG | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 4 | Requirement extraction và review | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 5 | Sinh test case và coverage audit | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 6 | Test-case workspace và XLSX export | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 7 | Liên kết PR/MR với test scope | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 8 | Sinh automation từ test case đã duyệt | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 9 | Sandbox execution và phân loại kết quả | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 10 | Technical repair có guardrail | Chưa làm | Chưa làm | `NOT_STARTED` |
-| 11 | Migration UI, evaluation và hardening | Chưa làm | Chưa làm | `NOT_STARTED` |
+| 3 | Semantic chunking và document RAG | Đã làm | Đã làm | `DONE` |
+| 4 | Requirement extraction và review | Đã làm | Đã làm | `DONE` |
+| 5 | Sinh test case và coverage audit | Đã làm | Đã làm | `DONE` |
+| 6 | Test-case workspace và XLSX export | Đã làm | Đã làm | `DONE` |
+| 7 | Liên kết PR/MR với test scope | Đã làm | Đã làm | `DONE` |
+| 8 | Sinh automation từ test case đã duyệt | Đã làm | Đã làm | `DONE` |
+| 9 | Sandbox execution và phân loại kết quả | Đã làm | Đã làm | `DONE` |
+| 10 | Technical repair có guardrail | Đã làm | Đã làm | `DONE` |
+| 11 | Migration UI, evaluation và hardening | Đã làm phần lõi | Đã làm phần lõi | `IN_PROGRESS` |
 
 ## 6. Chi tiết từng phase
 
@@ -296,6 +297,27 @@ Cho phép người dùng tạo document set, upload tài liệu và xem nội du
 - Dữ liệu/file dùng cho E2E được xóa sau test; không để sample tạm trong database
   hoặc `document_data` volume.
 
+### Bằng chứng xác minh Phase 3–5 (11/09/2026)
+
+- Unit tests bao phủ semantic chunking, bảng có header, YC/REQ identifier,
+  prompt injection, strict LLM schemas, grounding expected result, conflict/TBD,
+  exact/semantic dedupe và rule không biến mọi precondition thành state test.
+- Integration workflow chạy PostgreSQL thật qua toàn chuỗi index → retrieve →
+  extract → review → generate → regenerate → coverage; fixture UC-B08 giữ riêng
+  main, hai alternate và hai exception flow.
+- Golden retrieval `UC-B08`, `PR04.03`, `BR03`, `AC-03` đạt Recall@5 = `1.0`;
+  test đồng thời kiểm tra set isolation, approved ranking và snapshot bất biến.
+- Migration 1–16 chạy up/down trên database sạch; migration 16 down/up trên
+  database legacy. Approval trigger từ chối requirement không evidence và test
+  case không có approved requirement link.
+- E2E với `dat-hang-thanh-cong.md`: 40 semantic chunks, 18 requirement có mã
+  `YC-DATHANG-*` được đọc đúng cột actor/precondition/risk, retry generation tái
+  sử dụng toàn bộ test case, và năm route Phase 3–5 trả HTTP 200.
+- Coverage E2E không hiển thị hoàn tất dù approved denominator đã được phủ khi
+  còn TBD; `baseline_complete=false` là guardrail có chủ đích.
+- `go test -race ./...`, integration suite, `go vet`, frontend typecheck/
+  production build và Docker API/worker/frontend build đều pass.
+
 ---
 
 ## Phase 3 — Semantic chunking và Document RAG
@@ -307,41 +329,41 @@ nguồn hoặc trộn document set.
 
 ### Backend
 
-- [ ] Chunk theo requirement/FR/BR/AC/UC thay vì chỉ theo token cố định.
-- [ ] Tách riêng main, alternate và exception flow.
-- [ ] Giữ parent-child link giữa use case và từng step/flow.
-- [ ] Lưu actor, precondition, post-condition, flow type và identifier vào metadata.
-- [ ] Chunk bảng theo hàng nhưng mang theo header và section cha.
-- [ ] Có fallback token chunk cho prose không có cấu trúc.
-- [ ] Embed chỉ text đã normalize, không mất raw source evidence.
-- [ ] Incremental re-index theo document-version checksum.
-- [ ] Hybrid retrieval: identifier exact match + full text + vector.
-- [ ] Filter bắt buộc theo `document_set_id` và version policy.
-- [ ] Ranking ưu tiên `APPROVED` hơn `DRAFT`, nhưng không che mất conflict.
-- [ ] Trả score breakdown và source locator.
-- [ ] Snapshot context bất biến cho mỗi LLM call.
-- [ ] Thêm adversarial prompt-injection fixtures trong nội dung tài liệu.
+- [x] Chunk theo requirement/FR/BR/AC/UC/YC thay vì chỉ theo token cố định.
+- [x] Tách riêng main, alternate và exception flow.
+- [x] Giữ parent-child link giữa use case và từng step/flow.
+- [x] Lưu actor, precondition, post-condition, flow type và identifier vào metadata.
+- [x] Chunk bảng theo hàng nhưng mang theo header và section cha.
+- [x] Có fallback token chunk cho prose không có cấu trúc.
+- [x] Embed chỉ text đã normalize, không mất raw source evidence.
+- [x] Incremental re-index theo document-version checksum, embedding model và chunker version.
+- [x] Hybrid retrieval: identifier exact match + full text + vector.
+- [x] Filter bắt buộc theo `document_set_id` và version policy.
+- [x] Ranking ưu tiên `APPROVED` hơn `DRAFT`, nhưng không che mất conflict.
+- [x] Trả score breakdown và source locator.
+- [x] Snapshot context bất biến cho mỗi LLM call.
+- [x] Thêm adversarial prompt-injection fixtures trong nội dung tài liệu.
 
 ### Frontend
 
-- [ ] Index action và trạng thái theo document set.
-- [ ] Hiển thị file/chunk/skipped count và embedding model.
-- [ ] Chunk inspector theo document/section/type.
-- [ ] Retrieval debug chỉ dành cho người review/admin.
-- [ ] Cảnh báo khi index chứa document version chưa duyệt.
+- [x] Index action và trạng thái theo document set.
+- [x] Hiển thị file/chunk/skipped count và embedding model.
+- [x] Chunk inspector theo document/section/type.
+- [x] Retrieval debug được đặt trong review console; phải giữ console sau private proxy cho tới khi có RBAC.
+- [x] Cảnh báo khi index chứa document version chưa duyệt.
 
 ### Evaluation
 
-- [ ] Golden query cho `UC-B08`, `PR04.03`, `BR03`, `AC-03`.
-- [ ] Đo Recall@k theo requirement/flow, không chỉ kiểm tra có kết quả.
-- [ ] Test isolation giữa hai document set có nội dung giống nhau.
-- [ ] Chứng minh bốn alternate/exception flow của UC-B08 đều có chunk riêng.
+- [x] Golden query cho `UC-B08`, `PR04.03`, `BR03`, `AC-03`.
+- [x] Đo Recall@5 theo requirement/flow; fixture đạt `1.0`.
+- [x] Test isolation giữa hai document set có nội dung giống nhau.
+- [x] Chứng minh hai alternate và hai exception flow của UC-B08 đều có chunk riêng.
 
 ### Definition of Done
 
-- [ ] Retrieval luôn có citation đầy đủ và đúng document set.
-- [ ] Golden dataset đạt ngưỡng Recall@k đã chốt.
-- [ ] Re-index version mới không làm thay đổi historical context snapshot.
+- [x] Retrieval luôn có citation đầy đủ và đúng document set.
+- [x] Golden dataset đạt Recall@5 = `1.0` cho bốn identifier fixture.
+- [x] Re-index không thay đổi historical context snapshot; input không đổi là idempotent.
 
 ---
 
@@ -353,45 +375,45 @@ Tạo `Requirement Inventory` đầy đủ trước khi sinh bất kỳ test cas
 
 ### Backend
 
-- [ ] Structured schema cho requirement: ID, title, statement, type, actor,
+- [x] Structured schema cho requirement: ID, title, statement, type, actor,
   pre/post-condition, priority/risk, status và confidence.
-- [ ] Structured schema cho evidence citation.
-- [ ] Structured schema cho main/alternate/exception flow và từng step.
-- [ ] Extract theo từng semantic unit rồi aggregate toàn document set.
-- [ ] Không giới hạn tùy ý kiểu “tối đa 10 requirement” cho toàn tài liệu.
-- [ ] Deterministic dedupe theo source/identifier trước khi dùng semantic dedupe.
-- [ ] Phát hiện requirement trùng nhưng khác wording.
-- [ ] Phát hiện mâu thuẫn về trạng thái, role, threshold hoặc expected behavior.
-- [ ] Tạo TBD/open question cho chi tiết thiếu.
-- [ ] Mọi requirement bắt buộc có evidence; output không evidence bị reject.
-- [ ] Lưu raw LLM call và context snapshot trong provenance.
-- [ ] API list/detail/update-review cho requirement.
-- [ ] Chỉ requirement `APPROVED` mới vào baseline sinh test mặc định.
-- [ ] Version requirement; không ghi đè requirement đã dùng để sinh test.
+- [x] Structured schema cho evidence citation; service tự gắn citation từ chunk thật thay vì tin ID do model trả.
+- [x] Structured schema cho main/alternate/exception flow và từng step.
+- [x] Extract theo từng semantic unit rồi aggregate toàn document set.
+- [x] Không giới hạn tùy ý kiểu “tối đa 10 requirement” cho toàn tài liệu.
+- [x] Deterministic dedupe theo source/identifier trước khi dùng semantic dedupe.
+- [x] Phát hiện requirement trùng nhưng khác wording.
+- [x] Phát hiện mâu thuẫn về trạng thái, role, threshold hoặc expected behavior.
+- [x] Tạo TBD/open question cho chi tiết thiếu.
+- [x] Mọi requirement bắt buộc có evidence; output không evidence bị reject.
+- [x] Lưu raw LLM call và context snapshot trong provenance.
+- [x] API list/detail/update-review cho requirement.
+- [x] Chỉ requirement `APPROVED` mới vào baseline sinh test mặc định.
+- [x] Version requirement; không ghi đè requirement đã dùng để sinh test.
 
 ### Frontend
 
-- [ ] Requirement inventory theo document set.
-- [ ] Filter theo document/type/status/risk/actor/flow.
-- [ ] Evidence drawer mở đúng nguồn và highlight locator.
-- [ ] Màn hình conflict hiển thị hai nguồn cạnh nhau.
-- [ ] Accept/Edit/Reject requirement với reviewer và comment.
-- [ ] Danh sách TBD/open questions để gửi BA/PO.
-- [ ] Coverage counter phải dùng inventory gốc, không dùng số AI tự báo.
+- [x] Requirement inventory theo document set.
+- [x] Filter theo document/type/status/risk/actor/flow.
+- [x] Evidence drawer mở đúng nguồn và locator.
+- [x] Màn hình conflict hiển thị hai nguồn cạnh nhau.
+- [x] Accept/Edit/Reject requirement với reviewer và comment.
+- [x] Danh sách TBD/open questions để gửi BA/PO.
+- [x] Coverage counter dùng inventory trong database, không dùng số AI tự báo.
 
 ### Tests
 
-- [ ] PTYC/URD mẫu tạo được UC-B08 với main + 2 alternate + 2 exception flow.
-- [ ] URD `Baseline Draft` không tự trở thành approved.
-- [ ] Requirement không citation bị từ chối.
-- [ ] Hai source mâu thuẫn tạo conflict thay vì bị merge âm thầm.
-- [ ] Retry LLM không tạo duplicate requirement.
+- [x] Fixture PTYC/URD cho UC-B08 tạo main + 2 alternate + 2 exception flow.
+- [x] Nguồn `DRAFT` không tự trở thành approved.
+- [x] Requirement không citation bị từ chối ở service và database trigger.
+- [x] Hai source mâu thuẫn tạo conflict thay vì bị merge âm thầm.
+- [x] Retry extraction không tạo duplicate requirement.
 
 ### Definition of Done
 
-- [ ] Người review có thể duyệt một baseline mà không cần xem code.
-- [ ] Inventory giải thích được requirement nào đến từ đâu và phiên bản nào.
-- [ ] Chưa duyệt/conflict/TBD được thể hiện rõ trước bước sinh test.
+- [x] Người review có thể duyệt một baseline mà không cần xem code.
+- [x] Inventory giải thích được requirement nào đến từ đâu và phiên bản nào.
+- [x] Chưa duyệt/conflict/TBD được thể hiện rõ trước bước sinh test.
 
 ---
 
@@ -404,49 +426,49 @@ không bằng câu trả lời tự đánh giá của LLM.
 
 ### Backend
 
-- [ ] Test-case schema gồm ID, title, type, risk, actor, precondition, test data,
+- [x] Test-case schema gồm ID, title, type, risk, actor, precondition, test data,
   steps, expected result, post-condition, confidence và automation status.
-- [ ] Mỗi test-case step hỗ trợ expected result cấp bước nếu cần.
-- [ ] Sinh theo từng requirement/flow, không prompt một lần cho toàn tài liệu.
-- [ ] Kỹ thuật sinh: happy, negative, boundary, permission, state, integration,
+- [x] Mỗi test-case step hỗ trợ expected result cấp bước nếu cần.
+- [x] Sinh theo từng requirement/flow, không prompt một lần cho toàn tài liệu.
+- [x] Kỹ thuật sinh: happy, negative, boundary, permission, state, integration,
   regression và NFR khi đủ bằng chứng.
-- [ ] Không sinh expected cứng cho TBD hoặc threshold chưa được tài liệu chốt.
-- [ ] Gắn `ASSUMPTION` cho suy luận không được nêu trực tiếp.
-- [ ] Dedupe exact và semantic; giữ lý do merge/suppress.
-- [ ] Link nhiều requirement vào một test khi hợp lý.
-- [ ] Coverage engine tính requirement và flow coverage từ link trong DB.
-- [ ] Coverage audit so inventory với test cases, kể cả case bị reject.
-- [ ] Cảnh báo requirement không có positive/negative phù hợp.
-- [ ] Cảnh báo main/alternate/exception flow chưa được phủ.
-- [ ] Không hiển thị 100% nếu còn conflict/TBD ngoài mẫu số; phải hiển thị riêng.
-- [ ] API generate/regenerate/list/detail và coverage matrix.
+- [x] Không sinh expected cứng cho TBD hoặc threshold chưa được tài liệu chốt.
+- [x] Gắn `ASSUMPTION` cho suy luận không được nêu trực tiếp.
+- [x] Dedupe exact và semantic; giữ lý do merge/suppress.
+- [x] Link nhiều requirement vào một test khi hợp lý.
+- [x] Coverage engine tính requirement và flow coverage từ link trong DB.
+- [x] Coverage audit so inventory với test cases, kể cả case bị reject.
+- [x] Cảnh báo requirement không có positive/negative phù hợp.
+- [x] Cảnh báo main/alternate/exception flow chưa được phủ.
+- [x] Không hiển thị 100% nếu còn conflict/TBD ngoài mẫu số; hiển thị riêng.
+- [x] API generate/regenerate/list/detail và coverage matrix.
 
 ### Frontend
 
-- [ ] Trang test-case list và detail.
-- [ ] Bảng requirement ↔ test case.
-- [ ] Badge loại test, risk, confidence, source status và automation status.
-- [ ] Evidence citation bên cạnh expected result.
-- [ ] Accept/Edit/Reject từng test case.
-- [ ] Bulk review chỉ khi không làm mất evidence/comment.
-- [ ] Coverage dashboard có mẫu số rõ ràng.
-- [ ] Hiển thị uncovered, conflict, TBD và duplicate riêng biệt.
+- [x] Trang test-case list và detail.
+- [x] Bảng requirement ↔ test case.
+- [x] Badge loại test, risk, confidence, source status và automation status.
+- [x] Evidence citation bên cạnh expected result.
+- [x] Accept/Edit/Reject từng test case.
+- [x] Bulk review giữ evidence và comment trong audit.
+- [x] Coverage dashboard có mẫu số rõ ràng.
+- [x] Hiển thị uncovered, conflict, TBD và duplicate riêng biệt.
 
 ### Evaluation với bộ mẫu
 
-- [ ] Không lặp lại lỗi “18/18” khi UC-B08 còn bốn flow bị bỏ sót.
-- [ ] Sinh hoặc ghi nhận rõ case đổi địa chỉ.
-- [ ] Sinh hoặc ghi nhận rõ case quay lại giỏ hàng.
-- [ ] Sinh case thiếu thông tin nhận hàng bắt buộc.
-- [ ] Sinh case đơn không còn hợp lệ lúc xác nhận.
-- [ ] Phát hiện các case gần trùng TC-001/TC-006/TC-019.
-- [ ] Tách `business_source` khỏi `generated_by=AI`.
+- [x] Không lặp lại lỗi “18/18”: baseline chưa hoàn tất khi còn flow/conflict/TBD chưa xử lý.
+- [x] Sinh hoặc ghi nhận rõ case đổi địa chỉ.
+- [x] Sinh hoặc ghi nhận rõ case quay lại giỏ hàng.
+- [x] Sinh case thiếu thông tin nhận hàng bắt buộc.
+- [x] Sinh case đơn không còn hợp lệ lúc xác nhận.
+- [x] Phát hiện case exact/gần trùng tương đương TC-001/TC-006/TC-019 bằng deterministic test.
+- [x] Tách `business_source`/evidence khỏi `generated_by=AI`.
 
 ### Definition of Done
 
-- [ ] Mọi expected result có citation tới requirement evidence đã duyệt.
-- [ ] Coverage matrix được tái tạo deterministic từ database.
-- [ ] Test case không cần đọc implementation để xác định đúng/sai nghiệp vụ.
+- [x] Mọi expected result có citation tới requirement evidence đã duyệt.
+- [x] Coverage matrix được tái tạo deterministic từ database.
+- [x] Test case không đọc implementation để xác định đúng/sai nghiệp vụ.
 
 ---
 
@@ -459,37 +481,38 @@ lý kiểm thử.
 
 ### Backend
 
-- [ ] API export XLSX và Markdown theo document set/test suite/test run.
-- [ ] Workbook có metadata: scope, document versions, generated time và reviewer.
-- [ ] Các cột: TC ID, trace, objective, precondition, steps, data, role, expected,
+- [x] API export XLSX và Markdown theo document set/test suite/test run.
+- [x] Workbook có metadata: scope, document versions, generated time và reviewer.
+- [x] Các cột: TC ID, trace, objective, precondition, steps, data, role, expected,
   priority, environment, actual, status, evidence, notes.
-- [ ] Hỗ trợ nhiều execution rounds hoặc tách sheet run history rõ ràng.
-- [ ] Công thức thống kê P/F/NY không tính header/blank row.
-- [ ] Escape formula injection cho cell bắt đầu bằng `=`, `+`, `-`, `@` từ input.
-- [ ] Giới hạn cell length và sanitize invalid XML characters.
-- [ ] Export dùng immutable snapshot để có thể tái lập.
-- [ ] Lưu hash của artifact xuất.
+- [x] Hỗ trợ nhiều execution rounds hoặc tách sheet run history rõ ràng.
+- [x] Công thức thống kê P/F/NY không tính header/blank row.
+- [x] Escape formula injection cho cell bắt đầu bằng `=`, `+`, `-`, `@` từ input.
+- [x] Giới hạn cell length và sanitize invalid XML characters.
+- [x] Export dùng immutable snapshot để có thể tái lập.
+- [x] Lưu hash của artifact xuất.
 
 ### Frontend
 
-- [ ] Workspace giống test management sheet nhưng responsive.
-- [ ] Cho filter/sort trước khi export.
-- [ ] Nút tải XLSX/Markdown và hiển thị export metadata.
-- [ ] Preview cột Actual/Status/Evidence dù test chưa chạy.
-- [ ] Phân biệt `DRAFT`, `APPROVED`, `MANUAL`, `AUTOMATED`, `BLOCKED`.
+- [x] Workspace giống test management sheet nhưng responsive.
+- [x] Cho filter/sort trước khi export.
+- [x] Nút tải XLSX/Markdown và hiển thị export metadata.
+- [x] Preview cột Actual/Status/Evidence dù test chưa chạy.
+- [x] Phân biệt `DRAFT`, `APPROVED`, `MANUAL`, `AUTOMATED`, `BLOCKED`.
 
 ### Tests
 
-- [ ] So sánh workbook xuất với template mẫu về cột bắt buộc.
-- [ ] Mở workbook được bằng Excel/LibreOffice.
-- [ ] Unicode tiếng Việt và multiline steps không bị lỗi.
-- [ ] Formula injection test.
-- [ ] Số liệu summary khớp dữ liệu database.
+- [x] So sánh workbook xuất với template mẫu về cột bắt buộc.
+- [x] Mở workbook bằng parser OOXML độc lập `openpyxl`; launcher LibreOffice cục
+  bộ bị hỏng nên test LibreOffice tự skip khi executable không khả dụng.
+- [x] Unicode tiếng Việt và multiline steps không bị lỗi.
+- [x] Formula injection test.
+- [x] Số liệu summary khớp data row range và dữ liệu database.
 
 ### Definition of Done
 
-- [ ] Có thể xuất bộ UC-B08 ra XLSX dễ đọc và truy vết được nguồn.
-- [ ] Export trước khi chạy hiển thị NY; sau khi chạy có Actual/P/F/Evidence.
+- [x] Có thể xuất bộ UC-B08 ra XLSX dễ đọc và truy vết được nguồn.
+- [x] Export trước khi chạy hiển thị NY; sau khi chạy có Actual/P/F/Evidence.
 
 ---
 
@@ -501,37 +524,38 @@ Giữ tự động hóa theo code change nhưng không để code tạo ra expec
 
 ### Backend
 
-- [ ] Giữ webhook verification, dedupe, source/target SHA và changed files.
-- [ ] Thêm liên kết project ↔ document set/baseline version.
-- [ ] Cho người dùng chọn baseline áp dụng cho repository.
-- [ ] Cho PR/MR liên kết issue/user-story/requirement ID từ title/description/label.
-- [ ] Ưu tiên explicit link hơn AI mapping.
-- [ ] Dùng path/module/change symbol chỉ làm tín hiệu chọn scope.
-- [ ] Lưu lý do mỗi test case được chọn: explicit trace, issue link, path mapping,
+- [x] Giữ webhook verification, dedupe, source/target SHA và changed files.
+- [x] Thêm liên kết project ↔ document set/baseline version.
+- [x] Cho người dùng chọn baseline áp dụng cho repository.
+- [x] Cho PR/MR liên kết issue/user-story/requirement ID từ title/description/label.
+- [x] Ưu tiên explicit link; Phase 7 MVP không cho AI tự thu hẹp scope, mapping
+  không chắc chắn luôn dùng full approved fallback.
+- [x] Dùng path/module/change symbol chỉ làm tín hiệu chọn scope.
+- [x] Lưu lý do mỗi test case được chọn: explicit trace, issue link, path mapping,
   impact inference hoặc manual selection.
-- [ ] Cho chế độ chạy full approved suite khi scope mapping không chắc chắn.
-- [ ] Không thay expected result dựa trên diff.
-- [ ] Snapshot baseline version tại lúc tạo execution analysis.
+- [x] Cho chế độ chạy full approved suite khi scope mapping không chắc chắn.
+- [x] Không thay expected result dựa trên diff.
+- [x] Snapshot baseline version tại lúc tạo execution analysis.
 
 ### Frontend
 
-- [ ] Project page chọn document baseline.
-- [ ] Analysis page hiển thị requirement/test-case scope trước automation.
-- [ ] Cho reviewer thêm/bỏ test case khỏi run với audit comment.
-- [ ] Hiển thị confidence và lý do mapping.
-- [ ] Cảnh báo PR/MR không liên kết requirement.
+- [x] Project page chọn document baseline.
+- [x] Analysis page hiển thị requirement/test-case scope trước automation.
+- [x] Cho reviewer thêm/bỏ test case khỏi run với audit comment.
+- [x] Hiển thị confidence và lý do mapping.
+- [x] Cảnh báo PR/MR không liên kết requirement.
 
 ### Tests
 
-- [ ] Webhook cũ vẫn hoạt động.
-- [ ] Hai project không dùng nhầm document baseline.
-- [ ] Explicit requirement ID chọn đúng test cases.
-- [ ] Low-confidence mapping không âm thầm thu hẹp test suite.
+- [x] Webhook cũ vẫn hoạt động.
+- [x] Hai project không dùng nhầm document baseline.
+- [x] Explicit requirement ID chọn đúng test cases.
+- [x] Low-confidence mapping không âm thầm thu hẹp test suite.
 
 ### Definition of Done
 
-- [ ] Một PR/MR tạo test run gắn source SHA và approved baseline cụ thể.
-- [ ] Người review biết rõ vì sao từng test case nằm trong scope.
+- [x] Một PR/MR tạo test run gắn source SHA và approved baseline cụ thể.
+- [x] Người review biết rõ vì sao từng test case nằm trong scope.
 
 ---
 
@@ -543,43 +567,43 @@ Chuyển test case thành artifact chạy được mà không thay đổi ý ngh
 
 ### Quyết định phạm vi trước khi code
 
-- [ ] Chọn Go unit test nếu chấp nhận AI đọc package/interface/type/mocks.
-- [ ] Chọn black-box API test nếu có OpenAPI/base URL/test credentials.
-- [ ] Hoãn UI test nếu chưa có locator contract ổn định.
+- [x] Chọn Go unit test; AI chỉ đọc technical context cần cho package/interface/type.
+- [x] Hoãn black-box API test tới khi có OpenAPI/base URL/test credentials.
+- [x] Hoãn UI test vì chưa có locator contract ổn định.
 
 ### Backend
 
-- [ ] Automation input bắt buộc chứa immutable test-case snapshot.
-- [ ] Tách `business_context` và `technical_context` trong prompt/schema.
-- [ ] Business context chỉ lấy từ document evidence đã duyệt.
-- [ ] Technical context chỉ chứa thông tin cần compile/run.
-- [ ] Expected result nằm trong immutable section và có hash.
-- [ ] Structured output trả framework, target path, setup, steps/assertions và code.
-- [ ] Validate automation không sửa requirement/expected hash.
-- [ ] Validate path, package, imports, syntax, size và forbidden operations.
-- [ ] Một test case có thể có nhiều artifact version.
-- [ ] Một artifact chỉ hiện thực test cases được khai báo.
-- [ ] Lưu provenance riêng cho business và technical context.
-- [ ] Hỗ trợ `MANUAL/BLOCKED` khi thiếu thông tin automation.
+- [x] Automation input bắt buộc chứa immutable test-case snapshot.
+- [x] Tách `business_context` và `technical_context` trong prompt/schema.
+- [x] Business context chỉ lấy từ document evidence đã duyệt.
+- [x] Technical context chỉ chứa thông tin cần compile/run.
+- [x] Expected result nằm trong immutable section và có hash.
+- [x] Structured output trả framework, target path, setup, steps/assertions và code.
+- [x] Validate automation không sửa requirement/expected hash.
+- [x] Validate path, package, imports, syntax, size và forbidden operations.
+- [x] Một test case có thể có nhiều artifact version.
+- [x] Một artifact chỉ hiện thực test cases được khai báo.
+- [x] Lưu provenance riêng cho business và technical context.
+- [x] Hỗ trợ `MANUAL/BLOCKED` khi thiếu thông tin automation.
 
 ### Frontend
 
-- [ ] Test-case detail hiển thị tab Business Specification và Automation.
-- [ ] Diff artifact version nhưng khóa expected result.
-- [ ] Hiển thị technical context riêng, không gọi nó là business evidence.
-- [ ] Reviewer approve artifact trước lần chạy nếu policy yêu cầu.
+- [x] Test-case detail hiển thị riêng Business Specification và Automation.
+- [x] Diff artifact version nhưng khóa expected result.
+- [x] Hiển thị technical context riêng, không gọi nó là business evidence.
+- [x] Reviewer approve artifact trước lần chạy nếu policy yêu cầu.
 
 ### Tests
 
-- [ ] Prompt injection từ code không thể đổi expected result field/hash.
-- [ ] Artifact compile syntax đúng với fixture.
-- [ ] Thiếu interface/contract trả `BLOCKED`, không bịa API.
-- [ ] Generated code không sửa production file.
+- [x] Prompt injection từ code không thể đổi expected result field/hash.
+- [x] Artifact compile syntax đúng với fixture.
+- [x] Thiếu interface/contract trả `BLOCKED`, không bịa API.
+- [x] Generated code không sửa production file.
 
 ### Definition of Done
 
-- [ ] Có ít nhất một approved test case được chuyển thành artifact và truy vết hai chiều.
-- [ ] Có bằng chứng expected result trước/sau generation là bất biến.
+- [x] Có ít nhất một approved test case được chuyển thành artifact và truy vết hai chiều.
+- [x] Có bằng chứng expected result trước/sau generation là bất biến.
 
 ---
 
@@ -591,39 +615,68 @@ Chạy automation tại đúng code revision và báo cáo đúng loại kết q
 
 ### Backend
 
-- [ ] Giữ source-SHA workspace và Docker isolation hiện có.
-- [ ] Chạy baseline suite trước generated artifact nếu framework hỗ trợ.
-- [ ] Lưu build/commit SHA, image digest, command và environment fingerprint.
-- [ ] Tách trạng thái: `PASSED`, `PRODUCT_FAILED`, `AUTOMATION_ERROR`,
+- [x] Giữ source-SHA workspace và Docker isolation hiện có.
+- [x] Chạy baseline suite trước generated artifact nếu framework hỗ trợ.
+- [x] Lưu build/commit SHA, image digest, command và environment fingerprint.
+- [x] Tách trạng thái: `PASSED`, `PRODUCT_FAILED`, `AUTOMATION_ERROR`,
   `INFRA_ERROR`, `TIMED_OUT`, `BLOCKED`, `NOT_RUN`.
-- [ ] Parser lỗi phân biệt compile error, assertion failure, panic, timeout và setup.
-- [ ] Assertion failure không mặc nhiên là product failure nếu artifact chưa được duyệt.
-- [ ] Lưu bounded/redacted stdout/stderr.
-- [ ] Evidence hỗ trợ log/artifact/screenshot link.
-- [ ] Map kết quả sang Excel `P/F/NY/BLOCKED` nhưng không làm mất taxonomy gốc.
-- [ ] Retry infra error riêng với repair attempt.
-- [ ] Không cho repair product failure bằng cách đổi expected assertion.
+- [x] Parser lỗi phân biệt compile error, assertion failure, panic, timeout và setup.
+- [x] Assertion failure không mặc nhiên là product failure nếu artifact chưa được duyệt.
+- [x] Lưu bounded/redacted stdout/stderr.
+- [x] Evidence hỗ trợ log/artifact/screenshot link.
+- [x] Map kết quả sang Excel `P/F/NY/BLOCKED` nhưng không làm mất taxonomy gốc.
+- [x] Retry infra error riêng với repair attempt.
+- [x] Không cho repair product failure bằng cách đổi expected assertion.
 
 ### Frontend
 
-- [ ] Run summary theo product/automation/infra status.
-- [ ] Hiển thị Expected và Actual cạnh nhau.
-- [ ] Hiển thị source SHA, environment, command, duration và evidence.
-- [ ] Filter failed/blocked/not-run.
-- [ ] Cho reviewer xác nhận hoặc đổi classification kèm audit reason.
+- [x] Run summary theo product/automation/infra status.
+- [x] Hiển thị Expected và Actual cạnh nhau.
+- [x] Hiển thị source SHA, environment, command, duration và evidence.
+- [x] Filter failed/blocked/not-run.
+- [x] Cho reviewer xác nhận hoặc đổi classification kèm audit reason.
 
 ### Tests
 
-- [ ] Fixture product failure có assertion mismatch.
-- [ ] Fixture automation compile failure.
-- [ ] Fixture infra failure và timeout.
-- [ ] Sandbox security tests vẫn pass.
-- [ ] Excel export nhận đúng Actual/Status/Evidence từ test run.
+- [x] Fixture product failure có assertion mismatch.
+- [x] Fixture automation compile failure.
+- [x] Fixture infra failure và timeout.
+- [x] Sandbox security tests vẫn pass.
+- [x] Excel export nhận đúng Actual/Status/Evidence từ test run.
 
 ### Definition of Done
 
-- [ ] Báo cáo không đánh đồng mọi non-zero exit với product bug.
-- [ ] Một run có thể tái lập từ source SHA + artifact hash + environment fingerprint.
+- [x] Báo cáo không đánh đồng mọi non-zero exit với product bug.
+- [x] Một run có thể tái lập từ source SHA + artifact hash + environment fingerprint.
+
+### Bằng chứng xác minh Phase 9 (12/09/2026)
+
+- Migration 18 chạy up/down/up trên PostgreSQL thật; integration test xác minh
+  claim bằng lease, bind approved artifact một lần, infra-only retry tạo attempt
+  mới, evidence không bị ghi đè và classification override có audit.
+- Test processor xác minh baseline chạy trước artifact, approved assertion
+  mismatch thành `PRODUCT_FAILED`, thiếu approved artifact thành `BLOCKED` và
+  code test không được ghi vào source checkout.
+- Taxonomy fixtures phủ pass, compile, assertion, panic, dependency/infra,
+  timeout và artifact chưa duyệt.
+- `go vet ./...`, `go test -race ./...`, integration suite PostgreSQL,
+  frontend typecheck/production build đều pass.
+- `make sandbox-security-check` và `make sandbox-test` pass; test execution mới
+  thực sự chạy clean baseline rồi approved artifact trong container không
+  network, non-root, read-only và lưu image digest/fingerprint.
+- XLSX giữ bốn sheet Test Cases/Run History/Summary/Metadata và đọc Actual,
+  taxonomy/evidence trực tiếp từ `test_run_items`/`test_run_evidence`.
+
+### Bổ sung vận hành — Requirement extraction bất đồng bộ (16/09/2026)
+
+- `POST /requirements/extract` chỉ enqueue durable job và trả HTTP `202`; worker
+  gọi LLM ngoài request timeout của API/reverse proxy.
+- `GET /requirements/extraction` trả trạng thái, tiến độ theo semantic chunk,
+  số requirement tạo/tái sử dụng, retry và lỗi cuối; frontend poll endpoint này.
+- Job khóa index generation lúc enqueue, dùng lease/renewal và dừng nếu index đã
+  thay đổi, tránh trộn evidence giữa hai thế hệ index.
+- Migration 19 và unit/integration/API tests chứng minh idempotency, progress,
+  retry hữu hạn và không còn giữ request trình duyệt đến khi Gemini hoàn tất.
 
 ---
 
@@ -636,35 +689,53 @@ result đã duyệt.
 
 ### Backend
 
-- [ ] Chỉ `AUTOMATION_ERROR` đủ điều kiện repair tự động mặc định.
-- [ ] `INFRA_ERROR` đi retry queue, không gọi LLM repair.
-- [ ] `PRODUCT_FAILED` chuyển review/report, không repair expected assertion.
-- [ ] Repair request chứa immutable expected hash và allowed-change policy.
-- [ ] So sánh semantic assertions trước/sau repair.
-- [ ] Reject unchanged artifact nhưng ghi `UNREPAIRABLE` thay vì làm fail toàn analysis.
-- [ ] Candidate hết lượt repair vẫn chuyển `WAITING_REVIEW`.
-- [ ] Hỗ trợ một candidate lỗi không chặn candidate độc lập khác.
-- [ ] Lưu before/after, reason, validation link, model và prompt version.
-- [ ] Hard limit số lần và token/cost budget.
+- [x] Chỉ `AUTOMATION_ERROR` đủ điều kiện repair tự động mặc định.
+- [x] `INFRA_ERROR` đi retry queue, không gọi LLM repair.
+- [x] `PRODUCT_FAILED` chuyển review/report, không repair expected assertion.
+- [x] Repair request chứa immutable expected hash và allowed-change policy.
+- [x] So sánh semantic assertions trước/sau repair.
+- [x] Reject unchanged artifact nhưng ghi `UNREPAIRABLE` thay vì làm fail toàn analysis.
+- [x] Candidate hợp lệ luôn tạo artifact `DRAFT` và chuyển `WAITING_REVIEW`;
+  provider lỗi có retry hữu hạn và trạng thái terminal riêng.
+- [x] Hỗ trợ một candidate lỗi không chặn candidate độc lập khác.
+- [x] Lưu before/after, reason, test-run-item/evidence link, model và prompt version.
+- [x] Hard limit số lần và token/cost budget.
 
 ### Frontend
 
-- [ ] Repair history nêu rõ loại lỗi và trường được phép đổi.
-- [ ] Highlight assertion/expected guardrail.
-- [ ] Hiển thị `UNREPAIRABLE` nhưng vẫn cho Reject/manual handling.
-- [ ] Không hiển thị repair product failure như thành công kỹ thuật.
+- [x] Repair history nêu rõ loại lỗi và trường được phép đổi.
+- [x] Highlight assertion/expected guardrail.
+- [x] Hiển thị `UNREPAIRABLE` và hướng người dùng sang xử lý thủ công.
+- [x] Không hiển thị repair product failure như thành công kỹ thuật.
 
 ### Tests
 
-- [ ] Provider trả unchanged code không làm toàn analysis `FAILED`.
-- [ ] Repair cố đổi expected assertion bị từ chối.
-- [ ] Candidate pass không bị tạo version repair mới.
-- [ ] Max attempt luôn kết thúc.
+- [x] Provider trả unchanged code không làm toàn analysis `FAILED`.
+- [x] Repair cố đổi expected assertion bị từ chối.
+- [x] Candidate pass không bị tạo version repair mới.
+- [x] Max attempt luôn kết thúc.
 
 ### Definition of Done
 
-- [ ] Lỗi từng gặp ở Analysis #9 được xử lý thành candidate-level outcome.
-- [ ] Không có đường code nào cho repair sửa business expected result.
+- [x] Lỗi từng gặp ở Analysis #9 được xử lý thành candidate-level outcome.
+- [x] Không có đường code nào cho repair sửa business expected result.
+
+### Bằng chứng xác minh Phase 10 (16/09/2026)
+
+- Migration 20 tạo queue `automation_repair_jobs`, unique active job, lease/retry,
+  giới hạn ba lần và database trigger khóa expected hash, policy, source hash và
+  assertion gốc.
+- Repository chỉ enqueue item có taxonomy đúng bằng `AUTOMATION_ERROR` và
+  approved artifact có cùng expected hash; integration test từ chối cả
+  `PRODUCT_FAILED` lẫn `PASSED`.
+- Processor so sánh semantic assertion chuẩn hóa trước/sau, kiểm tra Go syntax,
+  target path/package/import và biến unchanged/unsafe output thành
+  `UNREPAIRABLE` ở phạm vi candidate.
+- UI run detail chỉ hiện nút repair cho `AUTOMATION_ERROR`, hiển thị policy,
+  expected guardrail, lịch sử và liên kết tới artifact draft chờ review.
+- Khi draft repair được duyệt, repository append một test-run-item attempt mới,
+  đưa run về queue sandbox và giữ nguyên toàn bộ attempt/evidence cũ. Giới hạn
+  repair được tính trên cả chuỗi run + test case, không reset sau mỗi rerun.
 
 ---
 
@@ -677,78 +748,108 @@ chỉ sau khi dữ liệu mới ổn định.
 
 ### Backend
 
-- [ ] Read adapter/migration cho analyses legacy nếu cần giữ lịch sử.
-- [ ] Feature flag chuyển pipeline theo project/document set.
-- [ ] Backfill không gán giả citation cho dữ liệu cũ.
-- [ ] Retention/delete/export policy cho document và evidence.
-- [ ] Auth/RBAC cho upload, approve, execute và export.
-- [ ] Audit mọi approval và manual classification override.
-- [ ] Rate/token/cost limit theo document set/job.
-- [ ] Metrics cho parse, extraction, coverage, generation và execution.
-- [ ] Backup/restore bao gồm file storage và database nhất quán.
-- [ ] Deprecate endpoint legacy sau thời gian tương thích.
+- [x] Giữ read path analyses legacy trong giai đoạn tương thích.
+- [x] Feature flag chuyển pipeline theo project.
+- [x] Backfill không gán giả citation cho dữ liệu cũ: project tồn tại được đặt
+  `LEGACY`, project mới mặc định `DOCUMENT_DRIVEN`.
+- [ ] Retention/delete/export policy cho document và evidence: đã có archive,
+  retention và export; physical purge chủ động vẫn chưa mở để tránh xóa nhầm.
+- [x] Service-token auth và role `viewer/editor/reviewer/admin` cho upload,
+  approve, execute và export; identity người dùng cuối do reverse proxy/OIDC cấp.
+- [x] Audit mọi approval và manual classification override.
+- [ ] Rate/token/cost limit theo document set/job: đã có HTTP rate limit,
+  per-call token cap và per-repair cost cap; tổng budget của cả document set chưa có.
+- [x] Metrics cho parse, extraction, approval, generation và execution.
+- [x] Backup/restore bao gồm file storage và database tại cùng quiesced point.
+- [x] Endpoint compatibility cũ trả `Deprecation` và successor `Link` header.
 
 ### Frontend
 
-- [ ] Overview mặc định hiển thị Documents, Requirements, Test Suites và Runs.
-- [ ] Navigation legacy có nhãn rõ hoặc bị ẩn sau feature flag.
-- [ ] Empty/error/loading state cho toàn bộ pipeline mới.
-- [ ] Accessibility và responsive review cho bảng coverage/XLSX-like workspace.
-- [ ] Onboarding demo bằng PTYC/URD mẫu.
+- [x] Overview mặc định hiển thị Documents, Requirements, Test Suites và Runs.
+- [x] Navigation legacy có nhãn rõ hoặc bị ẩn sau feature flag.
+- [x] Empty/error/loading state dùng chung cho pipeline mới.
+- [x] Accessibility và responsive review cho bảng coverage/XLSX-like workspace:
+  skip link, focus-visible, live status và bảng scroll ngang trên màn hình hẹp.
+- [x] Có onboarding demo PTYC/URD tại `docs/DOCUMENT_DRIVEN_DEMO.md`.
 
 ### Evaluation
 
-- [ ] Requirement extraction precision/recall trên golden set.
-- [ ] Flow coverage recall: main/alternate/exception.
-- [ ] Unsupported-claim/hallucination rate.
-- [ ] Citation correctness.
-- [ ] Duplicate test-case rate.
-- [ ] Human acceptance/edit distance/time.
-- [ ] Automation compile/execution rate.
-- [ ] Product-failure detection trên seeded defects.
-- [ ] So sánh `DOC_ONLY_TEST_DESIGN` với code-first recommendation cũ.
-- [ ] Báo riêng business quality và technical execution quality.
+- [x] Requirement extraction precision/recall trên golden-set format.
+- [x] Flow coverage recall: main/alternate/exception.
+- [x] Unsupported-claim/hallucination rate.
+- [x] Citation correctness.
+- [x] Duplicate test-case rate.
+- [x] Human acceptance/edit distance/time.
+- [x] Automation compile/execution rate.
+- [x] Product-failure detection trên seeded defects.
+- [x] So sánh `DOC_ONLY_TEST_DESIGN` với code-first recommendation cũ.
+- [x] Báo riêng business quality và technical execution quality.
+
+Fixture `document-controlled-v1` chỉ xác minh công thức và định dạng báo cáo;
+số liệu luận văn phải được thay bằng annotation/trial thật, không được dùng fixture
+để tuyên bố chất lượng sản phẩm.
 
 ### Definition of Done
 
 - [ ] Demo end-to-end: upload URD → approve requirements → generate/approve test
   cases → PR webhook → sandbox run → Excel report.
-- [ ] Dữ liệu cũ vẫn đọc được hoặc có migration/deprecation document rõ ràng.
-- [ ] README/API/database/deployment/security docs phản ánh trạng thái cuối.
+- [x] Dữ liệu cũ vẫn đọc được, project cũ giữ `LEGACY` và endpoint tương thích
+  có deprecation header mà không tạo citation giả.
+- [x] README/API/database/deployment/security docs phản ánh trạng thái triển khai.
 
-## 7. API mục tiêu sơ bộ
+Phase 11 chưa thể đánh dấu `DONE` cho đến khi chạy kịch bản E2E với credential
+GitHub/GitLab, LLM và sandbox của môi trường demo, đồng thời chốt chính sách
+physical purge và tổng token/cost budget theo document set.
 
-Tên endpoint có thể thay đổi sau Phase 1, nhưng capability tối thiểu gồm:
+## 7. API document-driven hiện tại
+
+Các endpoint đã triển khai gồm:
 
 ```text
 POST /api/document-sets
 GET  /api/document-sets
+GET  /api/document-metrics
 GET  /api/document-sets/{id}
+POST /api/document-sets/{id}/lifecycle
 
 POST /api/document-sets/{id}/documents
 GET  /api/document-sets/{id}/documents
 GET  /api/documents/{id}/versions/{version}
+POST /api/document-versions/{id}/review
 POST /api/document-sets/{id}/index
+GET  /api/document-sets/{id}/index
 
 POST /api/document-sets/{id}/requirements/extract
+GET  /api/document-sets/{id}/requirements/extraction
 GET  /api/document-sets/{id}/requirements
-POST /api/requirements/{id}/accept
-POST /api/requirements/{id}/reject
+POST /api/requirements/{id}/review
 
 POST /api/document-sets/{id}/test-cases/generate
 GET  /api/document-sets/{id}/test-cases
 GET  /api/document-sets/{id}/coverage
-POST /api/test-cases/{id}/accept
-POST /api/test-cases/{id}/reject
+POST /api/test-cases/{id}/review
 
-POST /api/test-suites/{id}/runs
 GET  /api/test-runs/{id}
-GET  /api/test-runs/{id}/export.xlsx
-GET  /api/test-runs/{id}/export.md
+POST /api/test-runs/{id}/execute
+POST /api/test-run-items/{id}/classification
+POST /api/test-run-items/{id}/repair
+GET  /api/test-run-items/{id}/repairs
+
+POST /api/projects/{id}/pipeline-mode
+
+POST /api/document-sets/{id}/exports
+GET  /api/document-sets/{id}/exports
+GET  /api/test-exports/{id}/download
 ```
 
-Webhook GitHub/GitLab hiện có tiếp tục được giữ và sau Phase 7 sẽ tạo `test_run`
-thay vì chỉ tạo code-first `analysis_job`.
+`POST /api/document-sets/{id}/exports` nhận `format` là `XLSX` hoặc `MARKDOWN`
+và có thể nhận `test_run_id`; API trả `download_url` của snapshot bất biến.
+Production API yêu cầu Bearer service token và role phù hợp; health/readiness và
+webhook có cơ chế xác thực riêng nên không dùng token này.
+
+Webhook GitHub/GitLab được giữ: với project `DOCUMENT_DRIVEN` đã chọn baseline,
+webhook tạo `analysis_job`, immutable baseline snapshot, test scope và `test_run`;
+project `LEGACY` tiếp tục đường tương thích mà không có citation giả.
 
 ## 8. Schema mục tiêu sơ bộ
 
@@ -758,6 +859,7 @@ documents
 document_versions
 document_blocks
 document_chunks
+requirement_extraction_jobs
 
 requirements
 requirement_evidence
@@ -772,6 +874,7 @@ test_case_requirement_links
 test_case_reviews
 
 automation_artifacts
+automation_repair_jobs
 test_runs
 test_run_items
 test_run_evidence
@@ -779,6 +882,8 @@ test_run_evidence
 llm_calls
 context_snapshots
 context_snapshot_items
+document_set_audit_log
+project_pipeline_mode_audit
 ```
 
 Không tái sử dụng tên `generated_tests` cho test case nghiệp vụ vì hai khái niệm
@@ -868,14 +973,16 @@ Phase 11 là điều kiện để chuyển pipeline mới thành mặc định v
 
 ## 13. Definition of Done toàn chương trình
 
-- [ ] Tài liệu là nguồn duy nhất của business scenario và expected result.
-- [ ] Mọi test case truy vết được tới document version/source locator.
-- [ ] Coverage audit phát hiện requirement/flow chưa phủ.
-- [ ] Người dùng duyệt requirement trước test case và duyệt test case trước automation.
-- [ ] PR/MR vẫn tự động kích hoạt run tại đúng code revision.
-- [ ] Generated automation chạy trong sandbox an toàn.
-- [ ] Product failure không bị repair thành pass bằng cách đổi expected.
-- [ ] Execution report xuất được XLSX/Markdown với Actual và evidence.
-- [ ] Có evaluation định lượng business quality và technical quality riêng.
-- [ ] Tất cả unit/integration/sandbox/frontend tests pass.
-- [ ] Documentation current/target không còn mâu thuẫn.
+- [x] Trong pipeline `DOCUMENT_DRIVEN`, tài liệu là nguồn duy nhất của business
+  scenario và expected result.
+- [x] Mọi test case truy vết được tới document version/source locator.
+- [x] Coverage audit phát hiện requirement/flow chưa phủ.
+- [x] Người dùng duyệt requirement trước test case và duyệt test case trước automation.
+- [x] PR/MR tự động kích hoạt run tại đúng code revision khi project đã chọn baseline.
+- [x] Generated automation chạy trong sandbox an toàn.
+- [x] Product failure không bị repair thành pass bằng cách đổi expected.
+- [x] Execution report xuất được XLSX/Markdown với Actual và evidence.
+- [x] Có evaluation định lượng business quality và technical quality riêng.
+- [x] Unit/integration/race/frontend tests pass; sandbox suite của Phase 9 tiếp tục
+  là gate bắt buộc khi image/Docker runtime sẵn sàng.
+- [x] Documentation current/target không còn mô tả Phase 10 là backlog.

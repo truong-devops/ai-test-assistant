@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"crypto/subtle"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -12,6 +14,79 @@ type RouterOptions struct {
 	RateLimitPerSecond  float64
 	RateLimitBurst      int
 	RateLimitMaxClients int
+	AuthToken           string
+}
+
+func authorizationMiddleware(options RouterOptions, next http.Handler) http.Handler {
+	token := strings.TrimSpace(options.AuthToken)
+	if token == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" || r.URL.Path == "/ready" || strings.HasPrefix(r.URL.Path, "/api/webhooks/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		provided := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if len(provided) != len(token) || subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		role := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Authenticated-Role")))
+		if role == "" {
+			role = "viewer"
+		}
+		if !roleAllowed(role, requiredRole(r)) {
+			writeError(w, http.StatusForbidden, "insufficient role")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// legacyDeprecationHeaders keeps historical read/review routes available during
+// migration while making their compatibility status machine-readable. The
+// successor is the document-driven API rooted at /api/document-sets.
+func legacyDeprecationHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		legacy := strings.HasPrefix(path, "/api/evaluations") ||
+			strings.HasPrefix(path, "/api/generated-tests/") ||
+			(strings.HasPrefix(path, "/api/analyses/") &&
+				containsAny(path, "/recommendations", "/generated-tests", "/validations", "/repairs"))
+		if legacy {
+			w.Header().Set("Deprecation", "true")
+			w.Header().Set("Link", `</api/document-sets>; rel="successor-version"`)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func containsAny(value string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func requiredRole(r *http.Request) string {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		return "viewer"
+	}
+	path := r.URL.Path
+	for _, marker := range []string{"/review", "/classification", "/execute", "/exports", "/repair", "/lifecycle", "/pipeline-mode", "/document-baseline", "/test-scope"} {
+		if strings.Contains(path, marker) {
+			return "reviewer"
+		}
+	}
+	return "editor"
+}
+
+func roleAllowed(actual, required string) bool {
+	ranks := map[string]int{"viewer": 1, "editor": 2, "reviewer": 3, "admin": 4}
+	return ranks[actual] >= ranks[required]
 }
 
 type rateLimitClient struct {

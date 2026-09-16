@@ -121,7 +121,7 @@ func NewRouterWithPhaseThirteenServices(logger *slog.Logger, checker ReadinessCh
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService, nil,
-		document.DefaultMaxUploadBytes, options)
+		document.DefaultMaxUploadBytes, nil, nil, nil, nil, nil, nil, nil, options)
 }
 
 func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker,
@@ -136,7 +136,42 @@ func NewRouterWithDocumentServices(logger *slog.Logger, checker ReadinessChecker
 	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
 		knowledgeService, recommendationService, generationService, validationService, repairService,
 		reviewService, contextService, evaluationService, provenanceService, impactService,
-		documentService, documentMaxUploadBytes, options)
+		documentService, documentMaxUploadBytes, nil, nil, nil, nil, nil, nil, nil, options)
+}
+
+func NewRouterWithDocumentWorkflowServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService, provenanceService ProvenanceService,
+	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
+	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
+	testCaseService TestCaseWorkflowService, options RouterOptions,
+) http.Handler {
+	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, recommendationService, generationService, validationService, repairService,
+		reviewService, contextService, evaluationService, provenanceService, impactService,
+		documentService, documentMaxUploadBytes, documentIndexService, requirementService,
+		testCaseService, nil, nil, nil, nil, options)
+}
+
+func NewRouterWithDocumentDrivenServices(logger *slog.Logger, checker ReadinessChecker,
+	projectService *project.Service, analysisService AnalysisService, webhookHandler http.Handler,
+	knowledgeService KnowledgeService, recommendationService RecommendationService,
+	generationService GenerationService, validationService ValidationService,
+	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
+	evaluationService EvaluationService, provenanceService ProvenanceService,
+	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
+	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
+	testCaseService TestCaseWorkflowService, reportService ReportService, scopeService ScopeService,
+	automationService AutomationService, executionService ExecutionService, options RouterOptions,
+) http.Handler {
+	return newRouterWithServices(logger, checker, projectService, analysisService, webhookHandler,
+		knowledgeService, recommendationService, generationService, validationService, repairService,
+		reviewService, contextService, evaluationService, provenanceService, impactService,
+		documentService, documentMaxUploadBytes, documentIndexService, requirementService,
+		testCaseService, reportService, scopeService, automationService, executionService, options)
 }
 
 func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
@@ -146,6 +181,9 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	repairService RepairService, reviewService ReviewService, contextService AnalysisContextService,
 	evaluationService EvaluationService, provenanceService ProvenanceService,
 	impactService ImpactService, documentService DocumentService, documentMaxUploadBytes int64,
+	documentIndexService DocumentIndexService, requirementService RequirementWorkflowService,
+	testCaseService TestCaseWorkflowService, reportService ReportService, scopeService ScopeService,
+	automationService AutomationService, executionService ExecutionService,
 	options RouterOptions,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -157,6 +195,7 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	mux.HandleFunc("POST /api/projects", projects.create)
 	mux.HandleFunc("GET /api/projects", projects.list)
 	mux.HandleFunc("GET /api/projects/{id}", projects.get)
+	mux.HandleFunc("POST /api/projects/{id}/pipeline-mode", projects.setPipelineMode)
 	if knowledgeService != nil {
 		indexes := knowledgeHandler{service: knowledgeService}
 		mux.HandleFunc("POST /api/projects/{id}/index", indexes.requestIndex)
@@ -212,10 +251,70 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		documents := documentHandler{service: documentService, maxUploadBytes: documentMaxUploadBytes}
 		mux.HandleFunc("POST /api/document-sets", documents.createSet)
 		mux.HandleFunc("GET /api/document-sets", documents.listSets)
+		mux.HandleFunc("GET /api/document-metrics", documents.metrics)
 		mux.HandleFunc("GET /api/document-sets/{id}", documents.getSet)
+		mux.HandleFunc("POST /api/document-sets/{id}/lifecycle", documents.lifecycle)
 		mux.HandleFunc("POST /api/document-sets/{id}/documents", documents.upload)
 		mux.HandleFunc("GET /api/document-sets/{id}/documents", documents.listDocuments)
 		mux.HandleFunc("GET /api/documents/{id}/versions/{version}", documents.getVersion)
+	}
+	if documentIndexService != nil {
+		indexes := documentIndexHandler{service: documentIndexService}
+		mux.HandleFunc("POST /api/document-sets/{id}/index", indexes.index)
+		mux.HandleFunc("GET /api/document-sets/{id}/index", indexes.status)
+		mux.HandleFunc("GET /api/document-sets/{id}/chunks", indexes.chunks)
+		mux.HandleFunc("POST /api/document-sets/{id}/retrieve", indexes.retrieve)
+		mux.HandleFunc("POST /api/document-versions/{id}/review", indexes.reviewVersion)
+	}
+	if requirementService != nil {
+		requirements := requirementWorkflowHandler{service: requirementService}
+		mux.HandleFunc("POST /api/document-sets/{id}/requirements/extract", requirements.extract)
+		mux.HandleFunc("GET /api/document-sets/{id}/requirements/extraction", requirements.extractionStatus)
+		mux.HandleFunc("GET /api/document-sets/{id}/requirements", requirements.list)
+		mux.HandleFunc("GET /api/document-sets/{id}/requirement-conflicts", requirements.conflicts)
+		mux.HandleFunc("GET /api/document-sets/{id}/open-questions", requirements.questions)
+		mux.HandleFunc("GET /api/requirements/{id}", requirements.get)
+		mux.HandleFunc("POST /api/requirements/{id}/review", requirements.review)
+	}
+	if testCaseService != nil {
+		testCases := testCaseWorkflowHandler{service: testCaseService}
+		mux.HandleFunc("POST /api/document-sets/{id}/test-cases/generate", testCases.generate)
+		mux.HandleFunc("POST /api/document-sets/{id}/test-cases/regenerate", testCases.regenerate)
+		mux.HandleFunc("GET /api/document-sets/{id}/test-cases", testCases.list)
+		mux.HandleFunc("GET /api/document-sets/{id}/coverage", testCases.coverage)
+		mux.HandleFunc("GET /api/test-cases/{id}", testCases.get)
+		mux.HandleFunc("POST /api/test-cases/{id}/review", testCases.review)
+		mux.HandleFunc("POST /api/test-cases/bulk-review", testCases.bulkReview)
+	}
+	if reportService != nil {
+		reports := reportHandler{service: reportService}
+		mux.HandleFunc("POST /api/document-sets/{id}/exports", reports.export)
+		mux.HandleFunc("GET /api/document-sets/{id}/exports", reports.list)
+		mux.HandleFunc("GET /api/test-exports/{id}/download", reports.download)
+	}
+	if scopeService != nil {
+		scopes := scopeHandler{service: scopeService}
+		mux.HandleFunc("GET /api/projects/{id}/document-baseline", scopes.baseline)
+		mux.HandleFunc("POST /api/projects/{id}/document-baseline", scopes.selectBaseline)
+		mux.HandleFunc("GET /api/analyses/{id}/test-scope", scopes.get)
+		mux.HandleFunc("POST /api/analyses/{id}/test-scope", scopes.decide)
+	}
+	if automationService != nil {
+		automations := automationHandler{service: automationService}
+		mux.HandleFunc("POST /api/analyses/{id}/automation/generate", automations.generate)
+		mux.HandleFunc("GET /api/test-cases/{id}/automation", automations.history)
+		mux.HandleFunc("POST /api/automation-artifacts/{id}/review", automations.review)
+		if repairService, ok := automationService.(AutomationRepairService); ok {
+			repairs := automationRepairHandler{service: repairService}
+			mux.HandleFunc("POST /api/test-run-items/{id}/repair", repairs.request)
+			mux.HandleFunc("GET /api/test-run-items/{id}/repairs", repairs.list)
+		}
+	}
+	if executionService != nil {
+		executions := executionHandler{service: executionService}
+		mux.HandleFunc("GET /api/test-runs/{id}", executions.get)
+		mux.HandleFunc("POST /api/test-runs/{id}/execute", executions.request)
+		mux.HandleFunc("POST /api/test-run-items/{id}/classification", executions.classify)
 	}
 	if webhookHandler != nil {
 		mux.Handle("POST /api/webhooks/gitlab", webhookHandler)
@@ -223,7 +322,8 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	}
 
 	limiter := newClientRateLimiter(options)
-	return requestLogger(logger, securityHeaders(limiter.middleware(mux)))
+	return requestLogger(logger, securityHeaders(limiter.middleware(
+		authorizationMiddleware(options, legacyDeprecationHeaders(mux)))))
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {

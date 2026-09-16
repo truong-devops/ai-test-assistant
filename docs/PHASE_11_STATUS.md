@@ -1,8 +1,12 @@
 # Phase 11 implementation status
 
-> Historical implementation evidence for the current code-first deployment.
+> Historical implementation evidence for the legacy code-first deployment.
 > Document-driven deployment changes are tracked separately in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
+> In particular, the current stack has service-token authentication and
+> role-gated mutations plus coordinated database/file backup. End-user identity,
+> OIDC/session handling and production reverse-proxy verification remain rollout
+> responsibilities; the older snapshot below must not be read as current scope.
 
 Status: **implemented locally; external GitLab runner and production-host
 verification remain**.

@@ -51,14 +51,23 @@ var (
 )
 
 type Set struct {
-	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
-	ProductName string    `json:"product_name"`
-	Scope       string    `json:"scope"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            int64      `json:"id"`
+	Name          string     `json:"name"`
+	ProductName   string     `json:"product_name"`
+	Scope         string     `json:"scope"`
+	Description   string     `json:"description"`
+	Status        string     `json:"status"`
+	RetentionDays int        `json:"retention_days"`
+	ArchivedAt    *time.Time `json:"archived_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+type LifecycleInput struct {
+	Status        string `json:"status"`
+	RetentionDays int    `json:"retention_days"`
+	Actor         string `json:"actor"`
+	Reason        string `json:"reason"`
 }
 
 type Document struct {
@@ -132,6 +141,22 @@ type ParsedBlock struct {
 	Content       string
 	SourceLocator string
 	Metadata      map[string]any
+}
+
+type PipelineMetrics struct {
+	DocumentSets           int `json:"document_sets"`
+	DocumentVersions       int `json:"document_versions"`
+	ParsedVersions         int `json:"parsed_versions"`
+	ParseFailures          int `json:"parse_failures"`
+	ApprovedRequirements   int `json:"approved_requirements"`
+	ExtractionJobs         int `json:"extraction_jobs"`
+	ExtractionFailures     int `json:"extraction_failures"`
+	TestSuites             int `json:"test_suites"`
+	ApprovedTestCases      int `json:"approved_test_cases"`
+	AutomationArtifacts    int `json:"automation_artifacts"`
+	TestRuns               int `json:"test_runs"`
+	RunsNeedingAttention   int `json:"runs_needing_attention"`
+	PendingApprovalActions int `json:"pending_approval_actions"`
 }
 
 func ValidDocumentType(value string) bool {

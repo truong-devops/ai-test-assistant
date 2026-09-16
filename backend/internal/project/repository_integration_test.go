@@ -36,6 +36,20 @@ func TestPostgresRepositoryLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = pool.Exec(context.Background(), `DELETE FROM projects WHERE id=$1`, created.ID) }()
+	if created.PipelineMode != PipelineDocumentDriven {
+		t.Fatalf("new project pipeline mode=%q", created.PipelineMode)
+	}
+	changed, err := repository.SetPipelineMode(ctx, created.ID, PipelineModeInput{
+		Mode: PipelineLegacy, Actor: "integration-test", Reason: "verify safe compatibility rollout",
+	})
+	if err != nil || changed.PipelineMode != PipelineLegacy {
+		t.Fatalf("SetPipelineMode() project=%+v error=%v", changed, err)
+	}
+	var auditCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM project_pipeline_mode_audit
+		WHERE project_id=$1 AND previous_mode='DOCUMENT_DRIVEN' AND new_mode='LEGACY'`, created.ID).Scan(&auditCount); err != nil || auditCount != 1 {
+		t.Fatalf("pipeline audit count=%d error=%v", auditCount, err)
+	}
 
 	byID, err := repository.GetByID(ctx, created.ID)
 	if err != nil || byID.Provider != "gitlab" || byID.ProviderProjectID != gitLabID {

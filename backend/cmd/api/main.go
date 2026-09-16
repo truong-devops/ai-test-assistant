@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/automation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/evaluation"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/execution"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/generation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/github"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/gitlab"
@@ -20,14 +23,19 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/impact"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/logging"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/project"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/provenance"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/recommendation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/repair"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/report"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/requirement"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/review"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/scope"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/testcase"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
 )
 
@@ -84,6 +92,31 @@ func main() {
 		logger.Error("configure embedding client", "error", err)
 		os.Exit(1)
 	}
+	documentIndexService := document.NewIndexService(document.NewIndexRepository(database.Pool()), embedder)
+	llmProvider, err := llm.NewProvider(llm.Config{
+		Provider: cfg.LLM.Provider, BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey,
+		Model: cfg.LLM.Model, FallbackModels: cfg.LLM.FallbackModels,
+		RequestTimeout: cfg.LLM.RequestTimeout, MaxOutputTokens: cfg.LLM.MaxOutputTokens,
+	})
+	if err != nil {
+		logger.Error("configure document workflow LLM provider", "error", err)
+		os.Exit(1)
+	}
+	var requirementExtractor requirement.Extractor = requirement.DeterministicExtractor{}
+	providerName := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
+	if providerName != "" && providerName != "disabled" && providerName != "none" {
+		requirementExtractor = requirement.NewLLMExtractor(llmProvider, providerName,
+			cfg.LLM.Model, cfg.LLM.MaxOutputTokens)
+	}
+	requirementService := requirement.NewService(requirement.NewRepository(database.Pool()),
+		documentIndexService, requirementExtractor)
+	testCaseRepository := testcase.NewRepository(database.Pool())
+	testCaseService := testcase.NewService(testCaseRepository, requirementService)
+	if providerName != "" && providerName != "disabled" && providerName != "none" {
+		testCaseService = testcase.NewServiceWithLLM(testCaseRepository, requirementService,
+			testcase.NewLLMGenerator(llmProvider, providerName, cfg.LLM.Model,
+				cfg.LLM.MaxOutputTokens), requirement.NewRepository(database.Pool()))
+	}
 	recommendationRepository := recommendation.NewRepository(database.Pool())
 	recommendationService := recommendation.NewService(jobRepository, recommendationRepository)
 	generationRepository := generation.NewRepository(database.Pool())
@@ -104,21 +137,32 @@ func main() {
 	provenanceService := provenance.NewService(jobRepository, provenanceRepository)
 	impactRepository := impact.NewRepository(database.Pool())
 	impactService := impact.NewService(jobRepository, impactRepository)
-	webhookService := gitlab.NewWebhookService(projectRepository, jobRepository)
+	scopeRepository := scope.NewRepository(database.Pool())
+	scopedEnqueuer := scope.NewEnqueuer(jobRepository, scopeRepository)
+	reportService := report.NewService(report.NewRepository(database.Pool()))
+	automationService := automation.NewService(automation.NewRepository(database.Pool()),
+		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, providerName,
+		cfg.LLM.Model, cfg.LLM.MaxOutputTokens).ConfigureRepair(cfg.Repair.MaxAttempts,
+		cfg.Repair.MaxCostMicroUSD)
+	executionService := execution.NewService(execution.NewRepository(database.Pool()))
+	webhookService := gitlab.NewWebhookService(projectRepository, scopedEnqueuer)
 	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
-	gitHubWebhookService := github.NewWebhookService(projectRepository, jobRepository)
+	gitHubWebhookService := github.NewWebhookService(projectRepository, scopedEnqueuer)
 	gitHubWebhookHandler := github.NewWebhookHandler(cfg.GitHub.WebhookSecret, gitHubWebhookService)
 	webhookHandler := http.NewServeMux()
 	webhookHandler.Handle("POST /api/webhooks/gitlab", gitLabWebhookHandler)
 	webhookHandler.Handle("POST /api/webhooks/github", gitHubWebhookHandler)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewRouterWithDocumentServices(logger, database, projectService, analysisService,
+		Handler: httpapi.NewRouterWithDocumentDrivenServices(logger, database, projectService, analysisService,
 			webhookHandler, knowledgeService, recommendationService, generationService,
 			validationService, repairService, reviewService, contextService, evaluationService,
 			provenanceService, impactService, documentService, cfg.Document.MaxUploadBytes,
+			documentIndexService, requirementService, testCaseService, reportService,
+			scopeRepository, automationService, executionService,
 			httpapi.RouterOptions{RateLimitPerSecond: cfg.HTTP.RateLimitPerSecond,
-				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients}),
+				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients,
+				AuthToken: cfg.Auth.Token}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		WriteTimeout:      cfg.HTTP.WriteTimeout,

@@ -1,8 +1,9 @@
 # Phase 11 deployment runbook
 
-> This runbook deploys the legacy-compatible system plus document-driven Phase
-> 2. Compose now provisions shared document storage and the worker runs the
-> parser queue. Requirement/test-case/report services are still future phases.
+> This runbook deploys the legacy-compatible system plus document-driven Phases
+> 0–10 and the implemented Phase 11 rollout controls. Compose provisions shared
+> document storage; workers run parsing, requirement extraction, code analysis,
+> sandbox execution and guarded repair queues.
 > Follow the deployment/hardening checklist in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 > before treating a future document-driven build as production-ready.
@@ -13,10 +14,10 @@ mounts runtime secrets as files, binds HTTP ports to loopback by default, rotate
 container logs, and starts application containers with a read-only root
 filesystem, dropped capabilities, and `no-new-privileges`.
 
-Authentication/RBAC is not implemented yet. Until that backlog is closed, the
-loopback ports must sit behind an authenticated private reverse proxy or remain
-reachable only from a trusted network. Do not publish them directly to the
-internet.
+The production API requires a file-mounted bearer token and enforces service
+roles. It does not authenticate end-user identities: keep loopback ports behind
+an OIDC/authenticated reverse proxy, let only that trusted proxy/frontend know
+the token, and do not publish the API directly to the internet.
 
 ## Clean-machine deployment
 
@@ -38,6 +39,7 @@ openssl rand -hex 32 > secrets/gitlab_webhook_secret
 printf '%s\n' 'glpat-replace-with-real-token' > secrets/gitlab_token
 openssl rand -hex 32 > secrets/github_webhook_secret
 printf '%s\n' 'github_pat_replace-with-real-token' > secrets/github_token
+openssl rand -hex 32 > secrets/api_auth_token
 read -rsp "LLM API key: " LLM_KEY
 printf '%s' "$LLM_KEY" > secrets/llm_api_key
 unset LLM_KEY
@@ -72,6 +74,11 @@ sudo chgrp 65532 secrets/*
 chmod 0640 secrets/*
 ```
 
+The frontend runs as UID `1001` and production Compose grants it supplemental
+group `65532` solely so it can read the same service-token secret. Its
+healthcheck calls the protected document-metrics endpoint through the frontend
+proxy, detecting unreadable or mismatched tokens during deployment.
+
 Set `DOCKER_GID` in `.env.production` to the group ID that owns
 `/var/run/docker.sock`; Docker Desktop commonly works with `0`, while Linux hosts
 often require the `docker` group ID.
@@ -83,6 +90,9 @@ make prod-config
 make prod-up
 API_URL=http://127.0.0.1:8080 FRONTEND_URL=http://127.0.0.1:3000 make smoke
 ```
+
+`scripts/smoke.sh` reads `secrets/api_auth_token` by default (or
+`API_AUTH_TOKEN_FILE`) for its protected API check and never prints the token.
 
 For the first Gemini deployment, the following single command prompts for the
 API key without echoing it, updates `.env.production`, validates Compose, then
@@ -133,28 +143,24 @@ roll back the database.
 
 ## Backup and restore
 
-`make backup` currently creates a PostgreSQL custom-format dump plus SHA-256
-checksum in `backups/`. Migration 15 also stores original DOCX/Markdown objects
-in the `document_data` volume; the current script does **not** include that
-volume. Until the coordinated database + object backup/restore work in Phase 11
-is complete, separately snapshot `document_data` while API and worker writers
-are stopped, keep it paired with the matching database dump, and do not claim a
-production recovery guarantee for uploaded documents. Copy all backup material
+`make backup` stops API/worker writers, creates a PostgreSQL custom dump and a
+compressed snapshot of `document_data`, verifies member checksums, then packs
+both into one `backups/ai-test-assistant-<UTC>.tar` with an outer SHA-256 file.
+Writers are restarted even if backup fails. Copy both `.tar` and `.tar.sha256`
 to encrypted storage outside the Docker host and apply the approved retention
 policy.
 
 Restore is intentionally guarded and destructive:
 
 ```bash
-RESTORE_FILE=backups/ai-test-assistant-YYYYMMDDTHHMMSSZ.dump \
+RESTORE_FILE=backups/ai-test-assistant-YYYYMMDDTHHMMSSZ.tar \
 RESTORE_CONFIRM=RESTORE_AI_TEST_ASSISTANT make restore
 ```
 
-The script verifies the database checksum when present, stops API/worker
-writers, runs `pg_restore --clean --single-transaction`, and restarts them. It
-does not restore `document_data`; restore the paired volume snapshot before
-restarting writers. Test the combined restore on a non-production host
-regularly; an untested backup is not a recovery strategy.
+The script verifies outer/member checksums, stops API/worker writers, restores
+PostgreSQL with `--clean --single-transaction`, replaces the scoped document
+volume content, and restarts writers. Test this combined restore on a
+non-production host regularly; an untested backup is not a recovery strategy.
 
 ## Reverse proxy and logs
 
@@ -174,7 +180,7 @@ storage before relying on them for audit or incident response.
 docker compose --env-file .env.production -f infra/compose/docker-compose.prod.yml ps
 curl --fail http://127.0.0.1:8080/health
 curl --fail http://127.0.0.1:8080/ready
-curl --fail http://127.0.0.1:3000/evaluations
+curl --fail http://127.0.0.1:3000/
 ```
 
 Also deliver signed GitLab and GitHub test webhooks, process one controlled

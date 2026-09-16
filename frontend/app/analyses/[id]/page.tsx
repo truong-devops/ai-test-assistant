@@ -5,6 +5,8 @@ import { ReviewDecision } from "@/components/review-decision";
 import { AppShell, EmptyState } from "@/components/shell";
 import { Stat } from "@/components/stat";
 import { StatusBadge } from "@/components/status-badge";
+import { TestScopeWorkspace } from "@/components/test-scope-workspace";
+import { DocumentRunWorkspace } from "@/components/document-run-workspace";
 import {
   ApiError,
   getAnalysis,
@@ -12,6 +14,8 @@ import {
   getEvidence,
   getGeneratedTests,
   getImpact,
+  getAnalysisTestScope,
+	getTestRun,
   getRecommendations,
   getRepairs,
   getReviews,
@@ -179,7 +183,7 @@ export default async function AnalysisReviewPage({ params }: { params: Promise<{
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const [recommendations, generatedTests, validations, repairs, reviews, context, evidence, impact] = await Promise.all([
+  const [recommendations, generatedTests, validations, repairs, reviews, context, evidence, impact, testScope] = await Promise.all([
     optional<Recommendation[]>(() => getRecommendations(id), []),
     optional<GeneratedTest[]>(() => getGeneratedTests(id), []),
     optional<ValidationRun[]>(() => getValidations(id), []),
@@ -188,7 +192,9 @@ export default async function AnalysisReviewPage({ params }: { params: Promise<{
     optional(() => getContext(id), []),
     optional(() => getEvidence(id), null),
     optional(() => getImpact(id), null),
+	optional(() => getAnalysisTestScope(id), null),
   ]);
+	const documentRun = testScope ? await optional(() => getTestRun(testScope.test_run_id), null) : null;
   const { analysis, changed_files: changedFiles, changed_symbols: changedSymbols } = detail;
   const latestCandidates = latestGeneratedTests(generatedTests);
   const recommendationsByID = new Map(recommendations.map((item) => [item.id, item]));
@@ -211,6 +217,8 @@ export default async function AnalysisReviewPage({ params }: { params: Promise<{
       </div>
     </section>
     {analysis.error_message ? <p className="notice"><strong>Pipeline note</strong>{analysis.error_message}</p> : null}
+	{testScope ? <TestScopeWorkspace scope={testScope} /> : <p className="notice"><strong>No document baseline snapshot</strong>Bind an approved document suite on the project page before the next PR/MR webhook.</p>}
+	{documentRun && testScope ? <DocumentRunWorkspace run={documentRun} documentSetId={testScope.document_set_id} /> : null}
     <div className="review-layout">
       <div className="review-main">
         <section>

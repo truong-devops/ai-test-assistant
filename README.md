@@ -19,20 +19,31 @@ for the authoritative target direction and phase checklist.
 
 ## Current implementation status
 
-Document-driven refactor Phases 0–2 are now implemented alongside the earlier
-Phases 0–13 baseline. Users can create a product/scope document set, upload an
-immutable DOCX/Markdown version, and inspect deterministic parsed blocks with
-source locators in the Next.js Documents workspace. The API and worker share a
-persistent file volume; originals are checksummed and retained on parse failure.
+Document-driven refactor Phases 0–10 are now implemented alongside the earlier
+Phases 0–13 baseline. Users can upload immutable DOCX/Markdown versions, approve
+source versions, build a semantic document index, review cited requirements and
+conflict/TBD items, generate grounded business test cases, and inspect a
+deterministic requirement-to-test coverage matrix in the Next.js Documents
+workspace. Projects can bind an approved suite, webhook analyses snapshot a
+safe execution scope, and approved cases can produce reviewed Go automation
+artifacts plus immutable XLSX/Markdown exports. Approved artifacts now run at
+the webhook source SHA in the isolated Docker sandbox; results retain the image
+digest/environment fingerprint and distinguish product, automation, infra,
+timeout and blocked outcomes. Requirement extraction is a durable background
+job, so the browser receives HTTP 202 and polls progress instead of holding an
+LLM request until a reverse proxy returns 502. Technical repair is restricted
+to `AUTOMATION_ERROR`; database and prompt guardrails preserve expected hashes
+and semantic assertions.
 
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
 isolated Docker validation, bounded repair, provenance and human review. These
-capabilities are being reused incrementally. Requirement extraction, document
-RAG, business test-case generation, coverage, approval, execution mapping and
-XLSX reporting are not implemented yet, so this is not the completed
-document-driven product.
+capabilities are being reused incrementally. Phase 11 now supplies a
+per-project pipeline flag, document-first overview, service-token RBAC,
+pipeline metrics, lifecycle audit, coordinated database/file backup, legacy
+deprecation headers, and a document-quality evaluation CLI. Production E2E
+acceptance and physical-retention purge remain explicit rollout gates.
 
 [PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
 the implemented/historical code-first baseline. New implementation work should
@@ -80,8 +91,11 @@ For a hardened single-host deployment, follow
 [the Phase 11 deployment runbook](docs/deployment.md). It uses
 `.env.production`, file-mounted secrets, a separate migration job, backup and
 restore scripts, loopback-only ports, and hardened application containers.
-The current MVP still requires an authenticated private reverse proxy because
-application-level user authentication/RBAC remains a tracked backlog item.
+The API requires a file-mounted bearer token in production and enforces
+`viewer`, `editor`, `reviewer`, and `admin` roles supplied by the trusted
+frontend/reverse proxy. A real deployment must still let an identity-aware
+reverse proxy or OIDC provider authenticate individual users; the shared token
+is service authentication, not an end-user identity system.
 
 ## Repository map
 
@@ -92,6 +106,8 @@ application-level user authentication/RBAC remains a tracked backlog item.
 - `docs/`: architecture, API, database, and development notes.
 - [Document-driven refactor plan](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md):
   authoritative target architecture, backend/frontend phases and completion checklist.
+- [Document-driven demo](docs/DOCUMENT_DRIVEN_DEMO.md): thao tác PTYC/URD từ
+  upload đến webhook, sandbox và XLSX cùng các giới hạn phải trình bày trung thực.
 - [Phase 1–10 follow-up register](docs/PHASE_1_10_FOLLOW_UPS.md): consolidated limitations and closure backlog.
 - `scripts/`: small development helpers called by the Makefile.
 - `.gitlab-ci.yml`: Phase 11 lint, test, integration, build, image, migration,
@@ -99,14 +115,48 @@ application-level user authentication/RBAC remains a tracked backlog item.
 
 ## Implemented baseline endpoints
 
-Document-driven Phase 2:
+Document-driven endpoints:
 
 - `POST /api/document-sets`
 - `GET /api/document-sets`
 - `GET /api/document-sets/{id}`
+- `GET /api/document-metrics`
+- `POST /api/document-sets/{id}/lifecycle`
 - `POST /api/document-sets/{id}/documents`
 - `GET /api/document-sets/{id}/documents`
 - `GET /api/documents/{id}/versions/{version}`
+- `POST /api/document-versions/{id}/review`
+- `POST /api/document-sets/{id}/index`
+- `GET /api/document-sets/{id}/index`
+- `GET /api/document-sets/{id}/chunks`
+- `POST /api/document-sets/{id}/retrieve`
+- `POST /api/document-sets/{id}/requirements/extract`
+- `GET /api/document-sets/{id}/requirements/extraction`
+- `GET /api/document-sets/{id}/requirements`
+- `GET /api/document-sets/{id}/requirement-conflicts`
+- `GET /api/document-sets/{id}/open-questions`
+- `GET /api/requirements/{id}`
+- `POST /api/requirements/{id}/review`
+- `POST /api/document-sets/{id}/test-cases/generate`
+- `POST /api/document-sets/{id}/test-cases/regenerate`
+- `GET /api/document-sets/{id}/test-cases`
+- `GET /api/document-sets/{id}/coverage`
+- `GET /api/test-cases/{id}`
+- `POST /api/test-cases/{id}/review`
+- `POST /api/test-cases/bulk-review`
+- `POST|GET /api/document-sets/{id}/exports`
+- `GET /api/test-exports/{id}/download`
+- `GET|POST /api/projects/{id}/document-baseline`
+- `GET|POST /api/analyses/{id}/test-scope`
+- `POST /api/analyses/{id}/automation/generate`
+- `GET /api/test-cases/{id}/automation`
+- `POST /api/automation-artifacts/{id}/review`
+- `GET /api/test-runs/{id}`
+- `POST /api/test-runs/{id}/execute`
+- `POST /api/test-run-items/{id}/classification`
+- `POST /api/test-run-items/{id}/repair`
+- `GET /api/test-run-items/{id}/repairs`
+- `POST /api/projects/{id}/pipeline-mode`
 
 Legacy-compatible endpoints:
 

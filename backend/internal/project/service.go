@@ -98,3 +98,20 @@ func (s *Service) GetByID(ctx context.Context, id int64) (Project, error) {
 	}
 	return s.repository.GetByID(ctx, id)
 }
+
+func (s *Service) SetPipelineMode(ctx context.Context, id int64, input PipelineModeInput) (Project, error) {
+	input.Mode = strings.ToUpper(strings.TrimSpace(input.Mode))
+	input.Actor = strings.TrimSpace(input.Actor)
+	input.Reason = strings.TrimSpace(input.Reason)
+	if id <= 0 || input.Actor == "" || input.Reason == "" ||
+		input.Mode != PipelineDocumentDriven && input.Mode != PipelineLegacy {
+		return Project{}, ErrInvalidInput
+	}
+	repository, ok := s.repository.(interface {
+		SetPipelineMode(context.Context, int64, PipelineModeInput) (Project, error)
+	})
+	if !ok {
+		return Project{}, ErrInvalidInput
+	}
+	return repository.SetPipelineMode(ctx, id, input)
+}
