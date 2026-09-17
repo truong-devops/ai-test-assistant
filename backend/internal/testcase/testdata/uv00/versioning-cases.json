@@ -1,0 +1,67 @@
+{
+  "requirement_key": "UC-B08-EX",
+  "distinct_negative_cases": [
+    {
+      "title": "Từ chối đặt hàng khi giỏ hàng rỗng",
+      "test_type": "NEGATIVE",
+      "risk": "HIGH",
+      "actor": "Người mua",
+      "precondition": "Người mua đã đăng nhập và giỏ hàng rỗng",
+      "test_data": "cart_items=[]",
+      "expected_result": "Hệ thống không tạo đơn",
+      "postcondition": "Không phát sinh đơn hàng",
+      "automation_status": "AUTOMATABLE",
+      "confidence": 0.95,
+      "assumptions": [],
+      "steps": [{"action": "Nhấn Đặt hàng", "expected_result": "Hiển thị Giỏ hàng trống"}]
+    },
+    {
+      "title": "Từ chối đặt hàng khi thiếu địa chỉ nhận hàng",
+      "test_type": "NEGATIVE",
+      "risk": "HIGH",
+      "actor": "Người mua",
+      "precondition": "Người mua đã đăng nhập và chưa chọn địa chỉ",
+      "test_data": "shipping_address=null",
+      "expected_result": "Hệ thống không tạo đơn",
+      "postcondition": "Không phát sinh đơn hàng",
+      "automation_status": "AUTOMATABLE",
+      "confidence": 0.95,
+      "assumptions": [],
+      "steps": [{"action": "Nhấn Đặt hàng", "expected_result": "Yêu cầu chọn địa chỉ"}]
+    }
+  ],
+  "step_data_change": {
+    "before": {
+      "title": "Đặt hàng hợp lệ",
+      "test_type": "HAPPY",
+      "risk": "HIGH",
+      "actor": "Người mua",
+      "precondition": "Giỏ hàng hợp lệ",
+      "test_data": "cart_items=[sku-01]",
+      "expected_result": "Đơn hàng được tạo",
+      "postcondition": "Đơn ở trạng thái PENDING_PAYMENT",
+      "automation_status": "AUTOMATABLE",
+      "confidence": 0.95,
+      "assumptions": [],
+      "steps": [{"action": "Nhấn Đặt hàng", "expected_result": "Đơn hàng được tạo"}]
+    },
+    "after": {
+      "title": "Đặt hàng hợp lệ",
+      "test_type": "HAPPY",
+      "risk": "HIGH",
+      "actor": "Người mua",
+      "precondition": "Giỏ hàng hợp lệ",
+      "test_data": "cart_items=[sku-01];payment_method=COD",
+      "expected_result": "Đơn hàng được tạo",
+      "postcondition": "Đơn ở trạng thái PENDING_PAYMENT",
+      "automation_status": "AUTOMATABLE",
+      "confidence": 0.95,
+      "assumptions": [],
+      "steps": [
+        {"action": "Chọn COD", "expected_result": "COD được ghi nhận"},
+        {"action": "Nhấn Đặt hàng", "expected_result": "Đơn hàng được tạo"}
+      ]
+    }
+  }
+}
+
