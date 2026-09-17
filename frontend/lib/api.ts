@@ -14,6 +14,7 @@ import type {
   ProvenanceBundle,
   ImpactBundle,
   DocumentSet,
+  AIBudgetStatus,
   DocumentPipelineMetrics,
   SourceDocument,
   DocumentVersionDetail,
@@ -59,6 +60,7 @@ export const documentRoutes = {
   testCases: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/test-cases`,
   testCase: (id: string | number) => `/api/test-cases/${encodeURIComponent(String(id))}`,
   coverage: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/coverage`,
+  aiBudget: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/ai-budget`,
 } as const;
 
 export class ApiError extends Error {
@@ -113,6 +115,10 @@ export async function getDocumentPipelineMetrics(): Promise<DocumentPipelineMetr
 
 export async function getDocumentSet(id: string | number): Promise<DocumentSet> {
   return request<DocumentSet>(documentRoutes.set(id));
+}
+
+export async function getAIBudget(setId: string | number): Promise<AIBudgetStatus> {
+  return request<AIBudgetStatus>(documentRoutes.aiBudget(setId));
 }
 
 export async function getDocuments(setId: string | number): Promise<SourceDocument[]> {

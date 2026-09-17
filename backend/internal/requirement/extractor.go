@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/aibudget"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
 )
@@ -28,6 +29,12 @@ type LLMExtractor struct {
 	providerName string
 	modelName    string
 	maxTokens    int
+	budget       aibudget.Controller
+}
+
+func (e *LLMExtractor) ConfigureBudget(budget aibudget.Controller) *LLMExtractor {
+	e.budget = budget
+	return e
 }
 
 func NewLLMExtractor(provider llm.Provider, providerName, modelName string, maxTokens int) *LLMExtractor {
@@ -45,18 +52,38 @@ func (e *LLMExtractor) Extract(ctx context.Context, snapshot document.ContextSna
 		ContextSnapshotID: &snapshot.ID, Provider: e.providerName, ModelName: e.modelName,
 		PromptVersion: ExtractionPromptVersion, Instructions: ExtractionInstructions,
 		PromptText: prompt, RequestSchema: encodedSchema}
-	started := time.Now()
-	response, err := e.provider.Generate(ctx, llm.Request{Instructions: ExtractionInstructions,
+	request := llm.Request{Instructions: ExtractionInstructions,
 		Input: prompt, SchemaName: "document_requirements", Schema: schema,
-		MaxOutputTokens: e.maxTokens})
+		MaxOutputTokens: e.maxTokens}
+	var reservation aibudget.Reservation
+	var err error
+	if e.budget != nil {
+		reservation, err = e.budget.Reserve(ctx, subject.DocumentSetID, call.Phase, call.SubjectKey, request)
+		if err != nil {
+			call.Status, call.ErrorMessage = "FAILED", err.Error()
+			return nil, call, err
+		}
+	}
+	started := time.Now()
+	response, err := e.provider.Generate(ctx, request)
 	call.LatencyMS = time.Since(started).Milliseconds()
 	if err != nil {
+		if e.budget != nil {
+			_ = e.budget.Release(context.WithoutCancel(ctx), reservation)
+		}
 		call.Status, call.ErrorMessage = "FAILED", err.Error()
 		return nil, call, err
 	}
 	call.ResponseText, call.ProviderResponseID = response.Output, response.ID
 	call.ModelName = response.Model
 	call.InputTokens, call.OutputTokens = response.Usage.InputTokens, response.Usage.OutputTokens
+	if e.budget != nil {
+		err = e.budget.Finalize(context.WithoutCancel(ctx), reservation, response.Usage)
+	}
+	if err != nil {
+		call.Status, call.ErrorMessage = "FAILED", err.Error()
+		return nil, call, err
+	}
 	parsed, err := ParseResponse(response.Output)
 	if err != nil {
 		call.Status, call.ErrorMessage = "INVALID_OUTPUT", err.Error()

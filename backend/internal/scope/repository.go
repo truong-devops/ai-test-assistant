@@ -30,6 +30,7 @@ func (r *Repository) BaselineView(ctx context.Context, projectID int64) (Baselin
 			SELECT 1 FROM test_cases newer WHERE newer.supersedes_test_case_id=t.id))
 		FROM document_sets d JOIN test_suites s ON s.document_set_id=d.id
 		LEFT JOIN test_cases t ON t.test_suite_id=s.id
+		WHERE d.status='ACTIVE'
 		GROUP BY d.id,d.name,s.id,s.name ORDER BY d.name,s.name`)
 	if err != nil {
 		return result, fmt.Errorf("list baseline candidates: %w", err)
@@ -69,8 +70,9 @@ func (r *Repository) Select(ctx context.Context, projectID int64, input SelectIn
 		return Baseline{}, ErrInvalidInput
 	}
 	var valid bool
-	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects p,test_suites s WHERE p.id=$1
-		AND s.id=$2 AND s.document_set_id=$3 AND EXISTS(SELECT 1 FROM test_cases t WHERE t.test_suite_id=s.id
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects p,test_suites s,document_sets d WHERE p.id=$1
+		AND s.id=$2 AND s.document_set_id=$3 AND d.id=s.document_set_id AND d.status='ACTIVE'
+		AND EXISTS(SELECT 1 FROM test_cases t WHERE t.test_suite_id=s.id
 		AND t.status='APPROVED' AND NOT EXISTS(SELECT 1 FROM test_cases n WHERE n.supersedes_test_case_id=t.id)))`,
 		projectID, input.TestSuiteID, input.DocumentSetID).Scan(&valid); err != nil {
 		return Baseline{}, err
@@ -131,6 +133,14 @@ func (r *Repository) SnapshotForAnalysis(ctx context.Context, analysis job.Analy
 	}
 	if err != nil {
 		return false, err
+	}
+	var active bool
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM document_sets
+		WHERE id=$1 AND status='ACTIVE')`, setID).Scan(&active); err != nil {
+		return false, err
+	}
+	if !active {
+		return false, nil
 	}
 	var exists bool
 	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_baseline_snapshots WHERE analysis_job_id=$1)`, analysis.ID).Scan(&exists); err != nil {

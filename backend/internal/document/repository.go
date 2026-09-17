@@ -19,11 +19,13 @@ func NewRepository(pool *pgxpool.Pool) *PostgresRepository { return &PostgresRep
 func (r *PostgresRepository) CreateSet(ctx context.Context, input CreateSetInput) (Set, error) {
 	const query = `INSERT INTO document_sets (name, product_name, scope, description)
 		VALUES ($1,$2,$3,$4)
-		RETURNING id, name, product_name, scope, description, status, retention_days, archived_at, created_at, updated_at`
+		RETURNING id, name, product_name, scope, description, status, retention_days,
+		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at`
 	var result Set
 	if err := r.pool.QueryRow(ctx, query, input.Name, input.ProductName, input.Scope, input.Description).Scan(
 		&result.ID, &result.Name, &result.ProductName, &result.Scope, &result.Description, &result.Status,
-		&result.RetentionDays, &result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt); err != nil {
+		&result.RetentionDays, &result.AITokenBudget, &result.AICostBudgetMicroUSD,
+		&result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt); err != nil {
 		if uniqueViolation(err) {
 			return Set{}, ErrAlreadyExists
 		}
@@ -33,7 +35,8 @@ func (r *PostgresRepository) CreateSet(ctx context.Context, input CreateSetInput
 }
 
 func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id, name, product_name, scope, description, status, retention_days, archived_at, created_at, updated_at
+	rows, err := r.pool.Query(ctx, `SELECT id, name, product_name, scope, description, status, retention_days,
+		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at
 		FROM document_sets ORDER BY created_at DESC, id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list document sets: %w", err)
@@ -43,7 +46,8 @@ func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
 	for rows.Next() {
 		var item Set
 		if err := rows.Scan(&item.ID, &item.Name, &item.ProductName, &item.Scope, &item.Description, &item.Status,
-			&item.RetentionDays, &item.ArchivedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			&item.RetentionDays, &item.AITokenBudget, &item.AICostBudgetMicroUSD,
+			&item.ArchivedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan document set: %w", err)
 		}
 		results = append(results, item)
@@ -56,9 +60,11 @@ func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
 
 func (r *PostgresRepository) GetSet(ctx context.Context, id int64) (Set, error) {
 	var result Set
-	err := r.pool.QueryRow(ctx, `SELECT id, name, product_name, scope, description, status, retention_days, archived_at, created_at, updated_at
+	err := r.pool.QueryRow(ctx, `SELECT id, name, product_name, scope, description, status, retention_days,
+		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at
 		FROM document_sets WHERE id=$1`, id).Scan(&result.ID, &result.Name,
 		&result.ProductName, &result.Scope, &result.Description, &result.Status, &result.RetentionDays,
+		&result.AITokenBudget, &result.AICostBudgetMicroUSD,
 		&result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Set{}, ErrNotFound
@@ -77,32 +83,207 @@ func (r *PostgresRepository) UpdateLifecycle(ctx context.Context, id int64, inpu
 	defer tx.Rollback(ctx)
 	var previousStatus string
 	var previousRetention int
-	if err = tx.QueryRow(ctx, `SELECT status,retention_days FROM document_sets WHERE id=$1 FOR UPDATE`, id).Scan(&previousStatus, &previousRetention); errors.Is(err, pgx.ErrNoRows) {
+	var previousTokenBudget, previousCostBudget int64
+	if err = tx.QueryRow(ctx, `SELECT status,retention_days,ai_token_budget,ai_cost_budget_microusd
+		FROM document_sets WHERE id=$1 FOR UPDATE`, id).Scan(&previousStatus, &previousRetention,
+		&previousTokenBudget, &previousCostBudget); errors.Is(err, pgx.ErrNoRows) {
 		return Set{}, ErrNotFound
 	} else if err != nil {
 		return Set{}, err
+	}
+	if previousStatus == SetStatusPurging {
+		return Set{}, fmt.Errorf("%w: purge is already in progress", ErrInvalidInput)
+	}
+	if input.AITokenBudget == 0 {
+		input.AITokenBudget = previousTokenBudget
+	}
+	if input.AICostBudgetMicroUSD == 0 {
+		input.AICostBudgetMicroUSD = previousCostBudget
 	}
 	action := "RETENTION_CHANGED"
 	if input.Status == SetStatusArchived && previousStatus != SetStatusArchived {
 		action = "ARCHIVED"
 	} else if input.Status == SetStatusActive && previousStatus == SetStatusArchived {
 		action = "RESTORED"
+	} else if input.AITokenBudget != previousTokenBudget || input.AICostBudgetMicroUSD != previousCostBudget {
+		action = "BUDGET_CHANGED"
 	}
 	if _, err = tx.Exec(ctx, `UPDATE document_sets SET status=$2,retention_days=$3,
+		ai_token_budget=$4,ai_cost_budget_microusd=$5,
 		archived_at=CASE WHEN $2='ARCHIVED' THEN COALESCE(archived_at,NOW()) ELSE NULL END,updated_at=NOW()
-		WHERE id=$1`, id, input.Status, input.RetentionDays); err != nil {
+		WHERE id=$1`, id, input.Status, input.RetentionDays, input.AITokenBudget, input.AICostBudgetMicroUSD); err != nil {
 		return Set{}, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO document_set_audit_log(document_set_id,actor,action,reason,before_state,after_state)
-		VALUES($1,$2,$3,$4,jsonb_build_object('status',$5::text,'retention_days',$6::integer),
-		jsonb_build_object('status',$7::text,'retention_days',$8::integer))`, id, input.Actor, action, input.Reason,
-		previousStatus, previousRetention, input.Status, input.RetentionDays); err != nil {
+		VALUES($1,$2,$3,$4,jsonb_build_object('status',$5::text,'retention_days',$6::integer,
+		'ai_token_budget',$7::bigint,'ai_cost_budget_microusd',$8::bigint),
+		jsonb_build_object('status',$9::text,'retention_days',$10::integer,
+		'ai_token_budget',$11::bigint,'ai_cost_budget_microusd',$12::bigint))`, id, input.Actor, action, input.Reason,
+		previousStatus, previousRetention, previousTokenBudget, previousCostBudget,
+		input.Status, input.RetentionDays, input.AITokenBudget, input.AICostBudgetMicroUSD); err != nil {
 		return Set{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return Set{}, err
 	}
 	return r.GetSet(ctx, id)
+}
+
+func (r *PostgresRepository) PurgePreview(ctx context.Context, id int64) (PurgePreview, error) {
+	set, err := r.GetSet(ctx, id)
+	if err != nil {
+		return PurgePreview{}, err
+	}
+	result := PurgePreview{DocumentSetID: set.ID, Name: set.Name, Status: set.Status,
+		RetentionDays: set.RetentionDays, ArchivedAt: set.ArchivedAt,
+		Blockers: []string{}, Confirmation: fmt.Sprintf("PURGE DOCUMENT SET %d", set.ID)}
+	if set.ArchivedAt != nil {
+		eligibleAt := set.ArchivedAt.Add(time.Duration(set.RetentionDays) * 24 * time.Hour)
+		result.PurgeEligibleAt = &eligibleAt
+	}
+	if err := r.pool.QueryRow(ctx, `SELECT count(*),COALESCE(sum(size_bytes),0)
+		FROM document_versions WHERE document_set_id=$1`, id).Scan(
+		&result.StorageObjectCount, &result.StorageBytes); err != nil {
+		return PurgePreview{}, fmt.Errorf("summarize document purge: %w", err)
+	}
+	var projectBaselines, analysisSnapshots, testRuns int
+	if err := r.pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM project_document_baselines WHERE document_set_id=$1),
+		(SELECT count(*) FROM analysis_baseline_snapshots WHERE document_set_id=$1),
+		(SELECT count(*) FROM test_runs r JOIN test_suites s ON s.id=r.test_suite_id
+		 WHERE s.document_set_id=$1)`, id).
+		Scan(&projectBaselines, &analysisSnapshots, &testRuns); err != nil {
+		return PurgePreview{}, fmt.Errorf("check document purge references: %w", err)
+	}
+	if projectBaselines > 0 {
+		result.Blockers = append(result.Blockers, fmt.Sprintf("%d project baseline(s) still reference this set", projectBaselines))
+	}
+	if analysisSnapshots > 0 {
+		result.Blockers = append(result.Blockers, fmt.Sprintf("%d immutable analysis snapshot(s) still reference this set", analysisSnapshots))
+	}
+	if testRuns > 0 {
+		result.Blockers = append(result.Blockers, fmt.Sprintf("%d immutable test run(s) still reference this set", testRuns))
+	}
+	retentionElapsed := result.PurgeEligibleAt != nil && !time.Now().Before(*result.PurgeEligibleAt)
+	result.Eligible = (set.Status == SetStatusArchived || set.Status == SetStatusPurging) &&
+		retentionElapsed && len(result.Blockers) == 0
+	return result, nil
+}
+
+func (r *PostgresRepository) BeginPurge(ctx context.Context, id int64, input PurgeInput) (PurgePlan, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return PurgePlan{}, err
+	}
+	defer tx.Rollback(ctx)
+	var set Set
+	err = tx.QueryRow(ctx, `SELECT id,name,product_name,scope,description,status,retention_days,
+		ai_token_budget,ai_cost_budget_microusd,archived_at,created_at,updated_at
+		FROM document_sets WHERE id=$1 FOR UPDATE`, id).Scan(&set.ID, &set.Name, &set.ProductName,
+		&set.Scope, &set.Description, &set.Status, &set.RetentionDays, &set.AITokenBudget,
+		&set.AICostBudgetMicroUSD, &set.ArchivedAt, &set.CreatedAt, &set.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PurgePlan{}, ErrNotFound
+	}
+	if err != nil {
+		return PurgePlan{}, err
+	}
+	if input.Confirmation != fmt.Sprintf("PURGE DOCUMENT SET %d", id) {
+		return PurgePlan{}, fmt.Errorf("%w: confirmation text does not match", ErrInvalidInput)
+	}
+	if set.Status != SetStatusArchived && set.Status != SetStatusPurging {
+		return PurgePlan{}, fmt.Errorf("%w: archive the document set before purge", ErrInvalidInput)
+	}
+	if set.ArchivedAt == nil || time.Now().Before(set.ArchivedAt.Add(time.Duration(set.RetentionDays)*24*time.Hour)) {
+		return PurgePlan{}, ErrRetentionNotMet
+	}
+	var projectBaselines, analysisSnapshots, testRuns int
+	if err = tx.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM project_document_baselines WHERE document_set_id=$1),
+		(SELECT count(*) FROM analysis_baseline_snapshots WHERE document_set_id=$1),
+		(SELECT count(*) FROM test_runs r JOIN test_suites s ON s.id=r.test_suite_id
+		 WHERE s.document_set_id=$1)`, id).
+		Scan(&projectBaselines, &analysisSnapshots, &testRuns); err != nil {
+		return PurgePlan{}, err
+	}
+	if projectBaselines > 0 || analysisSnapshots > 0 || testRuns > 0 {
+		return PurgePlan{}, fmt.Errorf("%w: %d project baseline(s), %d analysis snapshot(s), %d test run(s)",
+			ErrPurgeBlocked, projectBaselines, analysisSnapshots, testRuns)
+	}
+	rows, err := tx.Query(ctx, `SELECT storage_key FROM document_versions
+		WHERE document_set_id=$1 ORDER BY id`, id)
+	if err != nil {
+		return PurgePlan{}, err
+	}
+	keys := make([]string, 0)
+	for rows.Next() {
+		var key string
+		if err = rows.Scan(&key); err != nil {
+			rows.Close()
+			return PurgePlan{}, err
+		}
+		keys = append(keys, key)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return PurgePlan{}, err
+	}
+	var sizeBytes int64
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(sum(size_bytes),0) FROM document_versions
+		WHERE document_set_id=$1`, id).Scan(&sizeBytes); err != nil {
+		return PurgePlan{}, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE document_sets SET status='PURGING',updated_at=NOW() WHERE id=$1`, id); err != nil {
+		return PurgePlan{}, err
+	}
+	var auditID int64
+	err = tx.QueryRow(ctx, `INSERT INTO document_set_purge_audit
+		(document_set_id,document_set_name,actor,reason,confirmation,storage_object_count,
+		storage_bytes,database_snapshot)
+		VALUES($1,$2,$3,$4,$5,$6,$7,jsonb_build_object(
+		'status',$8::text,'retention_days',$9::integer,'archived_at',$10::timestamptz,
+		'ai_token_budget',$11::bigint,'ai_cost_budget_microusd',$12::bigint)) RETURNING id`,
+		id, set.Name, input.Actor, input.Reason, input.Confirmation, len(keys), sizeBytes,
+		set.Status, set.RetentionDays, set.ArchivedAt, set.AITokenBudget, set.AICostBudgetMicroUSD).
+		Scan(&auditID)
+	if err != nil {
+		return PurgePlan{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return PurgePlan{}, err
+	}
+	return PurgePlan{AuditID: auditID, DocumentSetID: id, StorageKeys: keys}, nil
+}
+
+func (r *PostgresRepository) CompletePurge(ctx context.Context, plan PurgePlan) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	result, err := tx.Exec(ctx, `DELETE FROM document_sets WHERE id=$1 AND status='PURGING'`, plan.DocumentSetID)
+	if err != nil {
+		return fmt.Errorf("delete purging document set: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	if _, err = tx.Exec(ctx, `UPDATE document_set_purge_audit SET status='COMPLETED',
+		completed_at=NOW(),error_message='' WHERE id=$1 AND document_set_id=$2`,
+		plan.AuditID, plan.DocumentSetID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *PostgresRepository) FailPurge(ctx context.Context, plan PurgePlan, cause error) error {
+	message := "purge failed"
+	if cause != nil {
+		message = cause.Error()
+	}
+	_, err := r.pool.Exec(ctx, `UPDATE document_set_purge_audit SET status='FAILED',
+		completed_at=NOW(),error_message=$2 WHERE id=$1`, plan.AuditID, message)
+	return err
 }
 
 func (r *PostgresRepository) Metrics(ctx context.Context) (PipelineMetrics, error) {

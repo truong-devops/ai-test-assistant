@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/aibudget"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
 )
@@ -37,6 +38,12 @@ type Service struct {
 	maxTokens             int
 	maxRepairAttempts     int
 	maxRepairCostMicroUSD int64
+	budget                aibudget.Controller
+}
+
+func (s *Service) ConfigureBudget(budget aibudget.Controller) *Service {
+	s.budget = budget
+	return s
 }
 
 func NewService(repository *Repository, retriever ContextRetriever, provider Provider, providerName, model string, maxTokens int) *Service {
@@ -85,11 +92,24 @@ func (s *Service) Generate(ctx context.Context, analysisID int64, input Generate
 	}
 	prompt := renderPrompt(subject, *source, business, technical)
 	schema := responseSchema()
+	request := llm.Request{Instructions: instructions, Input: prompt,
+		SchemaName: "document_automation_v1", Schema: schema, MaxOutputTokens: s.maxTokens}
+	var reservation aibudget.Reservation
+	if s.budget != nil {
+		reservation, err = s.budget.Reserve(ctx, subject.DocumentSetID, "AUTOMATION_GENERATION",
+			fmt.Sprintf("test-case:%d", subject.TestCaseID), request)
+		if err != nil {
+			return s.block(ctx, subject, business, technical, err.Error())
+		}
+	}
 	started := time.Now()
-	response, err := s.provider.Generate(ctx, llm.Request{Instructions: instructions, Input: prompt, SchemaName: "document_automation_v1", Schema: schema, MaxOutputTokens: s.maxTokens})
+	response, err := s.provider.Generate(ctx, request)
 	latency := time.Since(started).Milliseconds()
 	baseCall := Call{AnalysisID: analysisID, TestCaseID: input.TestCaseID, Provider: defaultValue(s.providerName, "disabled"), ModelName: defaultValue(response.Model, s.model), Instructions: instructions, Prompt: prompt, Schema: schema, Response: response.Output, ResponseID: response.ID, BusinessContext: business, TechnicalContext: technical, ExpectedHash: subject.ExpectedResultHash, InputTokens: response.Usage.InputTokens, OutputTokens: response.Usage.OutputTokens, LatencyMS: latency}
 	if err != nil {
+		if s.budget != nil {
+			_ = s.budget.Release(context.WithoutCancel(ctx), reservation)
+		}
 		baseCall.Status = "BLOCKED"
 		baseCall.ErrorMessage = err.Error()
 		_, _ = s.repository.SaveCall(ctx, baseCall)
@@ -98,6 +118,14 @@ func (s *Service) Generate(ctx context.Context, analysisID int64, input Generate
 			return GenerationResult{Status: "BLOCKED", Message: "LLM provider is disabled; testcase remains manual"}, nil
 		}
 		return GenerationResult{}, fmt.Errorf("generate automation: %w", err)
+	}
+	if s.budget != nil {
+		if err = s.budget.Finalize(context.WithoutCancel(ctx), reservation, response.Usage); err != nil {
+			baseCall.Status, baseCall.ErrorMessage = "BLOCKED", err.Error()
+			_, _ = s.repository.SaveCall(ctx, baseCall)
+			_ = s.repository.MarkBlocked(ctx, input.TestCaseID)
+			return GenerationResult{}, err
+		}
 	}
 	proposal, err := parseAndValidate(response.Output, subject, *source)
 	if err != nil {

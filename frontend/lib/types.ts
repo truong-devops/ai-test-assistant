@@ -19,11 +19,25 @@ export type DocumentSet = {
   product_name: string;
   scope: string;
   description: string;
-  status: "ACTIVE" | "ARCHIVED";
+  status: "ACTIVE" | "ARCHIVED" | "PURGING";
   retention_days: number;
+  ai_token_budget: number;
+  ai_cost_budget_microusd: number;
   archived_at?: string;
   created_at: string;
   updated_at: string;
+};
+
+export type AIBudgetStatus = {
+  document_set_id: number;
+  token_budget: number;
+  used_tokens: number;
+  reserved_tokens: number;
+  remaining_tokens: number;
+  cost_budget_microusd: number;
+  used_cost_microusd: number;
+  reserved_cost_microusd: number;
+  remaining_cost_microusd: number;
 };
 
 export type DocumentPipelineMetrics = {

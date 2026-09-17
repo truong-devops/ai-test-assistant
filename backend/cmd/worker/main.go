@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/aibudget"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analysis"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/automation"
@@ -136,17 +137,19 @@ func main() {
 	documentProcessor := document.NewProcessor(documentStore, document.NewStructuredParser(), documentRepository)
 	documentIndexService := document.NewIndexService(document.NewIndexRepository(database.Pool()), embedder)
 	providerName := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
+	aiBudget := aibudget.NewManager(database.Pool(), cfg.LLM.InputCostPerMillionUSD,
+		cfg.LLM.OutputCostPerMillionUSD)
 	var requirementExtractor requirement.Extractor = requirement.DeterministicExtractor{}
 	if providerName != "" && providerName != "disabled" && providerName != "none" {
 		requirementExtractor = requirement.NewLLMExtractor(llmProvider, providerName,
-			cfg.LLM.Model, cfg.LLM.MaxOutputTokens)
+			cfg.LLM.Model, cfg.LLM.MaxOutputTokens).ConfigureBudget(aiBudget)
 	}
 	requirementRepository := requirement.NewRepository(database.Pool())
 	requirementService := requirement.NewService(requirementRepository, documentIndexService, requirementExtractor)
 	automationRepository := automation.NewRepository(database.Pool())
 	automationRepairProcessor := automation.NewRepairProcessor(automationRepository, llmProvider,
 		providerName, cfg.LLM.Model, cfg.LLM.InputCostPerMillionUSD,
-		cfg.LLM.OutputCostPerMillionUSD)
+		cfg.LLM.OutputCostPerMillionUSD).ConfigureBudget(aiBudget)
 	executionRepository := execution.NewRepository(database.Pool())
 	executionProcessor := execution.NewProcessor(projectRepository,
 		validation.NewWorkspaceManager(sourceClient, validation.WorkspaceOptions{}), sandboxRunner,

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/aibudget"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
 )
@@ -27,6 +28,12 @@ type RepairProcessor struct {
 	provider                 Provider
 	providerName, model      string
 	inputCost, outputCostUSD float64
+	budget                   aibudget.Controller
+}
+
+func (p *RepairProcessor) ConfigureBudget(budget aibudget.Controller) *RepairProcessor {
+	p.budget = budget
+	return p
 }
 
 func NewRepairProcessor(store RepairStore, provider Provider, providerName, model string,
@@ -50,9 +57,25 @@ func (p *RepairProcessor) Process(ctx context.Context, job RepairJob) error {
 	request := llm.Request{Instructions: repairInstructions, Input: prompt,
 		SchemaName: "document_automation_repair_v1", Schema: responseSchema(),
 		MaxOutputTokens: job.MaxOutputTokens}
+	var reservation aibudget.Reservation
+	if p.budget != nil {
+		reservation, err = p.budget.Reserve(ctx, subject.DocumentSetID, "AUTOMATION_REPAIR",
+			fmt.Sprintf("repair-job:%d", job.ID), request)
+		if err != nil {
+			return p.unrepairable(ctx, job, err.Error(), prompt, llm.Response{})
+		}
+	}
 	response, err := p.provider.Generate(ctx, request)
 	if err != nil {
+		if p.budget != nil {
+			_ = p.budget.Release(context.WithoutCancel(ctx), reservation)
+		}
 		return fmt.Errorf("repair automation artifact %d: %w", subject.Artifact.ID, err)
+	}
+	if p.budget != nil {
+		if err = p.budget.Finalize(context.WithoutCancel(ctx), reservation, response.Usage); err != nil {
+			return err
+		}
 	}
 	model := defaultValue(response.Model, p.model)
 	cost := estimateRepairCost(response.Usage.InputTokens, response.Usage.OutputTokens,

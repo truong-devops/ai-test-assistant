@@ -19,7 +19,7 @@ for the authoritative target direction and phase checklist.
 
 ## Current implementation status
 
-Document-driven refactor Phases 0–10 are now implemented alongside the earlier
+Document-driven refactor Phases 0–11 are now implemented alongside the earlier
 Phases 0–13 baseline. Users can upload immutable DOCX/Markdown versions, approve
 source versions, build a semantic document index, review cited requirements and
 conflict/TBD items, generate grounded business test cases, and inspect a
@@ -42,8 +42,10 @@ isolated Docker validation, bounded repair, provenance and human review. These
 capabilities are being reused incrementally. Phase 11 now supplies a
 per-project pipeline flag, document-first overview, service-token RBAC,
 pipeline metrics, lifecycle audit, coordinated database/file backup, legacy
-deprecation headers, and a document-quality evaluation CLI. Production E2E
-acceptance and physical-retention purge remain explicit rollout gates.
+deprecation headers, a document-quality evaluation CLI, document-set AI budgets,
+and guarded retention-based physical purge. A persisted-evidence verifier makes
+production E2E acceptance explicit; it still requires a real SCM webhook, LLM,
+and sandbox run before the environment-specific DoD can be checked.
 
 [PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
 the implemented/historical code-first baseline. New implementation work should

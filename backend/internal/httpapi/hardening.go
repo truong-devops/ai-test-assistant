@@ -72,6 +72,9 @@ func containsAny(value string, needles ...string) bool {
 }
 
 func requiredRole(r *http.Request) string {
+	if strings.Contains(r.URL.Path, "/purge") {
+		return "admin"
+	}
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		return "viewer"
 	}

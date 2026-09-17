@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/aibudget"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/automation"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/config"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
@@ -61,7 +62,10 @@ func main() {
 		logger.Error("configure document storage", "error", err)
 		os.Exit(1)
 	}
-	documentService := document.NewService(document.NewRepository(database.Pool()), documentStore)
+	aiBudget := aibudget.NewManager(database.Pool(), cfg.LLM.InputCostPerMillionUSD,
+		cfg.LLM.OutputCostPerMillionUSD)
+	documentService := document.NewService(document.NewRepository(database.Pool()), documentStore).
+		ConfigureAIBudget(aiBudget)
 
 	projectRepository := project.NewPostgresRepository(database.Pool())
 	gitLabSourceClient, err := gitlab.NewHTTPClient(cfg.GitLab.BaseURL, cfg.GitLab.Token, cfg.GitLab.RequestTimeout)
@@ -106,7 +110,7 @@ func main() {
 	providerName := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
 	if providerName != "" && providerName != "disabled" && providerName != "none" {
 		requirementExtractor = requirement.NewLLMExtractor(llmProvider, providerName,
-			cfg.LLM.Model, cfg.LLM.MaxOutputTokens)
+			cfg.LLM.Model, cfg.LLM.MaxOutputTokens).ConfigureBudget(aiBudget)
 	}
 	requirementService := requirement.NewService(requirement.NewRepository(database.Pool()),
 		documentIndexService, requirementExtractor)
@@ -115,7 +119,7 @@ func main() {
 	if providerName != "" && providerName != "disabled" && providerName != "none" {
 		testCaseService = testcase.NewServiceWithLLM(testCaseRepository, requirementService,
 			testcase.NewLLMGenerator(llmProvider, providerName, cfg.LLM.Model,
-				cfg.LLM.MaxOutputTokens), requirement.NewRepository(database.Pool()))
+				cfg.LLM.MaxOutputTokens).ConfigureBudget(aiBudget), requirement.NewRepository(database.Pool()))
 	}
 	recommendationRepository := recommendation.NewRepository(database.Pool())
 	recommendationService := recommendation.NewService(jobRepository, recommendationRepository)
@@ -143,7 +147,7 @@ func main() {
 	automationService := automation.NewService(automation.NewRepository(database.Pool()),
 		knowledge.NewRetriever(knowledgeRepository, embedder), llmProvider, providerName,
 		cfg.LLM.Model, cfg.LLM.MaxOutputTokens).ConfigureRepair(cfg.Repair.MaxAttempts,
-		cfg.Repair.MaxCostMicroUSD)
+		cfg.Repair.MaxCostMicroUSD).ConfigureBudget(aiBudget)
 	executionService := execution.NewService(execution.NewRepository(database.Pool()))
 	webhookService := gitlab.NewWebhookService(projectRepository, scopedEnqueuer)
 	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)

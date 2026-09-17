@@ -1,12 +1,13 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–21.
+> This page documents the schema currently implemented by migrations 1–22.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
 > Migration 17 adds immutable exports, execution-scope snapshots and separated
 > automation provenance; migrations 18–21 add typed execution, asynchronous
-> extraction, guarded repair, lifecycle and rollout controls.
+> extraction, guarded repair, lifecycle and rollout controls. Migration 22 adds
+> physical-retention purge and document-set AI budgets.
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
 
@@ -131,9 +132,26 @@ operator change.
 Document sets gain bounded `retention_days` and `archived_at`.
 `document_set_audit_log` stores archive/restore/retention changes with actor,
 reason and before/after state. Archive is recoverable and prevents uploads;
-physical purge is deliberately not implemented until an operator-approved
-policy is defined. Coordinated backup stores PostgreSQL and document bytes at
-the same quiesced application point.
+coordinated backup stores PostgreSQL and document bytes at the same quiesced
+application point.
+
+## Retention purge and AI budget (migration 22)
+
+`document_sets` gains `PURGING`, `ai_token_budget`, and
+`ai_cost_budget_microusd`. `document_ai_budget_reservations` provides an atomic
+ledger: active calls reserve conservative token/cost capacity, completed calls
+store actual usage, failed calls release capacity, and expired reservations no
+longer consume the limit. Historical document/automation token usage is
+backfilled so an upgrade does not silently reset the token total; historical
+cost without a persisted rate remains zero rather than being fabricated.
+
+`document_set_purge_audit` intentionally has no foreign key to `document_sets`,
+so its actor, reason, confirmation, object count/bytes and final status survive
+successful deletion. Purge first locks the archived set, verifies elapsed
+retention and rejects project baselines, analysis snapshots or test runs. It
+then enters `PURGING`, deletes file objects idempotently, cascades the unpinned
+document graph, and marks the independent audit complete. A failed attempt
+leaves `PURGING` for a safe retry rather than restoring a partially deleted set.
 
 ## Phase 12 AI provenance
 

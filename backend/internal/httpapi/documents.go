@@ -26,6 +26,13 @@ type DocumentMetricsService interface {
 type DocumentLifecycleService interface {
 	UpdateLifecycle(context.Context, int64, document.LifecycleInput) (document.Set, error)
 }
+type DocumentPurgeService interface {
+	PurgePreview(context.Context, int64) (document.PurgePreview, error)
+	Purge(context.Context, int64, document.PurgeInput) (document.PurgeResult, error)
+}
+type DocumentAIBudgetService interface {
+	AIBudgetStatus(context.Context, int64) (document.AIBudgetStatus, error)
+}
 
 type documentHandler struct {
 	service        DocumentService
@@ -93,6 +100,64 @@ func (h documentHandler) lifecycle(w http.ResponseWriter, r *http.Request) {
 	result, err := service.UpdateLifecycle(r.Context(), id, input)
 	if err != nil {
 		writeDocumentError(w, err, "could not update document lifecycle")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h documentHandler) purgePreview(w http.ResponseWriter, r *http.Request) {
+	id, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	service, ok := h.service.(DocumentPurgeService)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "document purge policy is unavailable")
+		return
+	}
+	result, err := service.PurgePreview(r.Context(), id)
+	if err != nil {
+		writeDocumentError(w, err, "could not inspect document purge")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h documentHandler) purge(w http.ResponseWriter, r *http.Request) {
+	id, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	service, ok := h.service.(DocumentPurgeService)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "document purge policy is unavailable")
+		return
+	}
+	var input document.PurgeInput
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := service.Purge(r.Context(), id, input)
+	if err != nil {
+		writeDocumentError(w, err, "could not purge document set")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h documentHandler) aiBudget(w http.ResponseWriter, r *http.Request) {
+	id, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	service, ok := h.service.(DocumentAIBudgetService)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "document AI budget is unavailable")
+		return
+	}
+	result, err := service.AIBudgetStatus(r.Context(), id)
+	if err != nil {
+		writeDocumentError(w, err, "could not load document AI budget")
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -201,6 +266,8 @@ func writeDocumentError(w http.ResponseWriter, err error, fallback string) {
 	case errors.Is(err, document.ErrFileTooLarge):
 		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 	case errors.Is(err, document.ErrAlreadyExists):
+		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, document.ErrRetentionNotMet), errors.Is(err, document.ErrPurgeBlocked):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, document.ErrInvalidInput), errors.Is(err, document.ErrUnsupported),
 		errors.Is(err, document.ErrUnsafeDocument):

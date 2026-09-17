@@ -8,8 +8,8 @@
 > OIDC/session handling and production reverse-proxy verification remain rollout
 > responsibilities; the older snapshot below must not be read as current scope.
 
-Status: **implemented locally; external GitLab runner and production-host
-verification remain**.
+Status: **implementation complete; external runner and real production E2E
+acceptance remain environment-specific verification gates**.
 
 ## Delivered
 
@@ -28,6 +28,11 @@ verification remain**.
   migration round-trip, builds, four Docker images, dependency audit, sandbox
   policy and real sandbox execution;
 - deployment and security runbooks;
+- total document-set AI token/cost budgets with atomic reservations;
+- admin-only, retention-gated physical purge with reference guards and durable
+  post-deletion audit;
+- persisted-evidence E2E verifier covering source, RAG, LLM, reviews, webhook,
+  automation, sandbox evidence and XLSX export;
 - production Compose smoke, backup and restore drill on an isolated temporary
   stack.
 
@@ -40,7 +45,7 @@ Docker builds: API, worker, frontend, sandbox
 Sandbox smoke + validation/repair Docker tests
 Go unit/race tests + full PostgreSQL integration suite
 Frontend typecheck/build + production dependency audit (0 vulnerabilities)
-Production migration 1..11
+Production migration 1..22
 Production API/frontend smoke and security-header checks
 Production container user/read-only/capability inspection
 PostgreSQL backup -> checksum -> guarded restore -> readiness
@@ -50,8 +55,8 @@ Live request burst returned 429 while health/readiness remained available
 
 ## Honest residual blockers
 
-- Authentication, session and RBAC remain open; the deployment must stay behind
-  an authenticated private reverse proxy.
+- Service-token RBAC is implemented. Individual user identity/session/CSRF
+  remains the responsibility of an authenticated reverse proxy or OIDC layer.
 - The trusted worker still has Docker socket authority. It is non-root in the
   container, but a dedicated/rootless/remote Docker runner is the preferred
   final boundary.
@@ -61,3 +66,6 @@ Live request burst returned 429 while health/readiness remained available
   still tracked hardening work.
 - `.gitlab-ci.yml` is syntax-reviewed locally but must pass on the project's real
   GitLab runners, especially Docker-in-Docker jobs.
+- Phase 11's environment DoD remains unchecked until
+  `make prod-document-e2e-verify` returns `"passed": true` for IDs created by a
+  real SCM webhook, configured LLM and sandbox run.

@@ -15,6 +15,7 @@ import (
 type Subject struct {
 	AnalysisID         int64
 	ProjectID          int64
+	DocumentSetID      int64
 	TestCaseID         int64
 	TestCaseKey        string
 	Title              string
@@ -51,7 +52,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: po
 
 func (r *Repository) Subject(ctx context.Context, analysisID, testCaseID int64) (Subject, error) {
 	var result Subject
-	err := r.pool.QueryRow(ctx, `SELECT s.analysis_job_id,s.project_id,t.id,t.test_case_key,t.title,t.expected_result,t.expected_result_hash,
+	err := r.pool.QueryRow(ctx, `SELECT s.analysis_job_id,s.project_id,s.document_set_id,t.id,t.test_case_key,t.title,t.expected_result,t.expected_result_hash,
 		jsonb_build_object('id',t.id,'key',t.test_case_key,'version',t.version_number,'title',t.title,
 		'type',t.test_type,'risk',t.risk,'actor',t.actor,'precondition',t.precondition,'test_data',t.test_data,
 		'expected_result',t.expected_result,'expected_result_hash',t.expected_result_hash),
@@ -66,7 +67,7 @@ func (r *Repository) Subject(ctx context.Context, analysisID, testCaseID int64) 
 		'approved_document_versions',s.document_versions,'baseline_hash',s.baseline_hash)
 		FROM analysis_baseline_snapshots s JOIN analysis_test_scope_items i ON i.analysis_job_id=s.analysis_job_id
 		JOIN test_cases t ON t.id=i.test_case_id WHERE s.analysis_job_id=$1 AND t.id=$2 AND i.included AND t.status='APPROVED'`, analysisID, testCaseID).Scan(
-		&result.AnalysisID, &result.ProjectID, &result.TestCaseID, &result.TestCaseKey,
+		&result.AnalysisID, &result.ProjectID, &result.DocumentSetID, &result.TestCaseID, &result.TestCaseKey,
 		&result.Title, &result.ExpectedResult, &result.ExpectedResultHash, &result.Snapshot,
 		&result.BusinessContext)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -383,16 +384,18 @@ func (r *Repository) LoadRepairSubject(ctx context.Context, job RepairJob) (Repa
 	err := r.pool.QueryRow(ctx, `SELECT a.id,a.test_case_id,a.version_number,a.framework,a.file_path,a.source,
 		a.source_hash,a.expected_result_hash,a.status,a.model_name,a.prompt_version,a.provider_response_id,
 		a.analysis_job_id,a.setup_text,a.assertions,a.test_case_snapshot,a.business_context,a.technical_context,
-		a.business_context_hash,a.technical_context_hash,a.created_at,i.actual_result,
+		a.business_context_hash,a.technical_context_hash,a.created_at,i.actual_result,t.document_set_id,
 		COALESCE((SELECT jsonb_agg(jsonb_build_object('type',e.evidence_type,'content',e.content,
 			'storage_key',e.storage_key,'content_hash',e.content_hash) ORDER BY e.id)
 			FROM test_run_evidence e WHERE e.test_run_item_id=i.id),'[]'::jsonb)
 		FROM automation_repair_jobs j JOIN test_run_items i ON i.id=j.test_run_item_id
 		JOIN automation_artifacts a ON a.id=j.source_artifact_id
+		JOIN test_cases t ON t.id=a.test_case_id
 		WHERE j.id=$1 AND j.status='RUNNING' AND j.queue_attempt_count=$2
 		AND i.status='AUTOMATION_ERROR' AND i.expected_result_hash=j.expected_result_hash
 		AND a.source_hash=j.before_source_hash AND a.expected_result_hash=j.expected_result_hash`,
-		job.ID, job.QueueAttemptCount).Scan(append(artifactDest(&result.Artifact), &result.ActualResult, &evidence)...)
+		job.ID, job.QueueAttemptCount).Scan(append(artifactDest(&result.Artifact), &result.ActualResult,
+		&result.DocumentSetID, &evidence)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RepairSubject{}, ErrRepairLeaseLost
 	}

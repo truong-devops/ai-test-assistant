@@ -105,6 +105,21 @@ make prod-gemini-up
 To verify the configured endpoint, key and model without creating a pull request
 analysis, run `make prod-gemini-smoke`. The command never prints the API key.
 
+Set real provider prices in `.env.production` so the cost budget is meaningful:
+
+```dotenv
+LLM_INPUT_COST_PER_MTOK_USD=<provider input price>
+LLM_OUTPUT_COST_PER_MTOK_USD=<provider output price>
+```
+
+After the full document → webhook → sandbox → XLSX demonstration, verify its
+persisted evidence (the command exits non-zero when any stage is missing):
+
+```bash
+make prod-document-e2e-verify \
+  DOCUMENT_SET_ID=1 PROJECT_ID=4 ANALYSIS_ID=9 TEST_RUN_ID=3
+```
+
 For later deployments, choose the smallest matching rebuild:
 
 | Changed area | Command |

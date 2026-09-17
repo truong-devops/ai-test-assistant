@@ -18,7 +18,7 @@ trusted frontend/reverse proxy also sends `X-Authenticated-Role` with one of:
 - `editor`: create/upload/extract/generate mutations;
 - `reviewer`: approval, classification, execution, export, repair, lifecycle
   and pipeline-mode decisions;
-- `admin`: all operations.
+- `admin`: all operations; physical purge preview/execution requires this role.
 
 `/health`, `/ready`, and SCM webhooks are exempt because webhooks use their own
 provider signature/secret. `X-Authenticated-Role` is trusted only after the
@@ -105,8 +105,14 @@ write endpoint.
 - `GET /api/document-metrics` returns aggregate parse, extraction, approval,
   suite/artifact and execution counters for the document-first overview.
 - `POST /api/document-sets/{id}/lifecycle` updates `ACTIVE`/`ARCHIVED` and
-  retention days (30–3650) with mandatory actor/reason audit. Archive is
-  recoverable and blocks new uploads; it does not physically purge files.
+  retention days (30–3650) plus total token/cost budgets with mandatory
+  actor/reason audit. Archive is recoverable and blocks new uploads.
+- `GET /api/document-sets/{id}/ai-budget` returns total, used, actively reserved,
+  and remaining tokens and micro-USD.
+- `GET /api/document-sets/{id}/purge` is admin-only and previews retention
+  eligibility, object totals, exact confirmation text, and immutable-reference
+  blockers. `POST` to the same route permanently deletes an eligible archived
+  set and its document objects while retaining the independent purge audit.
 - `POST /api/document-sets/{id}/documents` accepts a multipart upload and
   returns HTTP 202 because parsing is asynchronous.
 - `GET /api/document-sets/{id}/documents` lists logical documents with their
