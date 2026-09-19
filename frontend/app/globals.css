@@ -278,6 +278,8 @@ a { color: inherit; text-decoration: none; }
 
 .notice { margin-top: 14px; padding: 10px 12px; color: #664d08; background: var(--amber-soft); border: 1px solid #e7d598; border-radius: 5px; font-size: 11px; }
 .notice strong { display: inline; margin-right: 6px; }
+.checkbox-row { display: flex; align-items: center; gap: 7px; margin: 7px 0; text-align: left; }
+.checkbox-row input { margin: 0; }
 .document-preview-section { margin-top: 22px; }
 .document-block-list { display: grid; gap: 10px; }
 .document-block { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 5px; }

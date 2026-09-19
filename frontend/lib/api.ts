@@ -27,6 +27,8 @@ import type {
   OpenQuestion,
   BusinessTestCase,
   BusinessTestCaseDetail,
+  TestCaseFamily,
+  TestCaseRevisionDiff,
   CoverageReport,
   TestExport,
   BaselineView,
@@ -59,6 +61,14 @@ export const documentRoutes = {
   questions: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/open-questions`,
   testCases: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/test-cases`,
   testCase: (id: string | number) => `/api/test-cases/${encodeURIComponent(String(id))}`,
+  testCaseFamilies: (setId: string | number) =>
+    `/api/document-sets/${encodeURIComponent(String(setId))}/test-case-families`,
+  testCaseFamily: (id: string | number) =>
+    `/api/test-case-families/${encodeURIComponent(String(id))}`,
+  testCaseVersions: (id: string | number) =>
+    `/api/test-case-families/${encodeURIComponent(String(id))}/versions`,
+  testCaseDiff: (id: string | number, from: string | number, to: string | number) =>
+    `/api/test-case-families/${encodeURIComponent(String(id))}/diff?from=${encodeURIComponent(String(from))}&to=${encodeURIComponent(String(to))}`,
   coverage: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/coverage`,
   aiBudget: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/ai-budget`,
 } as const;
@@ -137,8 +147,9 @@ export async function getDocumentIndex(setId: string | number): Promise<Document
   return (await request<{ index: DocumentIndexStatus }>(documentRoutes.index(setId))).index;
 }
 
-export async function getDocumentChunks(setId: string | number): Promise<SemanticChunk[]> {
-  return (await request<{ chunks: SemanticChunk[] }>(documentRoutes.chunks(setId))).chunks;
+export async function getDocumentChunks(setId: string | number, generation?: number): Promise<SemanticChunk[]> {
+  const query = generation && generation > 0 ? `?generation=${encodeURIComponent(String(generation))}` : "";
+  return (await request<{ chunks: SemanticChunk[] }>(`${documentRoutes.chunks(setId)}${query}`)).chunks;
 }
 
 export async function getRequirements(setId: string | number): Promise<Requirement[]> {
@@ -169,6 +180,23 @@ export async function getBusinessTestCases(setId: string | number): Promise<Busi
 
 export async function getBusinessTestCase(id: string | number): Promise<BusinessTestCaseDetail> {
   return request<BusinessTestCaseDetail>(documentRoutes.testCase(id));
+}
+
+export async function getTestCaseFamilies(setId: string | number): Promise<TestCaseFamily[]> {
+  return (await request<{ families: TestCaseFamily[] }>(documentRoutes.testCaseFamilies(setId))).families;
+}
+
+export async function getTestCaseFamily(id: string | number): Promise<TestCaseFamily> {
+  return request<TestCaseFamily>(documentRoutes.testCaseFamily(id));
+}
+
+export async function getTestCaseVersions(id: string | number): Promise<BusinessTestCase[]> {
+  return (await request<{ versions: BusinessTestCase[] }>(documentRoutes.testCaseVersions(id))).versions;
+}
+
+export async function getTestCaseRevisionDiff(id: string | number, from: string | number,
+  to: string | number): Promise<TestCaseRevisionDiff> {
+  return request<TestCaseRevisionDiff>(documentRoutes.testCaseDiff(id, from, to));
 }
 
 export async function getCoverage(setId: string | number): Promise<CoverageReport> {

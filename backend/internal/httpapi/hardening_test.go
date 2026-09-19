@@ -70,6 +70,8 @@ func TestAuthorizationMiddlewareEnforcesTokenAndRole(t *testing.T) {
 		{name: "editor uploads", method: http.MethodPost, path: "/api/document-sets/1/documents", token: "secret-token", role: "editor", want: http.StatusNoContent},
 		{name: "editor cannot approve", method: http.MethodPost, path: "/api/document-versions/1/review", token: "secret-token", role: "editor", want: http.StatusForbidden},
 		{name: "reviewer approves", method: http.MethodPost, path: "/api/document-versions/1/review", token: "secret-token", role: "reviewer", want: http.StatusNoContent},
+		{name: "editor cannot archive testcase family", method: http.MethodPost, path: "/api/test-case-families/1/archive", token: "secret-token", role: "editor", want: http.StatusForbidden},
+		{name: "reviewer archives testcase family", method: http.MethodPost, path: "/api/test-case-families/1/archive", token: "secret-token", role: "reviewer", want: http.StatusNoContent},
 		{name: "reviewer cannot preview purge", method: http.MethodGet, path: "/api/document-sets/1/purge", token: "secret-token", role: "reviewer", want: http.StatusForbidden},
 		{name: "admin previews purge", method: http.MethodGet, path: "/api/document-sets/1/purge", token: "secret-token", role: "admin", want: http.StatusNoContent},
 		{name: "reviewer cannot purge", method: http.MethodPost, path: "/api/document-sets/1/purge", token: "secret-token", role: "reviewer", want: http.StatusForbidden},

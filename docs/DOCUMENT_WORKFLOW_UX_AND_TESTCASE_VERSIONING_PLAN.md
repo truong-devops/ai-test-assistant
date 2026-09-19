@@ -463,35 +463,35 @@ prototype theo route hiện có. Không cần thay provider LLM ở phase này.
 
 Backend/database:
 
-- [ ] Migration source snapshots, generation membership và freshness metadata.
-- [ ] Upload bản mới cập nhật `source_revision` nguyên tử; job/index cũ giữ reference
+- [x] Migration source snapshots, generation membership và freshness metadata.
+- [x] Upload bản mới cập nhật `source_revision` nguyên tử; job/index cũ giữ reference
   lịch sử, workflow báo bộ làm việc cần cập nhật.
-- [ ] Chốt danh sách version cho một đợt xử lý. Parse lỗi/chưa xong không bị lặng lẽ
+- [x] Chốt danh sách version cho một đợt xử lý. Parse lỗi/chưa xong không bị lặng lẽ
   bỏ qua rồi báo cả bộ sẵn sàng; cho người dùng xác nhận loại khỏi phạm vi.
-- [ ] Index build đọc source snapshot; commit generation chỉ khi có đủ membership
+- [x] Index build đọc source snapshot; commit generation chỉ khi có đủ membership
   và hash hợp lệ. Chống hai lần build cùng snapshot chạy đè nhau.
-- [ ] `AllChunks` cho extraction đọc membership chính xác, không query toàn lịch sử.
-- [ ] Retrieval và subject cùng source snapshot; luôn đưa nội dung subject/evidence
+- [x] `AllChunks` cho extraction đọc membership chính xác, không query toàn lịch sử.
+- [x] Retrieval và subject cùng source snapshot; luôn đưa nội dung subject/evidence
   vào prompt, top-k chỉ bổ sung ngữ cảnh được phép.
-- [ ] Request mới kiểm tra freshness; job cũ hoàn tất theo input đã pin, output cũ
+- [x] Request mới kiểm tra freshness; job cũ hoàn tất theo input đã pin, output cũ
   được đánh dấu không thuộc bộ làm việc mới.
-- [ ] Approval eligibility/warnings phản ánh trạng thái hiện tại mà không bắt
+- [x] Approval eligibility/warnings phản ánh trạng thái hiện tại mà không bắt
   embed lại tài liệu không đổi. Metadata index failure có thể đọc lại sau reload.
 
 Frontend:
 
-- [ ] Hiện “Dữ liệu tìm kiếm cần cập nhật” cùng nguồn/version cụ thể.
-- [ ] Trang chẩn đoán cho xem generation lịch sử riêng, không trình bày đó là current.
-- [ ] Sửa hiển thị `v{document_version_id}` thành version number thực của tài liệu;
+- [x] Hiện “Dữ liệu tìm kiếm cần cập nhật” cùng nguồn/version cụ thể.
+- [x] Trang chẩn đoán cho xem generation lịch sử riêng, không trình bày đó là current.
+- [x] Sửa hiển thị `v{document_version_id}` thành version number thực của tài liệu;
   ID database nằm trong chi tiết kỹ thuật.
 
 Kiểm tra và Definition of Done:
 
-- [ ] Upload v2 khi v1 `READY`: default extraction không dùng v1.
-- [ ] Re-index v2: chỉ subject/context của snapshot v2, v1 vẫn mở được lịch sử.
-- [ ] Upload v3 lúc job v2 chạy: không trộn source, không tự publish output v2.
-- [ ] Approve nguồn sau index: warning draft không còn sai; không tốn embedding lại.
-- [ ] Trường hợp nhiều file, parse lỗi, empty blocks, retry build, hai build đồng
+- [x] Upload v2 khi v1 `READY`: default extraction không dùng v1.
+- [x] Re-index v2: chỉ subject/context của snapshot v2, v1 vẫn mở được lịch sử.
+- [x] Upload v3 lúc job v2 chạy: không trộn source, không tự publish output v2.
+- [x] Approve nguồn sau index: warning draft không còn sai; không tốn embedding lại.
+- [x] Trường hợp nhiều file, parse lỗi, empty blocks, retry build, hai build đồng
   thời và khác document set được kiểm tra.
 
 File trọng tâm: `backend/internal/document/{repository,index_repository,index_service}.go`,
@@ -503,41 +503,41 @@ File trọng tâm: `backend/internal/document/{repository,index_repository,index
 
 Backend/database:
 
-- [ ] Migration thêm family, canonical public key, revision provenance, content
+- [x] Migration thêm family, canonical public key, revision provenance, content
   hash, head token và audit. Giữ mọi row ID/FK cũ.
-- [ ] Thay `logicalCaseKey` bằng identity cấp từ server; giữ legacy key để tra cứu.
-- [ ] Thay fingerprint dùng để so sánh nội dung bằng canonical payload đầy đủ.
-- [ ] Bổ sung list families, list versions, read revision, structured diff, create
+- [x] Thay `logicalCaseKey` bằng identity cấp từ server; giữ legacy key để tra cứu.
+- [x] Thay fingerprint dùng để so sánh nội dung bằng canonical payload đầy đủ.
+- [x] Bổ sung list families, list versions, read revision, structured diff, create
   revision, restore và archive API.
-- [ ] Tách edit khỏi approval; field optional phân biệt “không gửi” và “muốn xóa
+- [x] Tách edit khỏi approval; field optional phân biệt “không gửi” và “muốn xóa
   giá trị rỗng”. Cho sửa steps/step expected và dữ liệu có cấu trúc phù hợp.
-- [ ] Create/edit/restore transaction gồm revision, steps, sources, hash, audit;
+- [x] Create/edit/restore transaction gồm revision, steps, sources, hash, audit;
   tăng counter theo family lock và idempotency key.
-- [ ] Check base/head revision, trả `409` thay vì ghi đè hoặc lỗi unique constraint.
-- [ ] Bảo vệ nội dung parent/child/evidence của revision đã sealed; review metadata
+- [x] Check base/head revision, trả `409` thay vì ghi đè hoặc lỗi unique constraint.
+- [x] Bảo vệ nội dung parent/child/evidence của revision đã sealed; review metadata
   được thay có audit. Retention/purge sử dụng quy trình xóa graph được phép.
-- [ ] Requirement/evidence thay đổi tạo provenance mới; không merge link vào
+- [x] Requirement/evidence thay đổi tạo provenance mới; không merge link vào
   revision testcase approved khi dedupe hoặc generate lại.
-- [ ] Review kiểm tra bằng chứng cho expected ở cả case và từng step; all required
+- [x] Review kiểm tra bằng chứng cho expected ở cả case và từng step; all required
   source links phải hợp lệ theo scope, không chỉ có một link approved bất kỳ.
 
 Frontend tích hợp tối thiểu:
 
-- [ ] Khai báo types/API client identity/revision, giữ đọc được deep link row ID cũ.
-- [ ] Sau create revision chuyển về URL ID mới; hiển thị thông báo vN vừa được tạo.
-- [ ] Legacy edit+review route có adapter trong giai đoạn chuyển đổi, dùng service
+- [x] Khai báo types/API client identity/revision, giữ đọc được deep link row ID cũ.
+- [x] Sau create revision chuyển về URL ID mới; hiển thị thông báo vN vừa được tạo.
+- [x] Legacy edit+review route có adapter trong giai đoạn chuyển đổi, dùng service
   mới và trả ID mới; đánh dấu deprecation, không duy trì hai cách viết revision.
 
 Kiểm tra và Definition of Done:
 
-- [ ] Hai NEGATIVE cùng requirement có hai identities cùng xuất hiện.
-- [ ] Chỉ sửa step/data vẫn tạo revision; payload hoàn toàn không đổi không sinh
+- [x] Hai NEGATIVE cùng requirement có hai identities cùng xuất hiện.
+- [x] Chỉ sửa step/data vẫn tạo revision; payload hoàn toàn không đổi không sinh
   revision thừa. Đổi citation version được nhận biết.
-- [ ] Hai người sửa cùng head: một thành công, người kia nhận 409 có revision hiện tại.
-- [ ] Restore v1 khi latest v3 tạo v4 draft, parent=v3, restored_from=v1.
-- [ ] Retry cùng idempotency key trả cùng kết quả; khác payload cùng key bị từ chối.
-- [ ] Chặn foreign-set/family references và sửa trực tiếp steps/evidence đã sealed.
-- [ ] Migration/backfill giữ nguyên run/artifact/export reference cũ; có báo cáo
+- [x] Hai người sửa cùng head: một thành công, người kia nhận 409 có revision hiện tại.
+- [x] Restore v1 khi latest v3 tạo v4 draft, parent=v3, restored_from=v1.
+- [x] Retry cùng idempotency key trả cùng kết quả; khác payload cùng key bị từ chối.
+- [x] Chặn foreign-set/family references và sửa trực tiếp steps/evidence đã sealed.
+- [x] Migration/backfill giữ nguyên run/artifact/export reference cũ; có báo cáo
   family legacy nghi ngờ bị trộn scenario, chưa tự động gộp/tách bằng similarity.
 
 File trọng tâm: `backend/internal/testcase/`, testcase HTTP handlers/router,
@@ -993,7 +993,7 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 ## 12. Checklist tổng và mẫu ghi bằng chứng
 
 - [x] UV-00 — Contract, prototype và fixture tái hiện.
-- [ ] UV-01 — Source/index snapshot và extraction đúng phạm vi.
+- [x] UV-01 — Source/index snapshot và extraction đúng phạm vi.
 - [ ] UV-02 — Identity/revision backend, concurrency và migration.
 - [ ] UV-03 — Suite release, pinning, coverage/run/export đúng version.
 - [ ] UV-04 — Async jobs, retry, progress và workflow API.

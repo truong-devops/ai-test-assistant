@@ -4,8 +4,8 @@ package document
 
 import (
 	"context"
+	"errors"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -13,9 +13,10 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 )
 
-// This test records DATA-01 and DATA-02 at the UV-00 baseline. UV-01 must
-// replace these expectations with source snapshots and generation membership.
-func TestUV00CharacterizationUploadDoesNotInvalidateReadyIndexAndAllChunksIncludesHistory(t *testing.T) {
+// This test originated as the UV-00 characterization for DATA-01/02. UV-01
+// reverses those expectations: upload makes the working index stale and each
+// generation reads only its explicit membership.
+func TestUV01UploadInvalidatesWorkingIndexAndGenerationMembershipIsIsolated(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -66,14 +67,14 @@ func TestUV00CharacterizationUploadDoesNotInvalidateReadyIndexAndAllChunksInclud
 		t.Fatalf("uploaded version=%+v document_id=%d", versionTwo, documentID)
 	}
 
-	// Current behavior: upload leaves the old READY status untouched.
 	stale, err := indexService.Status(ctx, setID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stale.Status != IndexReady || stale.Generation != ready.Generation ||
-		stale.InputFingerprint != ready.InputFingerprint {
-		t.Fatalf("baseline changed: upload now invalidates the index; replace DATA-01 characterization: before=%+v after=%+v", ready, stale)
+	if stale.Status != IndexReady || stale.Freshness != IndexFreshnessStale ||
+		stale.SourceRevision != ready.SourceRevision+1 || len(stale.PendingVersions) != 1 ||
+		stale.PendingVersions[0].DocumentVersionID != versionTwo.ID {
+		t.Fatalf("upload did not expose a stale working index: before=%+v after=%+v", ready, stale)
 	}
 
 	if _, err := pool.Exec(ctx, `UPDATE document_versions SET parse_status='PARSING',
@@ -85,7 +86,20 @@ func TestUV00CharacterizationUploadDoesNotInvalidateReadyIndexAndAllChunksInclud
 	if err := processor.Process(ctx, versionTwo); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := indexService.Index(ctx, setID); err != nil {
+	if _, err := indexService.AllChunks(ctx, setID); !errors.Is(err, ErrIndexStale) {
+		t.Fatalf("AllChunks on stale working index error=%v", err)
+	}
+	if _, err := indexService.ListChunks(ctx, setID, "", "", 20); !errors.Is(err, ErrIndexStale) {
+		t.Fatalf("default chunk inspector on stale working index error=%v", err)
+	}
+	pinnedBeforeReindex, err := indexService.ListGenerationChunks(ctx, setID,
+		ready.Generation, "", "", -1)
+	if err != nil || len(pinnedBeforeReindex) == 0 {
+		t.Fatalf("explicit historical generation should remain inspectable: chunks=%d err=%v",
+			len(pinnedBeforeReindex), err)
+	}
+	current, err := indexService.Index(ctx, setID)
+	if err != nil {
 		t.Fatal(err)
 	}
 	chunks, err := indexService.AllChunks(ctx, setID)
@@ -96,10 +110,22 @@ func TestUV00CharacterizationUploadDoesNotInvalidateReadyIndexAndAllChunksInclud
 	for _, chunk := range chunks {
 		seen[chunk.DocumentVersionID] = true
 	}
-	if !seen[versionOneID] || !seen[versionTwo.ID] {
-		t.Fatalf("baseline changed: AllChunks no longer exposes both historical versions; seen=%v", seen)
+	if seen[versionOneID] || !seen[versionTwo.ID] || len(seen) != 1 {
+		t.Fatalf("current generation mixed historical document versions: seen=%v", seen)
 	}
-	if len(seen) < 2 || strings.TrimSpace(stale.InputFingerprint) == "" {
-		t.Fatalf("invalid characterization evidence: versions=%v stale=%+v", seen, stale)
+	historical, err := indexService.ListGenerationChunks(ctx, setID, ready.Generation, "", "", -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(historical) == 0 {
+		t.Fatal("historical generation lost its chunk membership")
+	}
+	for _, chunk := range historical {
+		if chunk.DocumentVersionID != versionOneID {
+			t.Fatalf("historical generation leaked version %d: %+v", versionTwo.ID, chunk)
+		}
+	}
+	if current.Freshness != IndexFreshnessCurrent || current.Generation <= ready.Generation {
+		t.Fatalf("re-index did not publish a fresh generation: old=%+v current=%+v", ready, current)
 	}
 }

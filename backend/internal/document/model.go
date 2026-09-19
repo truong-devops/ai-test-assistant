@@ -66,6 +66,7 @@ type Set struct {
 	ArchivedAt           *time.Time `json:"archived_at,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
+	SourceRevision       int64      `json:"source_revision"`
 }
 
 type LifecycleInput struct {

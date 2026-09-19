@@ -21,23 +21,25 @@ type Repository struct {
 
 func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-func (r *Repository) EnqueueExtraction(ctx context.Context, setID, generation int64, total int,
-	requestedBy string,
+func (r *Repository) EnqueueExtraction(ctx context.Context, setID, generation int64,
+	sourceSnapshotID *int64, sourceRevision int64, total int, requestedBy string,
 ) (ExtractionJob, error) {
 	requestedBy = strings.TrimSpace(requestedBy)
 	if requestedBy == "" {
 		requestedBy = "USER"
 	}
 	const query = `INSERT INTO requirement_extraction_jobs
-		(document_set_id,index_generation,total_chunks,requested_by)
-		VALUES($1,$2,$3,$4)
+		(document_set_id,index_generation,source_snapshot_id,source_revision,total_chunks,requested_by)
+		VALUES($1,$2,$3,$4,$5,$6)
 		ON CONFLICT(document_set_id) WHERE status IN ('PENDING','RUNNING')
 		DO UPDATE SET updated_at=NOW()
-		RETURNING id,document_set_id,index_generation,status,total_chunks,processed_chunks,
+		RETURNING id,document_set_id,index_generation,source_snapshot_id,source_revision,is_current,
+		status,total_chunks,processed_chunks,
 		created_count,reused_count,conflict_count,open_question_count,requested_by,
 		attempt_count,error_message,created_at,started_at,finished_at`
 	var result ExtractionJob
-	if err := r.pool.QueryRow(ctx, query, setID, generation, total, requestedBy).
+	if err := r.pool.QueryRow(ctx, query, setID, generation, sourceSnapshotID,
+		sourceRevision, total, requestedBy).
 		Scan(extractionJobDest(&result)...); err != nil {
 		return ExtractionJob{}, fmt.Errorf("enqueue requirement extraction: %w", err)
 	}
@@ -45,7 +47,8 @@ func (r *Repository) EnqueueExtraction(ctx context.Context, setID, generation in
 }
 
 func (r *Repository) LatestExtraction(ctx context.Context, setID int64) (ExtractionJob, error) {
-	const query = `SELECT id,document_set_id,index_generation,status,total_chunks,processed_chunks,
+	const query = `SELECT id,document_set_id,index_generation,source_snapshot_id,source_revision,is_current,
+		status,total_chunks,processed_chunks,
 		created_count,reused_count,conflict_count,open_question_count,requested_by,
 		attempt_count,error_message,created_at,started_at,finished_at
 		FROM requirement_extraction_jobs WHERE document_set_id=$1
@@ -72,7 +75,8 @@ func (r *Repository) ClaimExtraction(ctx context.Context, lease time.Duration) (
 		processed_chunks=0,created_count=0,reused_count=0,conflict_count=0,open_question_count=0,
 		error_message='',lease_expires_at=NOW()+$1::interval,updated_at=NOW()
 	FROM candidate WHERE job.id=candidate.id
-	RETURNING job.id,job.document_set_id,job.index_generation,job.status,job.total_chunks,
+		RETURNING job.id,job.document_set_id,job.index_generation,job.source_snapshot_id,
+			job.source_revision,job.is_current,job.status,job.total_chunks,
 		job.processed_chunks,job.created_count,job.reused_count,job.conflict_count,
 		job.open_question_count,job.requested_by,job.attempt_count,job.error_message,
 		job.created_at,job.started_at,job.finished_at`
@@ -118,7 +122,11 @@ func (r *Repository) UpdateExtractionProgress(ctx context.Context, job Extractio
 func (r *Repository) CompleteExtraction(ctx context.Context, job ExtractionJob, summary ExtractionSummary) error {
 	result, err := r.pool.Exec(ctx, `UPDATE requirement_extraction_jobs SET status='COMPLETED',
 		processed_chunks=total_chunks,created_count=$3,reused_count=$4,conflict_count=$5,
-		open_question_count=$6,error_message='',lease_expires_at=NULL,finished_at=NOW(),updated_at=NOW()
+		open_question_count=$6,error_message='',lease_expires_at=NULL,finished_at=NOW(),updated_at=NOW(),
+		is_current=EXISTS(SELECT 1 FROM document_sets s JOIN document_index_status i
+			ON i.document_set_id=s.id WHERE s.id=requirement_extraction_jobs.document_set_id
+			AND s.source_revision=requirement_extraction_jobs.source_revision
+			AND i.generation=requirement_extraction_jobs.index_generation AND i.status='READY')
 		WHERE id=$1 AND status='RUNNING' AND attempt_count=$2`, job.ID, job.AttemptCount,
 		summary.CreatedCount, summary.ReusedCount, summary.ConflictCount, summary.OpenQuestionCount)
 	if err != nil {
@@ -149,7 +157,8 @@ func (r *Repository) RetryOrFailExtraction(ctx context.Context, job ExtractionJo
 }
 
 func extractionJobDest(item *ExtractionJob) []any {
-	return []any{&item.ID, &item.DocumentSetID, &item.IndexGeneration, &item.Status,
+	return []any{&item.ID, &item.DocumentSetID, &item.IndexGeneration, &item.SourceSnapshotID,
+		&item.SourceRevision, &item.IsCurrent, &item.Status,
 		&item.TotalChunks, &item.ProcessedChunks, &item.CreatedCount, &item.ReusedCount,
 		&item.ConflictCount, &item.OpenQuestionCount, &item.RequestedBy, &item.AttemptCount,
 		&item.ErrorMessage, &item.CreatedAt, &item.StartedAt, &item.FinishedAt}
@@ -167,7 +176,7 @@ func truncateError(err error) string {
 }
 
 func (r *Repository) SaveProposal(ctx context.Context, setID int64, chunk document.SemanticChunk,
-	proposal Proposal,
+	sourceSnapshotID *int64, proposal Proposal,
 ) (Requirement, bool, error) {
 	if chunk.DocumentBlockID <= 0 || chunk.DocumentVersionID <= 0 || chunk.DocumentSetID != setID {
 		return Requirement{}, false, ErrMissingEvidence
@@ -190,25 +199,26 @@ func (r *Repository) SaveProposal(ctx context.Context, setID int64, chunk docume
 	const insert = `INSERT INTO requirements
 		(document_set_id,requirement_key,version_number,title,statement,requirement_type,
 		 flow_type,actor,precondition,postcondition,priority,risk,status,confidence,
-		 extraction_key,source_fingerprint,assumptions,raw_payload)
-		VALUES($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+		 extraction_key,source_fingerprint,assumptions,raw_payload,source_snapshot_id)
+		VALUES($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 		ON CONFLICT(document_set_id,extraction_key) WHERE extraction_key<>'' DO NOTHING
 		RETURNING id,document_set_id,requirement_key,version_number,title,statement,
 		requirement_type,flow_type,actor,precondition,postcondition,priority,risk,status,
-		confidence,supersedes_requirement_id,assumptions,extraction_key,source_fingerprint,
+		confidence,supersedes_requirement_id,assumptions,extraction_key,source_fingerprint,source_snapshot_id,
 		created_at,updated_at`
 	var result Requirement
 	err = tx.QueryRow(ctx, insert, setID, key, proposal.Title, proposal.Statement,
 		proposal.RequirementType, proposal.FlowType, proposal.Actor, proposal.Precondition,
 		proposal.Postcondition, proposal.Priority, proposal.Risk, proposal.Status,
-		proposal.Confidence, extractionKey, chunk.ContentHash, assumptions, rawPayload).
+		proposal.Confidence, extractionKey, chunk.ContentHash, assumptions, rawPayload,
+		sourceSnapshotID).
 		Scan(requirementDestinations(&result)...)
 	created := err == nil
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = tx.QueryRow(ctx, `SELECT id,document_set_id,requirement_key,version_number,title,
 			statement,requirement_type,flow_type,actor,precondition,postcondition,priority,risk,
 			status,confidence,supersedes_requirement_id,assumptions,extraction_key,
-			source_fingerprint,created_at,updated_at FROM requirements
+				source_fingerprint,source_snapshot_id,created_at,updated_at FROM requirements
 			WHERE document_set_id=$1 AND extraction_key=$2`, setID, extractionKey).
 			Scan(requirementDestinations(&result)...)
 	}
@@ -295,7 +305,7 @@ func (r *Repository) List(ctx context.Context, filter Filter) ([]Requirement, er
 	const query = `SELECT r.id,r.document_set_id,r.requirement_key,r.version_number,r.title,
 		r.statement,r.requirement_type,r.flow_type,r.actor,r.precondition,r.postcondition,
 		r.priority,r.risk,r.status,r.confidence,r.supersedes_requirement_id,r.assumptions,
-		r.extraction_key,r.source_fingerprint,r.created_at,r.updated_at,
+		r.extraction_key,r.source_fingerprint,r.source_snapshot_id,r.created_at,r.updated_at,
 		COALESCE((SELECT array_agg(DISTINCT v.document_id ORDER BY v.document_id)
 			FROM requirement_evidence e JOIN document_versions v ON v.id=e.document_version_id
 			WHERE e.requirement_id=r.id),'{}')
@@ -337,7 +347,7 @@ func (r *Repository) Get(ctx context.Context, id int64) (Detail, error) {
 	const requirementQuery = `SELECT id,document_set_id,requirement_key,version_number,title,
 		statement,requirement_type,flow_type,actor,precondition,postcondition,priority,risk,
 		status,confidence,supersedes_requirement_id,assumptions,extraction_key,
-		source_fingerprint,created_at,updated_at FROM requirements WHERE id=$1`
+		source_fingerprint,source_snapshot_id,created_at,updated_at FROM requirements WHERE id=$1`
 	if err := r.pool.QueryRow(ctx, requirementQuery, id).Scan(requirementDestinations(&detail.Requirement)...); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Detail{}, ErrNotFound
@@ -414,7 +424,7 @@ func (r *Repository) Review(ctx context.Context, id int64, input ReviewInput) (D
 	const selectForUpdate = `SELECT id,document_set_id,requirement_key,version_number,title,
 		statement,requirement_type,flow_type,actor,precondition,postcondition,priority,risk,
 		status,confidence,supersedes_requirement_id,assumptions,extraction_key,
-		source_fingerprint,created_at,updated_at FROM requirements WHERE id=$1 FOR UPDATE`
+		source_fingerprint,source_snapshot_id,created_at,updated_at FROM requirements WHERE id=$1 FOR UPDATE`
 	if err := tx.QueryRow(ctx, selectForUpdate, id).Scan(requirementDestinations(&current)...); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Detail{}, ErrNotFound
@@ -433,14 +443,14 @@ func (r *Repository) Review(ctx context.Context, id int64, input ReviewInput) (D
 		if err := tx.QueryRow(ctx, `INSERT INTO requirements
 			(document_set_id,requirement_key,version_number,title,statement,requirement_type,
 			 flow_type,actor,precondition,postcondition,priority,risk,status,confidence,
-			 supersedes_requirement_id,assumptions,source_fingerprint,raw_payload)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'DRAFT',$13,$14,$15,$16,'{}') RETURNING id`,
+				 supersedes_requirement_id,assumptions,source_fingerprint,raw_payload,source_snapshot_id)
+				VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'DRAFT',$13,$14,$15,$16,'{}',$17) RETURNING id`,
 			current.DocumentSetID, current.RequirementKey, current.VersionNumber+1,
 			title, statement, current.RequirementType,
 			current.FlowType, strings.TrimSpace(input.Actor), strings.TrimSpace(input.Precondition),
 			strings.TrimSpace(input.Postcondition), defaultValue(strings.ToUpper(input.Priority), current.Priority),
 			defaultValue(strings.ToUpper(input.Risk), current.Risk), current.Confidence, current.ID,
-			current.Assumptions, current.SourceFingerprint).Scan(&targetID); err != nil {
+			current.Assumptions, current.SourceFingerprint, current.SourceSnapshotID).Scan(&targetID); err != nil {
 			return Detail{}, fmt.Errorf("version edited requirement: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO requirement_evidence
@@ -518,7 +528,7 @@ func requirementDestinations(item *Requirement) []any {
 		&item.Title, &item.Statement, &item.RequirementType, &item.FlowType, &item.Actor,
 		&item.Precondition, &item.Postcondition, &item.Priority, &item.Risk, &item.Status,
 		&item.Confidence, &item.SupersedesID, &item.Assumptions, &item.ExtractionKey,
-		&item.SourceFingerprint, &item.CreatedAt, &item.UpdatedAt}
+		&item.SourceFingerprint, &item.SourceSnapshotID, &item.CreatedAt, &item.UpdatedAt}
 }
 
 func requirementKey(proposal Proposal, chunk document.SemanticChunk) string {

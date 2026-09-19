@@ -30,20 +30,24 @@ const (
 )
 
 var (
-	ErrNotFound        = errors.New("requirement not found")
-	ErrInvalidInput    = errors.New("invalid requirement input")
-	ErrNoIndex         = errors.New("document index must be ready before requirement extraction")
-	ErrMissingEvidence = errors.New("requirement evidence is required")
-	ErrReviewBlocked   = errors.New("requirement cannot be approved")
-	ErrExtractionBusy  = errors.New("requirement extraction is already running")
-	ErrLeaseLost       = errors.New("requirement extraction lease lost")
-	ErrStaleIndex      = errors.New("document index changed after extraction was queued")
+	ErrNotFound          = errors.New("requirement not found")
+	ErrInvalidInput      = errors.New("invalid requirement input")
+	ErrNoIndex           = errors.New("document index must be ready before requirement extraction")
+	ErrMissingEvidence   = errors.New("requirement evidence is required")
+	ErrReviewBlocked     = errors.New("requirement cannot be approved")
+	ErrExtractionBusy    = errors.New("requirement extraction is already running")
+	ErrLeaseLost         = errors.New("requirement extraction lease lost")
+	ErrStaleIndex        = errors.New("document index changed after extraction was queued")
+	ErrSourceNotApproved = errors.New("all included document versions must be approved before requirement extraction")
 )
 
 type ExtractionJob struct {
 	ID                int64      `json:"id"`
 	DocumentSetID     int64      `json:"document_set_id"`
 	IndexGeneration   int64      `json:"index_generation"`
+	SourceSnapshotID  *int64     `json:"source_snapshot_id,omitempty"`
+	SourceRevision    int64      `json:"source_revision"`
+	IsCurrent         bool       `json:"is_current"`
 	Status            string     `json:"status"`
 	TotalChunks       int        `json:"total_chunks"`
 	ProcessedChunks   int        `json:"processed_chunks"`
@@ -79,6 +83,7 @@ type Requirement struct {
 	Assumptions       json.RawMessage `json:"assumptions"`
 	ExtractionKey     string          `json:"extraction_key,omitempty"`
 	SourceFingerprint string          `json:"source_fingerprint,omitempty"`
+	SourceSnapshotID  *int64          `json:"source_snapshot_id,omitempty"`
 	DocumentIDs       []int64         `json:"document_ids,omitempty"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
@@ -174,13 +179,15 @@ type ReviewInput struct {
 }
 
 type ExtractionSummary struct {
-	DocumentSetID     int64 `json:"document_set_id"`
-	ChunkCount        int   `json:"chunk_count"`
-	ProcessedChunks   int   `json:"processed_chunks"`
-	CreatedCount      int   `json:"created_count"`
-	ReusedCount       int   `json:"reused_count"`
-	ConflictCount     int   `json:"conflict_count"`
-	OpenQuestionCount int   `json:"open_question_count"`
+	DocumentSetID     int64  `json:"document_set_id"`
+	SourceSnapshotID  *int64 `json:"source_snapshot_id,omitempty"`
+	IndexGeneration   int64  `json:"index_generation"`
+	ChunkCount        int    `json:"chunk_count"`
+	ProcessedChunks   int    `json:"processed_chunks"`
+	CreatedCount      int    `json:"created_count"`
+	ReusedCount       int    `json:"reused_count"`
+	ConflictCount     int    `json:"conflict_count"`
+	OpenQuestionCount int    `json:"open_question_count"`
 }
 
 type Proposal struct {

@@ -97,7 +97,10 @@ func renderExtractionPrompt(snapshot document.ContextSnapshot, subject document.
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "Document set: %d\nSubject chunk: %s\nIdentifier: %s\nFlow: %s\nSource: version=%d locator=%s\n",
 		subject.DocumentSetID, subject.ChunkKey, subject.Identifier, subject.FlowType,
-		subject.DocumentVersionID, subject.SourceLocator)
+		subject.DocumentVersionNumber, subject.SourceLocator)
+	builder.WriteString("\n<SUBJECT_DOCUMENT_EVIDENCE>\n")
+	builder.WriteString(truncate(subject.Content, 6000))
+	builder.WriteString("\n</SUBJECT_DOCUMENT_EVIDENCE>\n")
 	builder.WriteString("\n<UNTRUSTED_DOCUMENT_CONTEXT>\n")
 	for index, item := range snapshot.Items {
 		fmt.Fprintf(&builder, "[%d] %s | %s | %s\n%s\n", index+1, item.Identifier,

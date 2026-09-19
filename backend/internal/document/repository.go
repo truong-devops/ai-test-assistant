@@ -20,12 +20,12 @@ func (r *PostgresRepository) CreateSet(ctx context.Context, input CreateSetInput
 	const query = `INSERT INTO document_sets (name, product_name, scope, description)
 		VALUES ($1,$2,$3,$4)
 		RETURNING id, name, product_name, scope, description, status, retention_days,
-		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at`
+		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at, source_revision`
 	var result Set
 	if err := r.pool.QueryRow(ctx, query, input.Name, input.ProductName, input.Scope, input.Description).Scan(
 		&result.ID, &result.Name, &result.ProductName, &result.Scope, &result.Description, &result.Status,
 		&result.RetentionDays, &result.AITokenBudget, &result.AICostBudgetMicroUSD,
-		&result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt); err != nil {
+		&result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt, &result.SourceRevision); err != nil {
 		if uniqueViolation(err) {
 			return Set{}, ErrAlreadyExists
 		}
@@ -36,7 +36,7 @@ func (r *PostgresRepository) CreateSet(ctx context.Context, input CreateSetInput
 
 func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
 	rows, err := r.pool.Query(ctx, `SELECT id, name, product_name, scope, description, status, retention_days,
-		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at
+		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at, source_revision
 		FROM document_sets ORDER BY created_at DESC, id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list document sets: %w", err)
@@ -47,7 +47,7 @@ func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
 		var item Set
 		if err := rows.Scan(&item.ID, &item.Name, &item.ProductName, &item.Scope, &item.Description, &item.Status,
 			&item.RetentionDays, &item.AITokenBudget, &item.AICostBudgetMicroUSD,
-			&item.ArchivedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			&item.ArchivedAt, &item.CreatedAt, &item.UpdatedAt, &item.SourceRevision); err != nil {
 			return nil, fmt.Errorf("scan document set: %w", err)
 		}
 		results = append(results, item)
@@ -61,11 +61,11 @@ func (r *PostgresRepository) ListSets(ctx context.Context) ([]Set, error) {
 func (r *PostgresRepository) GetSet(ctx context.Context, id int64) (Set, error) {
 	var result Set
 	err := r.pool.QueryRow(ctx, `SELECT id, name, product_name, scope, description, status, retention_days,
-		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at
+		ai_token_budget, ai_cost_budget_microusd, archived_at, created_at, updated_at, source_revision
 		FROM document_sets WHERE id=$1`, id).Scan(&result.ID, &result.Name,
 		&result.ProductName, &result.Scope, &result.Description, &result.Status, &result.RetentionDays,
 		&result.AITokenBudget, &result.AICostBudgetMicroUSD,
-		&result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt)
+		&result.ArchivedAt, &result.CreatedAt, &result.UpdatedAt, &result.SourceRevision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Set{}, ErrNotFound
 	}
@@ -178,10 +178,10 @@ func (r *PostgresRepository) BeginPurge(ctx context.Context, id int64, input Pur
 	defer tx.Rollback(ctx)
 	var set Set
 	err = tx.QueryRow(ctx, `SELECT id,name,product_name,scope,description,status,retention_days,
-		ai_token_budget,ai_cost_budget_microusd,archived_at,created_at,updated_at
+		ai_token_budget,ai_cost_budget_microusd,archived_at,created_at,updated_at,source_revision
 		FROM document_sets WHERE id=$1 FOR UPDATE`, id).Scan(&set.ID, &set.Name, &set.ProductName,
 		&set.Scope, &set.Description, &set.Status, &set.RetentionDays, &set.AITokenBudget,
-		&set.AICostBudgetMicroUSD, &set.ArchivedAt, &set.CreatedAt, &set.UpdatedAt)
+		&set.AICostBudgetMicroUSD, &set.ArchivedAt, &set.CreatedAt, &set.UpdatedAt, &set.SourceRevision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PurgePlan{}, ErrNotFound
 	}

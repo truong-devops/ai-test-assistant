@@ -284,10 +284,17 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		mux.HandleFunc("POST /api/document-sets/{id}/test-cases/generate", testCases.generate)
 		mux.HandleFunc("POST /api/document-sets/{id}/test-cases/regenerate", testCases.regenerate)
 		mux.HandleFunc("GET /api/document-sets/{id}/test-cases", testCases.list)
+		mux.HandleFunc("GET /api/document-sets/{id}/test-case-families", testCases.listFamilies)
 		mux.HandleFunc("GET /api/document-sets/{id}/coverage", testCases.coverage)
 		mux.HandleFunc("GET /api/test-cases/{id}", testCases.get)
 		mux.HandleFunc("POST /api/test-cases/{id}/review", testCases.review)
 		mux.HandleFunc("POST /api/test-cases/bulk-review", testCases.bulkReview)
+		mux.HandleFunc("GET /api/test-case-families/{id}", testCases.getFamily)
+		mux.HandleFunc("GET /api/test-case-families/{id}/versions", testCases.listVersions)
+		mux.HandleFunc("POST /api/test-case-families/{id}/versions", testCases.createRevision)
+		mux.HandleFunc("GET /api/test-case-families/{id}/diff", testCases.diff)
+		mux.HandleFunc("POST /api/test-case-families/{id}/restore", testCases.restore)
+		mux.HandleFunc("POST /api/test-case-families/{id}/archive", testCases.archive)
 	}
 	if reportService != nil {
 		reports := reportHandler{service: reportService}

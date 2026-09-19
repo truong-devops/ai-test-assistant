@@ -5,7 +5,7 @@ import type { SemanticChunk } from "@/lib/types";
 import { StatusBadge } from "@/components/status-badge";
 import { humanize } from "@/lib/presentation";
 
-export function RetrievalDebug({ setId }: { setId: number }) {
+export function RetrievalDebug({ setId, generation }: { setId: number; generation?: number }) {
   const [query, setQuery] = useState("UC-B08");
   const [policy, setPolicy] = useState("LATEST");
   const [results, setResults] = useState<SemanticChunk[]>([]);
@@ -18,7 +18,7 @@ export function RetrievalDebug({ setId }: { setId: number }) {
       const response = await fetch(`/api/backend/api/document-sets/${setId}/retrieve`, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ query, version_policy: policy, limit: 10 }),
+        body: JSON.stringify({ query, version_policy: policy, limit: 10, index_generation: generation }),
       });
       const payload = (await response.json().catch(() => ({}))) as { results?: SemanticChunk[]; error?: string };
       if (!response.ok) {

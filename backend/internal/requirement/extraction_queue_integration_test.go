@@ -32,11 +32,11 @@ func TestExtractionQueueLeaseProgressIdempotencyAndTerminalFailure(t *testing.T)
 	defer pool.Exec(context.Background(), `DELETE FROM document_sets WHERE id=$1`, setID)
 	repository := NewRepository(pool)
 
-	queued, err := repository.EnqueueExtraction(ctx, setID, 7, 2, "BA")
+	queued, err := repository.EnqueueExtraction(ctx, setID, 7, nil, 0, 2, "BA")
 	if err != nil || queued.Status != ExtractionPending {
 		t.Fatalf("queued=%+v error=%v", queued, err)
 	}
-	duplicate, err := repository.EnqueueExtraction(ctx, setID, 8, 99, "other")
+	duplicate, err := repository.EnqueueExtraction(ctx, setID, 8, nil, 0, 99, "other")
 	if err != nil || duplicate.ID != queued.ID || duplicate.IndexGeneration != 7 || duplicate.TotalChunks != 2 {
 		t.Fatalf("idempotent enqueue=%+v error=%v", duplicate, err)
 	}
@@ -63,7 +63,7 @@ func TestExtractionQueueLeaseProgressIdempotencyAndTerminalFailure(t *testing.T)
 		t.Fatalf("stale lease progress error=%v", err)
 	}
 
-	failedJob, err := repository.EnqueueExtraction(ctx, setID, 8, 1, "BA")
+	failedJob, err := repository.EnqueueExtraction(ctx, setID, 8, nil, 0, 1, "BA")
 	if err != nil || failedJob.ID == queued.ID {
 		t.Fatalf("second job=%+v error=%v", failedJob, err)
 	}

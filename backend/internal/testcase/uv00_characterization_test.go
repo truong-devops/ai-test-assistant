@@ -28,10 +28,20 @@ func loadUV00VersioningFixture(t *testing.T) uv00VersioningFixture {
 	return fixture
 }
 
-// These characterization tests deliberately record defects present at the UV-00
-// baseline. UV-02 must replace their expectations with the new family/content
-// identity contract; they are not the desired long-term behavior.
-func TestUV00CharacterizationDistinctNegativeScenariosShareLogicalKey(t *testing.T) {
+func proposalContent(proposal Proposal) RevisionContent {
+	content := RevisionContent{Title: proposal.Title, TestType: proposal.TestType,
+		Risk: proposal.Risk, Actor: proposal.Actor, Precondition: proposal.Precondition,
+		TestData: proposal.TestData, ExpectedResult: proposal.ExpectedResult,
+		Postcondition: proposal.Postcondition, Assumptions: proposal.Assumptions,
+		RequirementRevisionIDs: proposal.RequirementIDs}
+	for _, step := range proposal.Steps {
+		content.Steps = append(content.Steps, StepInput{Action: step.Action,
+			ExpectedResult: step.ExpectedResult})
+	}
+	return content
+}
+
+func TestUV02DistinctNegativeScenariosHaveDistinctCanonicalContent(t *testing.T) {
 	fixture := loadUV00VersioningFixture(t)
 	if len(fixture.DistinctNegativeCase) != 2 {
 		t.Fatalf("fixture negative cases=%d", len(fixture.DistinctNegativeCase))
@@ -45,12 +55,20 @@ func TestUV00CharacterizationDistinctNegativeScenariosShareLogicalKey(t *testing
 		left.Steps[0].ExpectedResult == right.Steps[0].ExpectedResult {
 		t.Fatalf("fixture no longer represents two distinct scenarios: left=%+v right=%+v", left, right)
 	}
-	if logicalCaseKey(left) != logicalCaseKey(right) {
-		t.Fatalf("baseline changed: distinct scenarios no longer collide; replace this characterization in UV-02")
+	leftHash, err := revisionContentHash(proposalContent(left))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightHash, err := revisionContentHash(proposalContent(right))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leftHash == rightHash {
+		t.Fatal("distinct negative scenarios must not share canonical content identity")
 	}
 }
 
-func TestUV00CharacterizationGenerationKeyIgnoresStepAndTestDataChanges(t *testing.T) {
+func TestUV02StepAndTestDataChangesAffectCanonicalContent(t *testing.T) {
 	fixture := loadUV00VersioningFixture(t)
 	before, after := fixture.StepDataChange.Before, fixture.StepDataChange.After
 	for _, proposal := range []*Proposal{&before, &after} {
@@ -60,7 +78,15 @@ func TestUV00CharacterizationGenerationKeyIgnoresStepAndTestDataChanges(t *testi
 	if before.TestData == after.TestData || len(before.Steps) == len(after.Steps) {
 		t.Fatalf("fixture does not change test data and steps: before=%+v after=%+v", before, after)
 	}
-	if generationKey(before) != generationKey(after) {
-		t.Fatalf("baseline changed: step/data changes now affect generation key; replace this characterization in UV-02")
+	beforeHash, err := revisionContentHash(proposalContent(before))
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterHash, err := revisionContentHash(proposalContent(after))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beforeHash == afterHash {
+		t.Fatal("step and test-data changes must affect the canonical fingerprint")
 	}
 }

@@ -12,9 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// This test records VER-04 at the UV-00 baseline. UV-02/03 must make latest,
-// latest-approved and pinned-release selection explicit instead of using leaf rows.
-func TestUV00CharacterizationDraftSuccessorHidesApprovedRevisionFromList(t *testing.T) {
+func TestUV02FamilySeparatesLatestFromLatestApproved(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -58,11 +56,14 @@ func TestUV00CharacterizationDraftSuccessorHidesApprovedRevisionFromList(t *test
 		t.Fatal(err)
 	}
 	if len(items) != 1 || items[0].ID != draftID || items[0].Status != StatusDraft {
-		t.Fatalf("baseline changed: leaf list should expose only draft successor; items=%+v", items)
+		t.Fatalf("working list should expose family head; items=%+v", items)
 	}
-	for _, item := range items {
-		if item.ID == approvedID {
-			t.Fatalf("characterization invalid: approved revision unexpectedly remained visible: %+v", items)
-		}
+	family, err := NewRepository(pool).GetFamily(ctx, items[0].FamilyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if family.LatestRevision == nil || family.LatestRevision.ID != draftID ||
+		family.LatestApproved == nil || family.LatestApproved.ID != approvedID {
+		t.Fatalf("family selectors are not explicit: %+v", family)
 	}
 }

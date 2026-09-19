@@ -26,6 +26,7 @@ export type DocumentSet = {
   archived_at?: string;
   created_at: string;
   updated_at: string;
+  source_revision: number;
 };
 
 export type AIBudgetStatus = {
@@ -133,6 +134,9 @@ export type RequirementExtractionJob = {
   id: number;
   document_set_id: number;
   index_generation: number;
+  source_snapshot_id?: number;
+  source_revision: number;
+  is_current: boolean;
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
   total_chunks: number;
   processed_chunks: number;
@@ -216,6 +220,68 @@ export type BusinessTestCase = {
   generated_by: string;
   assumptions: string[];
   supersedes_test_case_id?: number;
+  family_id: number;
+  parent_revision_id?: number;
+  restored_from_revision_id?: number;
+  content_hash: string;
+  created_by: string;
+  change_reason: string;
+  source_snapshot_id?: number;
+  provenance: Record<string, unknown>;
+  sealed_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TestCaseFamily = {
+  id: number;
+  test_suite_id: number;
+  document_set_id: number;
+  public_key: string;
+  legacy_key?: string;
+  archived: boolean;
+  revision_counter: number;
+  head_revision_id?: number;
+  head_token: string;
+  needs_identity_review: boolean;
+  created_at: string;
+  updated_at: string;
+  latest_revision?: BusinessTestCase;
+  latest_approved_revision?: BusinessTestCase;
+};
+
+export type TestCaseStepInput = { action: string; expected_result: string };
+
+export type TestCaseEvidenceRef = {
+  requirement_revision_id: number;
+  requirement_evidence_id: number;
+  document_version_id: number;
+  document_block_id: number;
+  source_locator: string;
+  excerpt_hash: string;
+};
+
+export type TestCaseRevisionContent = {
+  title: string;
+  test_type: string;
+  risk: string;
+  actor: string;
+  precondition: string;
+  test_data: string;
+  steps: TestCaseStepInput[];
+  expected_result: string;
+  postcondition: string;
+  assumptions: string[];
+  requirement_revision_ids: number[];
+  evidence_refs: TestCaseEvidenceRef[];
+  source_snapshot_id?: number;
+};
+
+export type TestCaseRevisionDiff = {
+  family_id: number;
+  from: BusinessTestCase;
+  to: BusinessTestCase;
+  changes: Array<{ field: string; before: unknown; after: unknown }>;
 };
 
 export type BusinessTestCaseDetail = {
@@ -229,7 +295,8 @@ export type BusinessTestCaseDetail = {
     flow_type: string;
   }>;
   evidence: RequirementEvidence[];
-  reviews: Array<{ id: number; reviewer_name: string; decision: string; comment: string; created_at: string }>;
+  reviews: Array<{ id: number; reviewer_name: string; decision: string; comment: string;
+    content_hash: string; actor: string; created_at: string }>;
 };
 
 export type DocumentIndexStatus = {
@@ -247,12 +314,54 @@ export type DocumentIndexStatus = {
   started_at?: string;
   finished_at?: string;
   updated_at?: string;
+  source_snapshot_id?: number;
+  indexed_source_revision: number;
+  source_revision: number;
+  freshness: "CURRENT" | "STALE";
+  extraction_ready: boolean;
+  content_warning_count: number;
+  sources: DocumentIndexVersionRef[];
+  pending_versions: DocumentIndexVersionRef[];
+  generations: DocumentIndexGeneration[];
+};
+
+export type DocumentIndexVersionRef = {
+  document_id: number;
+  document_name: string;
+  document_version_id: number;
+  version_number: number;
+  sha256?: string;
+  parse_status: DocumentVersion["parse_status"];
+  approval_status: DocumentVersion["approval_status"];
+  included: boolean;
+  exclusion_reason?: string;
+};
+
+export type DocumentIndexGeneration = {
+  document_set_id: number;
+  generation: number;
+  source_snapshot_id?: number;
+  source_revision: number;
+  input_fingerprint: string;
+  embedding_model: string;
+  status: "INDEXING" | "READY" | "FAILED" | "SUPERSEDED";
+  version_count: number;
+  excluded_version_count: number;
+  chunk_count: number;
+  warning_count: number;
+  content_warning_count: number;
+  error_message?: string;
+  requested_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  updated_at: string;
 };
 
 export type SemanticChunk = {
   id: number;
   document_set_id: number;
   document_version_id: number;
+  document_version_number: number;
   document_block_id: number;
   chunk_key: string;
   parent_chunk_key: string;

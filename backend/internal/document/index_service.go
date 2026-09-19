@@ -23,10 +23,16 @@ func NewIndexService(repository *IndexRepository, embedder DocumentEmbeddingClie
 }
 
 func (s *IndexService) Index(ctx context.Context, setID int64) (IndexStatus, error) {
+	return s.IndexWithOptions(ctx, setID, IndexOptions{})
+}
+
+func (s *IndexService) IndexWithOptions(ctx context.Context, setID int64,
+	options IndexOptions,
+) (IndexStatus, error) {
 	if setID <= 0 {
 		return IndexStatus{}, ErrInvalidInput
 	}
-	sources, skipped, err := s.repository.LoadSources(ctx, setID)
+	snapshot, sources, err := s.repository.CreateSourceSnapshot(ctx, setID, options)
 	if err != nil {
 		return IndexStatus{}, err
 	}
@@ -37,16 +43,13 @@ func (s *IndexService) Index(ctx context.Context, setID int64) (IndexStatus, err
 		return IndexStatus{}, fmt.Errorf("document index requires 384-dimensional embeddings")
 	}
 	fingerprint := indexFingerprint(sources, s.embedder.Model())
-	started, unchanged, err := s.repository.Begin(ctx, setID, fingerprint, s.embedder.Model())
+	started, unchanged, err := s.repository.Begin(ctx, snapshot, fingerprint, s.embedder.Model())
 	if err != nil || unchanged {
 		return started, err
 	}
 	chunks := make([]SemanticChunk, 0)
 	warnings := 0
 	for _, source := range sources {
-		if source.Version.ApprovalStatus != ApprovalApproved {
-			warnings++
-		}
 		generated := s.chunker.Chunk(source)
 		for index := range generated {
 			generated[index].EmbeddingModel = s.embedder.Model()
@@ -79,7 +82,8 @@ func (s *IndexService) Index(ctx context.Context, setID int64) (IndexStatus, err
 			chunks[offset+index].Embedding = vectors[index]
 		}
 	}
-	result, err := s.repository.Complete(ctx, started, chunks, len(sources), skipped, warnings)
+	result, err := s.repository.Complete(ctx, started, chunks, len(sources),
+		snapshot.ExcludedCount, warnings)
 	if err != nil {
 		_ = s.repository.Fail(context.WithoutCancel(ctx), started, err)
 	}
@@ -93,23 +97,67 @@ func (s *IndexService) Status(ctx context.Context, setID int64) (IndexStatus, er
 	return s.repository.GetStatus(ctx, setID)
 }
 
+func (s *IndexService) Generation(ctx context.Context, setID, generation int64) (IndexGeneration, error) {
+	if setID <= 0 || generation <= 0 {
+		return IndexGeneration{}, ErrInvalidInput
+	}
+	return s.repository.GetGeneration(ctx, setID, generation)
+}
+
 func (s *IndexService) ListChunks(ctx context.Context, setID int64, chunkType, flowType string,
 	limit int,
+) ([]SemanticChunk, error) {
+	return s.ListGenerationChunks(ctx, setID, 0, chunkType, flowType, limit)
+}
+
+func (s *IndexService) ListGenerationChunks(ctx context.Context, setID, generation int64,
+	chunkType, flowType string, limit int,
 ) ([]SemanticChunk, error) {
 	if setID <= 0 {
 		return nil, ErrInvalidInput
 	}
-	return s.repository.ListChunks(ctx, setID, strings.ToUpper(strings.TrimSpace(chunkType)),
+	if generation < 0 {
+		return nil, ErrInvalidInput
+	}
+	if generation == 0 {
+		status, err := s.Status(ctx, setID)
+		if err != nil {
+			return nil, err
+		}
+		if status.Status != IndexReady {
+			return nil, ErrIndexNotReady
+		}
+		if status.Freshness != IndexFreshnessCurrent {
+			return nil, ErrIndexStale
+		}
+		generation = status.Generation
+	}
+	return s.repository.ListChunks(ctx, setID, generation,
+		strings.ToUpper(strings.TrimSpace(chunkType)),
 		strings.ToUpper(strings.TrimSpace(flowType)), limit)
 }
 
 // AllChunks is for internal document workflows. Public inspector requests stay
 // bounded by ListChunks, while extraction must not silently truncate a document set.
 func (s *IndexService) AllChunks(ctx context.Context, setID int64) ([]SemanticChunk, error) {
+	status, err := s.Status(ctx, setID)
+	if err != nil {
+		return nil, err
+	}
+	if status.Status != IndexReady || status.Freshness != IndexFreshnessCurrent {
+		return nil, ErrIndexStale
+	}
+	return s.AllChunksForGeneration(ctx, setID, status.Generation)
+}
+
+func (s *IndexService) AllChunksForGeneration(ctx context.Context, setID, generation int64) ([]SemanticChunk, error) {
 	if setID <= 0 {
 		return nil, ErrInvalidInput
 	}
-	return s.repository.ListChunks(ctx, setID, "", "", -1)
+	if generation <= 0 {
+		return nil, ErrInvalidInput
+	}
+	return s.repository.ListChunks(ctx, setID, generation, "", "", -1)
 }
 
 func (s *IndexService) Retrieve(ctx context.Context, query RetrievalQuery) ([]SemanticChunk, error) {
@@ -135,12 +183,27 @@ func (s *IndexService) Retrieve(ctx context.Context, query RetrievalQuery) ([]Se
 	if query.Limit < 1 || query.Limit > 50 {
 		return nil, ErrInvalidSearch
 	}
-	status, err := s.repository.GetStatus(ctx, query.DocumentSetID)
-	if err != nil {
-		return nil, err
-	}
-	if status.Status != IndexReady {
-		return nil, ErrIndexNotReady
+	if query.IndexGeneration == 0 {
+		status, err := s.repository.GetStatus(ctx, query.DocumentSetID)
+		if err != nil {
+			return nil, err
+		}
+		if status.Status != IndexReady {
+			return nil, ErrIndexNotReady
+		}
+		if status.Freshness != IndexFreshnessCurrent {
+			return nil, ErrIndexStale
+		}
+		query.IndexGeneration = status.Generation
+	} else {
+		generation, err := s.repository.GetGeneration(ctx, query.DocumentSetID,
+			query.IndexGeneration)
+		if err != nil {
+			return nil, err
+		}
+		if generation.Status != IndexReady {
+			return nil, ErrIndexNotReady
+		}
 	}
 	searchText := strings.TrimSpace(query.Query + " " + query.Identifier)
 	vectors, err := s.embedder.Embed(ctx, []string{searchText})
@@ -156,14 +219,75 @@ func (s *IndexService) Retrieve(ctx context.Context, query RetrievalQuery) ([]Se
 func (s *IndexService) RetrieveAndSnapshot(ctx context.Context, purpose string,
 	query RetrievalQuery,
 ) (ContextSnapshot, error) {
+	if query.IndexGeneration == 0 {
+		status, err := s.Status(ctx, query.DocumentSetID)
+		if err != nil {
+			return ContextSnapshot{}, err
+		}
+		if status.Status != IndexReady {
+			return ContextSnapshot{}, ErrIndexNotReady
+		}
+		if status.Freshness != IndexFreshnessCurrent {
+			return ContextSnapshot{}, ErrIndexStale
+		}
+		query.IndexGeneration = status.Generation
+	}
 	items, err := s.Retrieve(ctx, query)
 	if err != nil {
 		return ContextSnapshot{}, err
 	}
-	status, err := s.repository.GetStatus(ctx, query.DocumentSetID)
+	generation, err := s.repository.GetGeneration(ctx, query.DocumentSetID,
+		query.IndexGeneration)
 	if err != nil {
 		return ContextSnapshot{}, err
 	}
+	status := IndexStatus{DocumentSetID: generation.DocumentSetID,
+		Generation: generation.Generation, EmbeddingModel: generation.EmbeddingModel,
+		SourceSnapshotID: generation.SourceSnapshotID}
+	return s.repository.SaveSnapshot(ctx, strings.TrimSpace(purpose), query, status, items)
+}
+
+func (s *IndexService) RetrieveAndSnapshotForSubject(ctx context.Context, purpose string,
+	query RetrievalQuery, subject SemanticChunk,
+) (ContextSnapshot, error) {
+	if query.Limit == 0 {
+		query.Limit = 10
+	}
+	if query.IndexGeneration == 0 {
+		status, err := s.Status(ctx, query.DocumentSetID)
+		if err != nil {
+			return ContextSnapshot{}, err
+		}
+		if status.Status != IndexReady || status.Freshness != IndexFreshnessCurrent {
+			return ContextSnapshot{}, ErrIndexStale
+		}
+		query.IndexGeneration = status.Generation
+	}
+	items, err := s.Retrieve(ctx, query)
+	if err != nil {
+		return ContextSnapshot{}, err
+	}
+	found := false
+	for _, item := range items {
+		if item.ID == subject.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		items = append([]SemanticChunk{subject}, items...)
+		if len(items) > query.Limit {
+			items = items[:query.Limit]
+		}
+	}
+	generation, err := s.repository.GetGeneration(ctx, query.DocumentSetID,
+		query.IndexGeneration)
+	if err != nil {
+		return ContextSnapshot{}, err
+	}
+	status := IndexStatus{DocumentSetID: generation.DocumentSetID,
+		Generation: generation.Generation, EmbeddingModel: generation.EmbeddingModel,
+		SourceSnapshotID: generation.SourceSnapshotID}
 	return s.repository.SaveSnapshot(ctx, strings.TrimSpace(purpose), query, status, items)
 }
 

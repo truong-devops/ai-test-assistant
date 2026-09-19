@@ -21,33 +21,104 @@ const (
 	VersionLatestApproved = "LATEST_APPROVED"
 	VersionAllIndexed     = "ALL_INDEXED"
 
+	IndexFreshnessCurrent = "CURRENT"
+	IndexFreshnessStale   = "STALE"
+
 	SemanticChunkerVersion = "document-semantic-v3"
 )
 
 var (
-	ErrIndexNotReady       = errors.New("document index is not ready")
-	ErrNoParsedDocuments   = errors.New("document set has no parsed documents")
-	ErrInvalidSearch       = errors.New("invalid document retrieval query")
-	ErrUnapprovedEvidence  = errors.New("evidence document version is not approved")
-	ErrSourceReviewBlocked = errors.New("document source review is blocked")
+	ErrIndexNotReady         = errors.New("document index is not ready")
+	ErrNoParsedDocuments     = errors.New("document set has no parsed documents")
+	ErrInvalidSearch         = errors.New("invalid document retrieval query")
+	ErrUnapprovedEvidence    = errors.New("evidence document version is not approved")
+	ErrSourceReviewBlocked   = errors.New("document source review is blocked")
+	ErrSourceSnapshotBlocked = errors.New("document source snapshot is blocked")
+	ErrIndexStale            = errors.New("document index does not match the current source revision")
 )
 
 type IndexStatus struct {
-	DocumentSetID       int64      `json:"document_set_id"`
-	Status              string     `json:"status"`
-	Generation          int64      `json:"generation"`
-	InputFingerprint    string     `json:"input_fingerprint,omitempty"`
-	VersionCount        int        `json:"version_count"`
-	SkippedVersionCount int        `json:"skipped_version_count"`
-	ChunkCount          int        `json:"chunk_count"`
-	WarningCount        int        `json:"warning_count"`
-	EmbeddingModel      string     `json:"embedding_model"`
-	ErrorMessage        string     `json:"error_message,omitempty"`
-	RequestedAt         *time.Time `json:"requested_at,omitempty"`
-	StartedAt           *time.Time `json:"started_at,omitempty"`
-	FinishedAt          *time.Time `json:"finished_at,omitempty"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	DocumentSetID         int64             `json:"document_set_id"`
+	Status                string            `json:"status"`
+	Generation            int64             `json:"generation"`
+	InputFingerprint      string            `json:"input_fingerprint,omitempty"`
+	VersionCount          int               `json:"version_count"`
+	SkippedVersionCount   int               `json:"skipped_version_count"`
+	ChunkCount            int               `json:"chunk_count"`
+	WarningCount          int               `json:"warning_count"`
+	EmbeddingModel        string            `json:"embedding_model"`
+	ErrorMessage          string            `json:"error_message,omitempty"`
+	RequestedAt           *time.Time        `json:"requested_at,omitempty"`
+	StartedAt             *time.Time        `json:"started_at,omitempty"`
+	FinishedAt            *time.Time        `json:"finished_at,omitempty"`
+	UpdatedAt             time.Time         `json:"updated_at"`
+	SourceSnapshotID      *int64            `json:"source_snapshot_id,omitempty"`
+	IndexedSourceRevision int64             `json:"indexed_source_revision"`
+	SourceRevision        int64             `json:"source_revision"`
+	Freshness             string            `json:"freshness"`
+	ExtractionReady       bool              `json:"extraction_ready"`
+	ContentWarningCount   int               `json:"content_warning_count"`
+	Sources               []IndexVersionRef `json:"sources"`
+	PendingVersions       []IndexVersionRef `json:"pending_versions"`
+	Generations           []IndexGeneration `json:"generations"`
 }
+
+type IndexOptions struct {
+	ExcludedVersionIDs []int64 `json:"excluded_version_ids"`
+}
+
+type IndexVersionRef struct {
+	DocumentID        int64  `json:"document_id"`
+	DocumentName      string `json:"document_name"`
+	DocumentVersionID int64  `json:"document_version_id"`
+	VersionNumber     int    `json:"version_number"`
+	SHA256            string `json:"sha256,omitempty"`
+	ParseStatus       string `json:"parse_status"`
+	ApprovalStatus    string `json:"approval_status"`
+	Included          bool   `json:"included"`
+	ExclusionReason   string `json:"exclusion_reason,omitempty"`
+}
+
+type SourceSnapshot struct {
+	ID             int64             `json:"id"`
+	DocumentSetID  int64             `json:"document_set_id"`
+	SourceRevision int64             `json:"source_revision"`
+	Fingerprint    string            `json:"fingerprint"`
+	IncludedCount  int               `json:"included_count"`
+	ExcludedCount  int               `json:"excluded_count"`
+	CreatedAt      time.Time         `json:"created_at"`
+	Items          []IndexVersionRef `json:"items"`
+}
+
+type IndexGeneration struct {
+	DocumentSetID        int64      `json:"document_set_id"`
+	Generation           int64      `json:"generation"`
+	SourceSnapshotID     *int64     `json:"source_snapshot_id,omitempty"`
+	SourceRevision       int64      `json:"source_revision"`
+	InputFingerprint     string     `json:"input_fingerprint"`
+	EmbeddingModel       string     `json:"embedding_model"`
+	Status               string     `json:"status"`
+	VersionCount         int        `json:"version_count"`
+	ExcludedVersionCount int        `json:"excluded_version_count"`
+	ChunkCount           int        `json:"chunk_count"`
+	WarningCount         int        `json:"warning_count"`
+	ContentWarningCount  int        `json:"content_warning_count"`
+	ErrorMessage         string     `json:"error_message,omitempty"`
+	RequestedAt          *time.Time `json:"requested_at,omitempty"`
+	StartedAt            *time.Time `json:"started_at,omitempty"`
+	FinishedAt           *time.Time `json:"finished_at,omitempty"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+}
+
+type SourceSnapshotBlockedError struct {
+	Issues []IndexVersionRef
+}
+
+func (e *SourceSnapshotBlockedError) Error() string {
+	return "latest document versions must be parsed or explicitly excluded before indexing"
+}
+
+func (e *SourceSnapshotBlockedError) Unwrap() error { return ErrSourceSnapshotBlocked }
 
 type IndexSource struct {
 	Document Document
@@ -56,56 +127,59 @@ type IndexSource struct {
 }
 
 type SemanticChunk struct {
-	ID                int64           `json:"id"`
-	DocumentSetID     int64           `json:"document_set_id"`
-	DocumentVersionID int64           `json:"document_version_id"`
-	DocumentBlockID   int64           `json:"document_block_id"`
-	ChunkKey          string          `json:"chunk_key"`
-	ParentChunkKey    string          `json:"parent_chunk_key"`
-	ChunkType         string          `json:"chunk_type"`
-	FlowType          string          `json:"flow_type"`
-	Identifier        string          `json:"identifier"`
-	Title             string          `json:"title"`
-	Content           string          `json:"content"`
-	RawContent        string          `json:"raw_content"`
-	ContentHash       string          `json:"content_hash"`
-	SourceLocator     string          `json:"source_locator"`
-	EmbeddingModel    string          `json:"embedding_model"`
-	Metadata          json.RawMessage `json:"metadata"`
-	SourceBlockIDs    []int64         `json:"source_block_ids,omitempty"`
-	Embedding         []float32       `json:"-"`
-	ApprovalStatus    string          `json:"approval_status,omitempty"`
-	ExactScore        float64         `json:"exact_score,omitempty"`
-	LexicalScore      float64         `json:"lexical_score,omitempty"`
-	SemanticScore     float64         `json:"semantic_score,omitempty"`
-	AuthorityScore    float64         `json:"authority_score,omitempty"`
-	Score             float64         `json:"score,omitempty"`
-	CreatedAt         time.Time       `json:"created_at,omitempty"`
-	UpdatedAt         time.Time       `json:"updated_at,omitempty"`
+	ID                    int64           `json:"id"`
+	DocumentSetID         int64           `json:"document_set_id"`
+	DocumentVersionID     int64           `json:"document_version_id"`
+	DocumentVersionNumber int             `json:"document_version_number"`
+	DocumentBlockID       int64           `json:"document_block_id"`
+	ChunkKey              string          `json:"chunk_key"`
+	ParentChunkKey        string          `json:"parent_chunk_key"`
+	ChunkType             string          `json:"chunk_type"`
+	FlowType              string          `json:"flow_type"`
+	Identifier            string          `json:"identifier"`
+	Title                 string          `json:"title"`
+	Content               string          `json:"content"`
+	RawContent            string          `json:"raw_content"`
+	ContentHash           string          `json:"content_hash"`
+	SourceLocator         string          `json:"source_locator"`
+	EmbeddingModel        string          `json:"embedding_model"`
+	Metadata              json.RawMessage `json:"metadata"`
+	SourceBlockIDs        []int64         `json:"source_block_ids,omitempty"`
+	Embedding             []float32       `json:"-"`
+	ApprovalStatus        string          `json:"approval_status,omitempty"`
+	ExactScore            float64         `json:"exact_score,omitempty"`
+	LexicalScore          float64         `json:"lexical_score,omitempty"`
+	SemanticScore         float64         `json:"semantic_score,omitempty"`
+	AuthorityScore        float64         `json:"authority_score,omitempty"`
+	Score                 float64         `json:"score,omitempty"`
+	CreatedAt             time.Time       `json:"created_at,omitempty"`
+	UpdatedAt             time.Time       `json:"updated_at,omitempty"`
 }
 
 type RetrievalQuery struct {
-	DocumentSetID int64  `json:"-"`
-	Query         string `json:"query"`
-	Identifier    string `json:"identifier,omitempty"`
-	ChunkType     string `json:"chunk_type,omitempty"`
-	FlowType      string `json:"flow_type,omitempty"`
-	VersionPolicy string `json:"version_policy,omitempty"`
-	Limit         int    `json:"limit,omitempty"`
+	DocumentSetID   int64  `json:"-"`
+	Query           string `json:"query"`
+	Identifier      string `json:"identifier,omitempty"`
+	ChunkType       string `json:"chunk_type,omitempty"`
+	FlowType        string `json:"flow_type,omitempty"`
+	VersionPolicy   string `json:"version_policy,omitempty"`
+	Limit           int    `json:"limit,omitempty"`
+	IndexGeneration int64  `json:"index_generation,omitempty"`
 }
 
 type ContextSnapshot struct {
-	ID              int64           `json:"id"`
-	DocumentSetID   int64           `json:"document_set_id"`
-	Purpose         string          `json:"purpose"`
-	QueryText       string          `json:"query_text"`
-	VersionPolicy   string          `json:"version_policy"`
-	IndexGeneration int64           `json:"index_generation"`
-	EmbeddingModel  string          `json:"embedding_model"`
-	RetrievalConfig json.RawMessage `json:"retrieval_config"`
-	SnapshotHash    string          `json:"snapshot_hash"`
-	CreatedAt       time.Time       `json:"created_at"`
-	Items           []SemanticChunk `json:"items"`
+	ID               int64           `json:"id"`
+	DocumentSetID    int64           `json:"document_set_id"`
+	Purpose          string          `json:"purpose"`
+	QueryText        string          `json:"query_text"`
+	VersionPolicy    string          `json:"version_policy"`
+	IndexGeneration  int64           `json:"index_generation"`
+	SourceSnapshotID *int64          `json:"source_snapshot_id,omitempty"`
+	EmbeddingModel   string          `json:"embedding_model"`
+	RetrievalConfig  json.RawMessage `json:"retrieval_config"`
+	SnapshotHash     string          `json:"snapshot_hash"`
+	CreatedAt        time.Time       `json:"created_at"`
+	Items            []SemanticChunk `json:"items"`
 }
 
 type VersionReviewInput struct {

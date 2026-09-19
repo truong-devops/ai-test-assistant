@@ -22,87 +22,11 @@ type IndexRepository struct {
 
 func NewIndexRepository(pool *pgxpool.Pool) *IndexRepository { return &IndexRepository{pool: pool} }
 
-func (r *IndexRepository) LoadSources(ctx context.Context, setID int64) ([]IndexSource, int, error) {
-	var exists bool
-	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM document_sets WHERE id=$1)`, setID).Scan(&exists); err != nil {
-		return nil, 0, fmt.Errorf("check document set: %w", err)
-	}
-	if !exists {
-		return nil, 0, ErrNotFound
-	}
-	const versionsQuery = `WITH latest AS (
-		SELECT DISTINCT ON (d.id) d.id AS document_id_value, d.document_set_id, d.name, d.document_type,
-			d.created_at, d.updated_at,
-			v.id AS version_id_value, v.document_id AS version_document_id, v.document_set_id AS version_document_set_id, v.version_number, v.original_filename,
-			v.media_type, v.size_bytes, v.sha256, v.storage_key, v.approval_status,
-			v.parse_status, v.parse_error, v.block_count, v.attempt_count,
-			v.next_attempt_at, v.lease_expires_at, v.uploaded_at, v.started_at, v.parsed_at
-		FROM documents d JOIN document_versions v ON v.document_id=d.id
-		WHERE d.document_set_id=$1
-		ORDER BY d.id, v.version_number DESC
-	)
-	SELECT * FROM latest ORDER BY document_id_value`
-	rows, err := r.pool.Query(ctx, versionsQuery, setID)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list latest document versions for indexing: %w", err)
-	}
-	defer rows.Close()
-	sources := make([]IndexSource, 0)
-	skipped := 0
-	for rows.Next() {
-		var source IndexSource
-		destinations := []any{&source.Document.ID, &source.Document.DocumentSetID,
-			&source.Document.Name, &source.Document.DocumentType, &source.Document.CreatedAt,
-			&source.Document.UpdatedAt}
-		destinations = append(destinations, versionDestinations(&source.Version)...)
-		if err := rows.Scan(destinations...); err != nil {
-			return nil, 0, fmt.Errorf("scan index source: %w", err)
-		}
-		if source.Version.ParseStatus != ParseParsed {
-			skipped++
-			continue
-		}
-		source.Blocks, err = r.listBlocks(ctx, source.Version.ID)
-		if err != nil {
-			return nil, 0, err
-		}
-		if len(source.Blocks) == 0 {
-			skipped++
-			continue
-		}
-		sources = append(sources, source)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate index sources: %w", err)
-	}
-	return sources, skipped, nil
-}
-
-func (r *IndexRepository) listBlocks(ctx context.Context, versionID int64) ([]Block, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id, document_version_id, ordinal, block_type,
-		heading_level, content, source_locator, metadata, created_at
-		FROM document_blocks WHERE document_version_id=$1 ORDER BY ordinal`, versionID)
-	if err != nil {
-		return nil, fmt.Errorf("load blocks for indexing: %w", err)
-	}
-	defer rows.Close()
-	blocks := make([]Block, 0)
-	for rows.Next() {
-		var block Block
-		if err := rows.Scan(&block.ID, &block.DocumentVersionID, &block.Ordinal,
-			&block.BlockType, &block.HeadingLevel, &block.Content, &block.SourceLocator,
-			&block.Metadata, &block.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan index block: %w", err)
-		}
-		blocks = append(blocks, block)
-	}
-	return blocks, rows.Err()
-}
-
 func (r *IndexRepository) GetStatus(ctx context.Context, setID int64) (IndexStatus, error) {
 	const query = `SELECT document_set_id,status,generation,input_fingerprint,version_count,
 		skipped_version_count,chunk_count,warning_count,embedding_model,error_message,
-		requested_at,started_at,finished_at,updated_at
+		requested_at,started_at,finished_at,updated_at,source_snapshot_id,
+		indexed_source_revision,content_warning_count
 		FROM document_index_status WHERE document_set_id=$1`
 	var result IndexStatus
 	err := r.pool.QueryRow(ctx, query, setID).Scan(indexStatusDestinations(&result)...)
@@ -114,15 +38,19 @@ func (r *IndexRepository) GetStatus(ctx context.Context, setID int64) (IndexStat
 		if !exists {
 			return IndexStatus{}, ErrNotFound
 		}
-		return IndexStatus{DocumentSetID: setID, Status: IndexNotIndexed}, nil
+		result = IndexStatus{DocumentSetID: setID, Status: IndexNotIndexed}
+		return r.enrichStatus(ctx, result)
 	}
 	if err != nil {
 		return IndexStatus{}, fmt.Errorf("get document index status: %w", err)
 	}
-	return result, nil
+	return r.enrichStatus(ctx, result)
 }
 
-func (r *IndexRepository) Begin(ctx context.Context, setID int64, fingerprint, model string) (IndexStatus, bool, error) {
+func (r *IndexRepository) Begin(ctx context.Context, snapshot SourceSnapshot, fingerprint,
+	model string,
+) (IndexStatus, bool, error) {
+	setID := snapshot.DocumentSetID
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return IndexStatus{}, false, fmt.Errorf("begin document index: %w", err)
@@ -138,36 +66,60 @@ func (r *IndexRepository) Begin(ctx context.Context, setID int64, fingerprint, m
 	var current IndexStatus
 	err = tx.QueryRow(ctx, `SELECT document_set_id,status,generation,input_fingerprint,version_count,
 		skipped_version_count,chunk_count,warning_count,embedding_model,error_message,
-		requested_at,started_at,finished_at,updated_at
+		requested_at,started_at,finished_at,updated_at,source_snapshot_id,
+		indexed_source_revision,content_warning_count
 		FROM document_index_status WHERE document_set_id=$1 FOR UPDATE`, setID).
 		Scan(indexStatusDestinations(&current)...)
-	if err == nil && current.Status == IndexReady && current.InputFingerprint == fingerprint && current.EmbeddingModel == model {
+	if err == nil && (current.Status == IndexReady || current.Status == IndexIndexing) &&
+		current.InputFingerprint == fingerprint && current.EmbeddingModel == model &&
+		current.SourceSnapshotID != nil && *current.SourceSnapshotID == snapshot.ID {
 		if err := tx.Commit(ctx); err != nil {
 			return IndexStatus{}, false, fmt.Errorf("commit unchanged index check: %w", err)
 		}
-		return current, true, nil
+		result, statusErr := r.GetStatus(ctx, setID)
+		return result, true, statusErr
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return IndexStatus{}, false, fmt.Errorf("lock document index status: %w", err)
 	}
+	if err == nil && current.Status == IndexIndexing && current.Generation > 0 {
+		if _, updateErr := tx.Exec(ctx, `UPDATE document_index_generations SET status='SUPERSEDED',
+			finished_at=NOW(),updated_at=NOW(),error_message='superseded by a newer generation'
+			WHERE document_set_id=$1 AND generation=$2 AND status='INDEXING'`, setID,
+			current.Generation); updateErr != nil {
+			return IndexStatus{}, false, fmt.Errorf("supersede document index generation: %w", updateErr)
+		}
+	}
 	const upsert = `INSERT INTO document_index_status
-		(document_set_id,status,generation,input_fingerprint,embedding_model,requested_at,started_at,updated_at)
-		VALUES($1,'INDEXING',1,$2,$3,NOW(),NOW(),NOW())
+		(document_set_id,status,generation,input_fingerprint,embedding_model,requested_at,started_at,
+		 updated_at,source_snapshot_id,indexed_source_revision,content_warning_count)
+		VALUES($1,'INDEXING',1,$2,$3,NOW(),NOW(),NOW(),$4,$5,0)
 		ON CONFLICT(document_set_id) DO UPDATE SET status='INDEXING',
 		generation=document_index_status.generation+1,input_fingerprint=EXCLUDED.input_fingerprint,
 		embedding_model=EXCLUDED.embedding_model,error_message='',requested_at=NOW(),started_at=NOW(),
-		finished_at=NULL,updated_at=NOW()
+		finished_at=NULL,updated_at=NOW(),source_snapshot_id=EXCLUDED.source_snapshot_id,
+		indexed_source_revision=EXCLUDED.indexed_source_revision,content_warning_count=0
 		RETURNING document_set_id,status,generation,input_fingerprint,version_count,
 		skipped_version_count,chunk_count,warning_count,embedding_model,error_message,
-		requested_at,started_at,finished_at,updated_at`
+		requested_at,started_at,finished_at,updated_at,source_snapshot_id,
+		indexed_source_revision,content_warning_count`
 	var result IndexStatus
-	if err := tx.QueryRow(ctx, upsert, setID, fingerprint, model).Scan(indexStatusDestinations(&result)...); err != nil {
+	if err := tx.QueryRow(ctx, upsert, setID, fingerprint, model, snapshot.ID,
+		snapshot.SourceRevision).Scan(indexStatusDestinations(&result)...); err != nil {
 		return IndexStatus{}, false, fmt.Errorf("mark document index started: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO document_index_generations
+		(document_set_id,generation,source_snapshot_id,source_revision,input_fingerprint,
+		 embedding_model,status,requested_at,started_at)
+		VALUES($1,$2,$3,$4,$5,$6,'INDEXING',NOW(),NOW())`, setID, result.Generation,
+		snapshot.ID, snapshot.SourceRevision, fingerprint, model); err != nil {
+		return IndexStatus{}, false, fmt.Errorf("create document index generation: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return IndexStatus{}, false, fmt.Errorf("commit document index start: %w", err)
 	}
-	return result, false, nil
+	result, err = r.GetStatus(ctx, setID)
+	return result, false, err
 }
 
 func (r *IndexRepository) Complete(ctx context.Context, started IndexStatus, chunks []SemanticChunk,
@@ -212,58 +164,88 @@ func (r *IndexRepository) Complete(ctx context.Context, started IndexStatus, chu
 				return IndexStatus{}, fmt.Errorf("save chunk source block: %w", err)
 			}
 		}
+		if _, err := tx.Exec(ctx, `INSERT INTO document_index_generation_chunks
+			(document_set_id,generation,ordinal,document_chunk_id,document_version_id)
+			VALUES($1,$2,$3,$4,$5)`, started.DocumentSetID, started.Generation, index+1,
+			chunk.ID, chunk.DocumentVersionID); err != nil {
+			return IndexStatus{}, fmt.Errorf("save document index membership: %w", err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE document_index_generations SET status='READY',
+		version_count=$3,excluded_version_count=$4,chunk_count=$5,content_warning_count=$6,
+		error_message='',finished_at=NOW(),updated_at=NOW()
+		WHERE document_set_id=$1 AND generation=$2 AND status='INDEXING'`,
+		started.DocumentSetID, started.Generation, versionCount, skippedCount, len(chunks),
+		warningCount); err != nil {
+		return IndexStatus{}, fmt.Errorf("complete document index generation: %w", err)
 	}
 	const complete = `UPDATE document_index_status SET status='READY',version_count=$3,
 		skipped_version_count=$4,chunk_count=$5,warning_count=$6,error_message='',
-		finished_at=NOW(),updated_at=NOW()
+		content_warning_count=$6,finished_at=NOW(),updated_at=NOW()
 		WHERE document_set_id=$1 AND generation=$2 AND status='INDEXING'
-		RETURNING document_set_id,status,generation,input_fingerprint,version_count,
-		skipped_version_count,chunk_count,warning_count,embedding_model,error_message,
-		requested_at,started_at,finished_at,updated_at`
-	var result IndexStatus
+		RETURNING generation`
+	var completedGeneration int64
 	if err := tx.QueryRow(ctx, complete, started.DocumentSetID, started.Generation,
-		versionCount, skippedCount, len(chunks), warningCount).Scan(indexStatusDestinations(&result)...); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return IndexStatus{}, ErrLeaseLost
-		}
+		versionCount, skippedCount, len(chunks), warningCount).Scan(&completedGeneration); err != nil &&
+		!errors.Is(err, pgx.ErrNoRows) {
 		return IndexStatus{}, fmt.Errorf("complete document index: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return IndexStatus{}, fmt.Errorf("commit document index: %w", err)
 	}
-	return result, nil
+	return r.GetStatus(ctx, started.DocumentSetID)
 }
 
 func (r *IndexRepository) Fail(ctx context.Context, started IndexStatus, processErr error) error {
-	result, err := r.pool.Exec(ctx, `UPDATE document_index_status SET status='FAILED',
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin fail document index: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `UPDATE document_index_generations SET status='FAILED',
 		error_message=$3,finished_at=NOW(),updated_at=NOW()
 		WHERE document_set_id=$1 AND generation=$2 AND status='INDEXING'`,
-		started.DocumentSetID, started.Generation, processErr.Error())
-	if err != nil {
+		started.DocumentSetID, started.Generation, processErr.Error()); err != nil {
+		return fmt.Errorf("fail document index generation: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE document_index_status SET status='FAILED',
+		error_message=$3,finished_at=NOW(),updated_at=NOW()
+		WHERE document_set_id=$1 AND generation=$2 AND status='INDEXING'`,
+		started.DocumentSetID, started.Generation, processErr.Error()); err != nil {
 		return fmt.Errorf("fail document index: %w", err)
 	}
-	if result.RowsAffected() != 1 {
-		return ErrLeaseLost
-	}
-	return nil
+	return tx.Commit(ctx)
 }
 
-func (r *IndexRepository) ListChunks(ctx context.Context, setID int64, chunkType, flowType string,
-	limit int,
+func (r *IndexRepository) ListChunks(ctx context.Context, setID, generation int64,
+	chunkType, flowType string, limit int,
 ) ([]SemanticChunk, error) {
 	if limit == -1 {
 		limit = 2147483647
 	} else if limit <= 0 || limit > 500 {
 		limit = 200
 	}
-	const query = `SELECT c.id,c.document_set_id,c.document_version_id,COALESCE(c.document_block_id,0),
+	if generation == 0 {
+		if err := r.pool.QueryRow(ctx, `SELECT generation FROM document_index_status
+			WHERE document_set_id=$1`, setID).Scan(&generation); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return []SemanticChunk{}, nil
+			}
+			return nil, fmt.Errorf("resolve current document index generation: %w", err)
+		}
+	}
+	const query = `SELECT c.id,c.document_set_id,c.document_version_id,v.version_number,
+		COALESCE(c.document_block_id,0),
 		c.chunk_key,c.parent_chunk_key,c.chunk_type,c.flow_type,c.identifier,c.title,c.content,
 		c.raw_content,c.content_hash,c.source_locator,c.embedding_model,c.metadata,v.approval_status,
 		c.created_at,c.updated_at
-		FROM document_chunks c JOIN document_versions v ON v.id=c.document_version_id
-		WHERE c.document_set_id=$1 AND ($2='' OR c.chunk_type=$2) AND ($3='' OR c.flow_type=$3)
-		ORDER BY c.document_version_id,c.id LIMIT $4`
-	rows, err := r.pool.Query(ctx, query, setID, chunkType, flowType, limit)
+		FROM document_index_generation_chunks m
+		JOIN document_chunks c ON c.id=m.document_chunk_id
+		JOIN document_versions v ON v.id=c.document_version_id
+		WHERE m.document_set_id=$1 AND m.generation=$2
+		AND ($3='' OR c.chunk_type=$3) AND ($4='' OR c.flow_type=$4)
+		ORDER BY m.ordinal LIMIT $5`
+	rows, err := r.pool.Query(ctx, query, setID, generation, chunkType, flowType, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list semantic chunks: %w", err)
 	}
@@ -286,37 +268,33 @@ func (r *IndexRepository) Retrieve(ctx context.Context, query RetrievalQuery,
 	if err != nil {
 		return nil, err
 	}
-	const statement = `WITH latest AS (
-		SELECT DISTINCT ON (document_id) id FROM document_versions
-		WHERE document_set_id=$1 ORDER BY document_id,version_number DESC
-	), latest_approved AS (
-		SELECT DISTINCT ON (document_id) id FROM document_versions
-		WHERE document_set_id=$1 AND approval_status='APPROVED'
-		ORDER BY document_id,version_number DESC
-	), scored AS (
-		SELECT c.id,c.document_set_id,c.document_version_id,COALESCE(c.document_block_id,0) AS document_block_id,
+	const statement = `WITH scored AS (
+		SELECT c.id,c.document_set_id,c.document_version_id,v.version_number,
+		COALESCE(c.document_block_id,0) AS document_block_id,
 		c.chunk_key,c.parent_chunk_key,c.chunk_type,c.flow_type,c.identifier,c.title,c.content,
 		c.raw_content,c.content_hash,c.source_locator,c.embedding_model,c.metadata,v.approval_status,
 		c.created_at,c.updated_at,
 		CASE WHEN $3<>'' AND lower(c.identifier)=lower($3) THEN 10.0 ELSE 0.0 END AS exact_score,
 		ts_rank_cd(c.search_vector,plainto_tsquery('simple',$2))*4.0 AS lexical_score,
-		CASE WHEN c.embedding IS NULL OR (c.embedding <=> $8::vector)='NaN'::double precision THEN 0.0
-			ELSE GREATEST(0.0,1.0-(c.embedding <=> $8::vector))*2.0 END AS semantic_score,
+		CASE WHEN c.embedding IS NULL OR (c.embedding <=> $9::vector)='NaN'::double precision THEN 0.0
+			ELSE GREATEST(0.0,1.0-(c.embedding <=> $9::vector))*2.0 END AS semantic_score,
 		CASE v.approval_status WHEN 'APPROVED' THEN 1.0 WHEN 'DRAFT' THEN 0.0 ELSE -1.0 END AS authority_score
-		FROM document_chunks c JOIN document_versions v ON v.id=c.document_version_id
-		WHERE c.document_set_id=$1
+		FROM document_index_generation_chunks m
+		JOIN document_chunks c ON c.id=m.document_chunk_id
+		JOIN document_versions v ON v.id=c.document_version_id
+		WHERE m.document_set_id=$1 AND m.generation=$8
 		AND ($4='' OR c.chunk_type=$4) AND ($5='' OR c.flow_type=$5)
-		AND ($6='ALL_INDEXED' OR ($6='LATEST' AND c.document_version_id IN (SELECT id FROM latest))
-			OR ($6='LATEST_APPROVED' AND c.document_version_id IN (SELECT id FROM latest_approved)))
+		AND ($6 IN ('ALL_INDEXED','LATEST') OR ($6='LATEST_APPROVED' AND v.approval_status='APPROVED'))
 	)
-	SELECT id,document_set_id,document_version_id,document_block_id,chunk_key,parent_chunk_key,
+	SELECT id,document_set_id,document_version_id,version_number,document_block_id,chunk_key,parent_chunk_key,
 		chunk_type,flow_type,identifier,title,content,raw_content,content_hash,source_locator,
 		embedding_model,metadata,approval_status,created_at,updated_at,
 		exact_score,lexical_score,semantic_score,authority_score,
 		exact_score+lexical_score+semantic_score+authority_score AS total_score
 	FROM scored ORDER BY total_score DESC,document_version_id,id LIMIT $7`
 	rows, err := r.pool.Query(ctx, statement, query.DocumentSetID, query.Query, query.Identifier,
-		query.ChunkType, query.FlowType, query.VersionPolicy, query.Limit, vector)
+		query.ChunkType, query.FlowType, query.VersionPolicy, query.Limit,
+		query.IndexGeneration, vector)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve document chunks: %w", err)
 	}
@@ -356,15 +334,17 @@ func (r *IndexRepository) SaveSnapshot(ctx context.Context, purpose string,
 	var result ContextSnapshot
 	const insertSnapshot = `INSERT INTO document_context_snapshots
 		(document_set_id,purpose,query_text,version_policy,index_generation,embedding_model,
-		 retrieval_config,snapshot_hash)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+		 retrieval_config,snapshot_hash,source_snapshot_id)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		RETURNING id,document_set_id,purpose,query_text,version_policy,index_generation,
-		embedding_model,retrieval_config,snapshot_hash,created_at`
+		embedding_model,retrieval_config,snapshot_hash,source_snapshot_id,created_at`
 	if err := tx.QueryRow(ctx, insertSnapshot, query.DocumentSetID, purpose, query.Query,
-		query.VersionPolicy, status.Generation, status.EmbeddingModel, config, snapshotHash).
+		query.VersionPolicy, status.Generation, status.EmbeddingModel, config, snapshotHash,
+		status.SourceSnapshotID).
 		Scan(&result.ID, &result.DocumentSetID, &result.Purpose, &result.QueryText,
 			&result.VersionPolicy, &result.IndexGeneration, &result.EmbeddingModel,
-			&result.RetrievalConfig, &result.SnapshotHash, &result.CreatedAt); err != nil {
+			&result.RetrievalConfig, &result.SnapshotHash, &result.SourceSnapshotID,
+			&result.CreatedAt); err != nil {
 		return ContextSnapshot{}, fmt.Errorf("insert context snapshot: %w", err)
 	}
 	const insertItem = `INSERT INTO document_context_snapshot_items
@@ -442,15 +422,105 @@ func (r *IndexRepository) ReviewVersion(ctx context.Context, versionID int64,
 	return review, nil
 }
 
+func (r *IndexRepository) enrichStatus(ctx context.Context, result IndexStatus) (IndexStatus, error) {
+	if err := r.pool.QueryRow(ctx, `SELECT source_revision FROM document_sets WHERE id=$1`,
+		result.DocumentSetID).Scan(&result.SourceRevision); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return IndexStatus{}, ErrNotFound
+		}
+		return IndexStatus{}, fmt.Errorf("load current source revision: %w", err)
+	}
+	result.Freshness = IndexFreshnessStale
+	if result.SourceSnapshotID != nil && result.IndexedSourceRevision == result.SourceRevision {
+		result.Freshness = IndexFreshnessCurrent
+	}
+	result.Sources = []IndexVersionRef{}
+	result.PendingVersions = []IndexVersionRef{}
+	result.Generations = []IndexGeneration{}
+	approved := true
+	if result.SourceSnapshotID != nil {
+		rows, err := r.pool.Query(ctx, `SELECT i.document_id,i.document_name,i.document_version_id,
+			i.version_number,i.sha256,v.parse_status,v.approval_status,i.included,i.exclusion_reason
+			FROM document_source_snapshot_items i
+			JOIN document_versions v ON v.id=i.document_version_id
+			WHERE i.source_snapshot_id=$1 ORDER BY i.document_id`, *result.SourceSnapshotID)
+		if err != nil {
+			return IndexStatus{}, fmt.Errorf("list current source snapshot: %w", err)
+		}
+		for rows.Next() {
+			var item IndexVersionRef
+			if err := rows.Scan(&item.DocumentID, &item.DocumentName, &item.DocumentVersionID,
+				&item.VersionNumber, &item.SHA256, &item.ParseStatus, &item.ApprovalStatus,
+				&item.Included, &item.ExclusionReason); err != nil {
+				rows.Close()
+				return IndexStatus{}, err
+			}
+			if item.Included && item.ApprovalStatus != ApprovalApproved {
+				approved = false
+			}
+			result.Sources = append(result.Sources, item)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return IndexStatus{}, err
+		}
+		rows.Close()
+	}
+	rows, err := r.pool.Query(ctx, `WITH latest AS (
+		SELECT DISTINCT ON (d.id) d.id AS document_id,d.name,v.id AS version_id,
+			v.version_number,v.sha256,v.parse_status,v.approval_status
+		FROM documents d JOIN document_versions v ON v.document_id=d.id
+		WHERE d.document_set_id=$1 ORDER BY d.id,v.version_number DESC
+	) SELECT l.document_id,l.name,l.version_id,l.version_number,l.sha256,l.parse_status,
+		l.approval_status FROM latest l
+	LEFT JOIN document_source_snapshot_items i ON i.source_snapshot_id=$2 AND
+		i.document_id=l.document_id AND i.document_version_id=l.version_id
+	WHERE i.id IS NULL ORDER BY l.document_id`, result.DocumentSetID, result.SourceSnapshotID)
+	if err != nil {
+		return IndexStatus{}, fmt.Errorf("list pending source versions: %w", err)
+	}
+	for rows.Next() {
+		var item IndexVersionRef
+		if err := rows.Scan(&item.DocumentID, &item.DocumentName, &item.DocumentVersionID,
+			&item.VersionNumber, &item.SHA256, &item.ParseStatus, &item.ApprovalStatus); err != nil {
+			rows.Close()
+			return IndexStatus{}, err
+		}
+		item.Included = true
+		result.PendingVersions = append(result.PendingVersions, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return IndexStatus{}, err
+	}
+	rows.Close()
+	if result.Generation > 0 {
+		result.WarningCount, err = r.dynamicWarningCount(ctx, result.DocumentSetID,
+			result.Generation, result.ContentWarningCount)
+		if err != nil {
+			return IndexStatus{}, err
+		}
+	}
+	result.ExtractionReady = result.Status == IndexReady &&
+		result.Freshness == IndexFreshnessCurrent && approved
+	result.Generations, err = r.ListGenerations(ctx, result.DocumentSetID)
+	if err != nil {
+		return IndexStatus{}, err
+	}
+	return result, nil
+}
+
 func indexStatusDestinations(item *IndexStatus) []any {
 	return []any{&item.DocumentSetID, &item.Status, &item.Generation, &item.InputFingerprint,
 		&item.VersionCount, &item.SkippedVersionCount, &item.ChunkCount, &item.WarningCount,
 		&item.EmbeddingModel, &item.ErrorMessage, &item.RequestedAt, &item.StartedAt,
-		&item.FinishedAt, &item.UpdatedAt}
+		&item.FinishedAt, &item.UpdatedAt, &item.SourceSnapshotID,
+		&item.IndexedSourceRevision, &item.ContentWarningCount}
 }
 
 func chunkDestinations(item *SemanticChunk) []any {
-	return []any{&item.ID, &item.DocumentSetID, &item.DocumentVersionID, &item.DocumentBlockID,
+	return []any{&item.ID, &item.DocumentSetID, &item.DocumentVersionID,
+		&item.DocumentVersionNumber, &item.DocumentBlockID,
 		&item.ChunkKey, &item.ParentChunkKey, &item.ChunkType, &item.FlowType,
 		&item.Identifier, &item.Title, &item.Content, &item.RawContent, &item.ContentHash,
 		&item.SourceLocator, &item.EmbeddingModel, &item.Metadata, &item.ApprovalStatus,
