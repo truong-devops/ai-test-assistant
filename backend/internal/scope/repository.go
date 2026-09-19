@@ -25,18 +25,24 @@ func (r *Repository) BaselineView(ctx context.Context, projectID int64) (Baselin
 		return BaselineView{}, ErrInvalidInput
 	}
 	result := BaselineView{Candidates: []Candidate{}}
-	rows, err := r.pool.Query(ctx, `SELECT d.id,d.name,s.id,s.name,
-		count(t.id) FILTER (WHERE t.status='APPROVED' AND NOT EXISTS(
-			SELECT 1 FROM test_cases newer WHERE newer.supersedes_test_case_id=t.id))
+	rows, err := r.pool.Query(ctx, `SELECT d.id,d.name,s.id,s.name,release.id,
+		release.release_number,release.name,release.manifest_hash,release.published_at,
+		count(item.test_case_id)
 		FROM document_sets d JOIN test_suites s ON s.document_set_id=d.id
-		LEFT JOIN test_cases t ON t.test_suite_id=s.id
-		GROUP BY d.id,d.name,s.id,s.name ORDER BY d.name,s.name`)
+		JOIN test_suite_releases release ON release.test_suite_id=s.id
+		LEFT JOIN test_suite_release_items item ON item.release_id=release.id
+		WHERE d.status='ACTIVE'
+		GROUP BY d.id,d.name,s.id,s.name,release.id
+		ORDER BY d.name,s.name,release.release_number DESC`)
 	if err != nil {
 		return result, fmt.Errorf("list baseline candidates: %w", err)
 	}
 	for rows.Next() {
 		var item Candidate
-		if err := rows.Scan(&item.DocumentSetID, &item.DocumentSetName, &item.TestSuiteID, &item.TestSuiteName, &item.ApprovedTestCases); err != nil {
+		if err := rows.Scan(&item.DocumentSetID, &item.DocumentSetName, &item.TestSuiteID,
+			&item.TestSuiteName, &item.SuiteReleaseID, &item.ReleaseNumber,
+			&item.ReleaseName, &item.ManifestHash, &item.ReleasePublishedAt,
+			&item.ApprovedTestCases); err != nil {
 			rows.Close()
 			return result, err
 		}
@@ -45,11 +51,16 @@ func (r *Repository) BaselineView(ctx context.Context, projectID int64) (Baselin
 	rows.Close()
 	var baseline Baseline
 	err = r.pool.QueryRow(ctx, `SELECT b.project_id,b.document_set_id,d.name,b.test_suite_id,s.name,
+		release.id,release.release_number,release.name,release.manifest_hash,release.published_at,
 		b.selection_mode,b.selected_by,b.created_at,b.updated_at
 		FROM project_document_baselines b JOIN document_sets d ON d.id=b.document_set_id
-		JOIN test_suites s ON s.id=b.test_suite_id WHERE b.project_id=$1`, projectID).Scan(
+		JOIN test_suites s ON s.id=b.test_suite_id
+		JOIN test_suite_releases release ON release.id=b.suite_release_id
+		WHERE b.project_id=$1`, projectID).Scan(
 		&baseline.ProjectID, &baseline.DocumentSetID, &baseline.DocumentSetName, &baseline.TestSuiteID,
-		&baseline.TestSuiteName, &baseline.SelectionMode, &baseline.SelectedBy, &baseline.CreatedAt, &baseline.UpdatedAt)
+		&baseline.TestSuiteName, &baseline.SuiteReleaseID, &baseline.ReleaseNumber,
+		&baseline.ReleaseName, &baseline.ManifestHash, &baseline.ReleasePublishedAt, &baseline.SelectionMode,
+		&baseline.SelectedBy, &baseline.CreatedAt, &baseline.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return result, nil
 	}
@@ -64,24 +75,43 @@ func (r *Repository) BaselineView(ctx context.Context, projectID int64) (Baselin
 func (r *Repository) Select(ctx context.Context, projectID int64, input SelectInput) (Baseline, error) {
 	input.SelectionMode = strings.ToUpper(strings.TrimSpace(input.SelectionMode))
 	input.SelectedBy = strings.TrimSpace(input.SelectedBy)
-	if projectID <= 0 || input.DocumentSetID <= 0 || input.TestSuiteID <= 0 || input.SelectedBy == "" ||
+	if projectID <= 0 || input.SelectedBy == "" ||
 		input.SelectionMode != ModeFullApproved && input.SelectionMode != ModeMappedFallback {
 		return Baseline{}, ErrInvalidInput
 	}
-	var valid bool
-	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects p,test_suites s WHERE p.id=$1
-		AND s.id=$2 AND s.document_set_id=$3 AND EXISTS(SELECT 1 FROM test_cases t WHERE t.test_suite_id=s.id
-		AND t.status='APPROVED' AND NOT EXISTS(SELECT 1 FROM test_cases n WHERE n.supersedes_test_case_id=t.id)))`,
-		projectID, input.TestSuiteID, input.DocumentSetID).Scan(&valid); err != nil {
+	if input.SuiteReleaseID <= 0 && (input.DocumentSetID <= 0 || input.TestSuiteID <= 0) {
+		return Baseline{}, ErrInvalidInput
+	}
+	var setID, suiteID, releaseID int64
+	query := `SELECT release.document_set_id,release.test_suite_id,release.id
+		FROM test_suite_releases release JOIN document_sets d ON d.id=release.document_set_id
+		WHERE d.status='ACTIVE' AND EXISTS(SELECT 1 FROM projects WHERE id=$1)`
+	args := []any{projectID}
+	if input.SuiteReleaseID > 0 {
+		query += ` AND release.id=$2`
+		args = append(args, input.SuiteReleaseID)
+	} else {
+		query += ` AND release.document_set_id=$2 AND release.test_suite_id=$3
+			ORDER BY release.release_number DESC LIMIT 1`
+		args = append(args, input.DocumentSetID, input.TestSuiteID)
+	}
+	if err := r.pool.QueryRow(ctx, query, args...).Scan(&setID, &suiteID, &releaseID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Baseline{}, ErrNotFound
+		}
 		return Baseline{}, err
 	}
-	if !valid {
+	if input.DocumentSetID > 0 && input.DocumentSetID != setID ||
+		input.TestSuiteID > 0 && input.TestSuiteID != suiteID {
 		return Baseline{}, ErrNotFound
 	}
-	_, err := r.pool.Exec(ctx, `INSERT INTO project_document_baselines(project_id,document_set_id,test_suite_id,selection_mode,selected_by)
-		VALUES($1,$2,$3,$4,$5) ON CONFLICT(project_id) DO UPDATE SET document_set_id=EXCLUDED.document_set_id,
-		test_suite_id=EXCLUDED.test_suite_id,selection_mode=EXCLUDED.selection_mode,selected_by=EXCLUDED.selected_by,updated_at=NOW()`,
-		projectID, input.DocumentSetID, input.TestSuiteID, input.SelectionMode, input.SelectedBy)
+	_, err := r.pool.Exec(ctx, `INSERT INTO project_document_baselines
+		(project_id,document_set_id,test_suite_id,suite_release_id,selection_mode,selected_by)
+		VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(project_id) DO UPDATE SET
+		document_set_id=EXCLUDED.document_set_id,test_suite_id=EXCLUDED.test_suite_id,
+		suite_release_id=EXCLUDED.suite_release_id,selection_mode=EXCLUDED.selection_mode,
+		selected_by=EXCLUDED.selected_by,updated_at=NOW()`, projectID, setID, suiteID,
+		releaseID, input.SelectionMode, input.SelectedBy)
 	if err != nil {
 		return Baseline{}, fmt.Errorf("select project baseline: %w", err)
 	}
@@ -123,14 +153,24 @@ func (r *Repository) SnapshotForAnalysis(ctx context.Context, analysis job.Analy
 	if pipelineMode == "LEGACY" {
 		return false, nil
 	}
-	var setID, suiteID int64
+	var setID, suiteID, releaseID int64
 	var configuredMode string
-	err := r.pool.QueryRow(ctx, `SELECT document_set_id,test_suite_id,selection_mode FROM project_document_baselines WHERE project_id=$1`, analysis.ProjectID).Scan(&setID, &suiteID, &configuredMode)
+	err := r.pool.QueryRow(ctx, `SELECT document_set_id,test_suite_id,suite_release_id,
+		selection_mode FROM project_document_baselines WHERE project_id=$1`, analysis.ProjectID).
+		Scan(&setID, &suiteID, &releaseID, &configuredMode)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
+	}
+	var active bool
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM document_sets
+		WHERE id=$1 AND status='ACTIVE')`, setID).Scan(&active); err != nil {
+		return false, err
+	}
+	if !active {
+		return false, nil
 	}
 	var exists bool
 	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_baseline_snapshots WHERE analysis_job_id=$1)`, analysis.ID).Scan(&exists); err != nil {
@@ -144,11 +184,14 @@ func (r *Repository) SnapshotForAnalysis(ctx context.Context, analysis job.Analy
 	requirementByID := map[int64]requirementSnapshot{}
 	rows, err := r.pool.Query(ctx, `SELECT r.id,r.requirement_key,r.title,r.statement,
 		COALESCE(array_agg(DISTINCT d.name || ' v' || v.version_number || ' — ' || e.source_locator) FILTER(WHERE e.id IS NOT NULL),'{}')
-		FROM requirements r LEFT JOIN requirement_evidence e ON e.requirement_id=r.id
+		FROM requirements r JOIN (
+			SELECT DISTINCT link.requirement_id FROM test_suite_release_items item
+			JOIN test_case_requirement_links link ON link.test_case_id=item.test_case_id
+			WHERE item.release_id=$1) selected ON selected.requirement_id=r.id
+		LEFT JOIN requirement_evidence e ON e.requirement_id=r.id
 		LEFT JOIN document_versions v ON v.id=e.document_version_id LEFT JOIN documents d ON d.id=v.document_id
-		WHERE r.document_set_id=$1 AND r.status='APPROVED' AND NOT EXISTS(
-			SELECT 1 FROM requirements n WHERE n.supersedes_requirement_id=r.id)
-		GROUP BY r.id ORDER BY r.requirement_key,r.id`, setID)
+		WHERE r.document_set_id=$2
+		GROUP BY r.id ORDER BY r.requirement_key,r.id`, releaseID, setID)
 	if err != nil {
 		return false, err
 	}
@@ -165,9 +208,10 @@ func (r *Repository) SnapshotForAnalysis(ctx context.Context, analysis job.Analy
 	cases := []caseSnapshot{}
 	rows, err = r.pool.Query(ctx, `SELECT t.id,t.test_case_key,t.title,t.test_type,t.risk,t.actor,t.precondition,t.test_data,t.expected_result,t.expected_result_hash,
 		COALESCE(array_agg(l.requirement_id ORDER BY l.requirement_id) FILTER(WHERE l.requirement_id IS NOT NULL),'{}')
-		FROM test_cases t LEFT JOIN test_case_requirement_links l ON l.test_case_id=t.id
-		WHERE t.test_suite_id=$1 AND t.status='APPROVED' AND NOT EXISTS(SELECT 1 FROM test_cases n WHERE n.supersedes_test_case_id=t.id)
-		GROUP BY t.id ORDER BY t.test_case_key,t.id`, suiteID)
+		FROM test_suite_release_items release_item JOIN test_cases t ON t.id=release_item.test_case_id
+		LEFT JOIN test_case_requirement_links l ON l.test_case_id=t.id
+		WHERE release_item.release_id=$1
+		GROUP BY t.id,release_item.ordinal ORDER BY release_item.ordinal`, releaseID)
 	if err != nil {
 		return false, err
 	}
@@ -184,20 +228,24 @@ func (r *Repository) SnapshotForAnalysis(ctx context.Context, analysis job.Analy
 		return false, ErrNotFound
 	}
 	versions := []map[string]any{}
-	rows, err = r.pool.Query(ctx, `SELECT v.id,d.name,v.version_number,v.sha256 FROM document_versions v JOIN documents d ON d.id=v.document_id
-		WHERE v.document_set_id=$1 AND v.approval_status='APPROVED' AND NOT EXISTS(SELECT 1 FROM document_versions n WHERE n.document_id=v.document_id AND n.version_number>v.version_number) ORDER BY d.name`, setID)
+	rows, err = r.pool.Query(ctx, `SELECT item.document_version_id,item.document_name,
+		item.version_number,item.sha256,item.approval_status
+		FROM test_suite_releases release
+		JOIN document_source_snapshot_items item ON item.source_snapshot_id=release.source_snapshot_id
+		WHERE release.id=$1 AND item.included=TRUE ORDER BY item.document_name,item.document_id`, releaseID)
 	if err != nil {
 		return false, err
 	}
 	for rows.Next() {
 		var id int64
-		var name, hash string
+		var name, hash, approval string
 		var version int
-		if err := rows.Scan(&id, &name, &version, &hash); err != nil {
+		if err := rows.Scan(&id, &name, &version, &hash, &approval); err != nil {
 			rows.Close()
 			return false, err
 		}
-		versions = append(versions, map[string]any{"id": id, "name": name, "version": version, "sha256": hash})
+		versions = append(versions, map[string]any{"id": id, "name": name,
+			"version": version, "sha256": hash, "approval_status": approval})
 	}
 	rows.Close()
 
@@ -235,21 +283,30 @@ func (r *Repository) SnapshotForAnalysis(ctx context.Context, analysis job.Analy
 	versionJSON, _ := json.Marshal(versions)
 	requirementJSON, _ := json.Marshal(requirements)
 	caseJSON, _ := json.Marshal(cases)
-	baselineHash := hashJSON(map[string]any{"document_versions": versions, "requirements": requirements, "test_cases": cases})
+	baselineHash := hashJSON(map[string]any{"suite_release_id": releaseID,
+		"document_versions": versions, "requirements": requirements, "test_cases": cases})
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback(ctx)
 	var snapshotID int64
-	err = tx.QueryRow(ctx, `INSERT INTO analysis_baseline_snapshots(analysis_job_id,project_id,document_set_id,test_suite_id,baseline_hash,document_versions,requirements,test_cases,explicit_identifiers,selection_mode,mapping_confidence,warning)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`, analysis.ID, analysis.ProjectID, setID, suiteID, baselineHash, versionJSON, requirementJSON, caseJSON, identifiers, mode, confidence, warning).Scan(&snapshotID)
+	err = tx.QueryRow(ctx, `INSERT INTO analysis_baseline_snapshots
+		(analysis_job_id,project_id,document_set_id,test_suite_id,suite_release_id,
+		 baseline_hash,document_versions,requirements,test_cases,explicit_identifiers,
+		 selection_mode,mapping_confidence,warning)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+		analysis.ID, analysis.ProjectID, setID, suiteID, releaseID, baselineHash,
+		versionJSON, requirementJSON, caseJSON, identifiers, mode, confidence, warning).
+		Scan(&snapshotID)
 	if err != nil {
 		return false, fmt.Errorf("save analysis baseline snapshot: %w", err)
 	}
 	var runID int64
-	err = tx.QueryRow(ctx, `INSERT INTO test_runs(test_suite_id,project_id,analysis_job_id,source_sha,target_sha,environment,status)
-		VALUES($1,$2,$3,$4,'','pending','PENDING') RETURNING id`, suiteID, analysis.ProjectID, analysis.ID, analysis.SourceSHA).Scan(&runID)
+	err = tx.QueryRow(ctx, `INSERT INTO test_runs(test_suite_id,suite_release_id,project_id,
+		analysis_job_id,source_sha,target_sha,environment,status)
+		VALUES($1,$2,$3,$4,$5,'','pending','PENDING') RETURNING id`, suiteID,
+		releaseID, analysis.ProjectID, analysis.ID, analysis.SourceSHA).Scan(&runID)
 	if err != nil {
 		return false, fmt.Errorf("create scoped test run: %w", err)
 	}
@@ -282,8 +339,14 @@ func (r *Repository) SnapshotForAnalysis(ctx context.Context, analysis job.Analy
 
 func (r *Repository) Get(ctx context.Context, analysisID int64) (Bundle, error) {
 	result := Bundle{AnalysisJobID: analysisID, ExplicitIdentifiers: []string{}, Items: []Item{}, Decisions: []Decision{}, Signals: []Signal{}}
-	err := r.pool.QueryRow(ctx, `SELECT s.project_id,s.document_set_id,s.test_suite_id,r.id,s.baseline_hash,s.explicit_identifiers,s.selection_mode,s.mapping_confidence,s.warning,s.created_at
-		FROM analysis_baseline_snapshots s JOIN test_runs r ON r.analysis_job_id=s.analysis_job_id WHERE s.analysis_job_id=$1`, analysisID).Scan(&result.ProjectID, &result.DocumentSetID, &result.TestSuiteID, &result.TestRunID, &result.BaselineHash, &result.ExplicitIdentifiers, &result.SelectionMode, &result.MappingConfidence, &result.Warning, &result.CreatedAt)
+	err := r.pool.QueryRow(ctx, `SELECT s.project_id,s.document_set_id,s.test_suite_id,
+		s.suite_release_id,r.id,s.baseline_hash,s.explicit_identifiers,s.selection_mode,
+		s.mapping_confidence,s.warning,s.created_at
+		FROM analysis_baseline_snapshots s JOIN test_runs r ON r.analysis_job_id=s.analysis_job_id
+		WHERE s.analysis_job_id=$1`, analysisID).Scan(&result.ProjectID, &result.DocumentSetID,
+		&result.TestSuiteID, &result.SuiteReleaseID, &result.TestRunID, &result.BaselineHash,
+		&result.ExplicitIdentifiers, &result.SelectionMode, &result.MappingConfidence,
+		&result.Warning, &result.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Bundle{}, ErrNotFound
 	}

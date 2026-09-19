@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/aibudget"
 )
 
 type ExtractionQueue interface {
@@ -71,6 +73,10 @@ func (w *Worker) runOnce(ctx context.Context) error {
 	w.logger.Info("processing requirement extraction", "job_id", claimed.ID,
 		"document_set_id", claimed.DocumentSetID, "attempt", claimed.AttemptCount)
 	processingCtx, cancel := context.WithTimeout(ctx, w.options.ProcessTimeout)
+	if claimed.WorkflowJobID != nil && claimed.WorkflowUnitID != nil {
+		processingCtx = aibudget.WithWorkflowAttempt(processingCtx, *claimed.WorkflowJobID,
+			*claimed.WorkflowUnitID, claimed.AttemptCount)
+	}
 	renewalDone := make(chan error, 1)
 	go func() { renewalDone <- w.renewLease(processingCtx, claimed, cancel) }()
 	summary, processErr := w.processor.ExtractWithProgress(processingCtx, claimed.DocumentSetID,

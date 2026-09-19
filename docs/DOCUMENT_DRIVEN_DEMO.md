@@ -33,6 +33,9 @@ repository chỉ được dùng sau khi test case đã duyệt để tạo và c
 11. Duyệt artifact repair để hệ thống tự append attempt và chạy lại sandbox,
     hoặc từ chối để xử lý thủ công; sau đó xuất XLSX/Markdown có Expected,
     Actual, taxonomy gốc, source SHA và evidence.
+12. Ghi lại `DOCUMENT_SET_ID`, `PROJECT_ID`, `ANALYSIS_ID`, `TEST_RUN_ID` rồi chạy
+    `make prod-document-e2e-verify DOCUMENT_SET_ID=... PROJECT_ID=... ANALYSIS_ID=... TEST_RUN_ID=...`.
+    Chỉ kết quả JSON `"passed": true` mới là bằng chứng DoD E2E.
 
 ## Bằng chứng nên mở cho giảng viên
 

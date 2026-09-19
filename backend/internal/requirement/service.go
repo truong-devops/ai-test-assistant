@@ -31,7 +31,14 @@ func (s *Service) RequestExtraction(ctx context.Context, setID int64, requestedB
 	if status.Status != document.IndexReady {
 		return ExtractionJob{}, ErrNoIndex
 	}
-	return s.repository.EnqueueExtraction(ctx, setID, status.Generation, status.ChunkCount, requestedBy)
+	if status.Freshness != document.IndexFreshnessCurrent {
+		return ExtractionJob{}, ErrStaleIndex
+	}
+	if !status.ExtractionReady {
+		return ExtractionJob{}, ErrSourceNotApproved
+	}
+	return s.repository.EnqueueExtraction(ctx, setID, status.Generation,
+		status.SourceSnapshotID, status.IndexedSourceRevision, status.ChunkCount, requestedBy)
 }
 
 func (s *Service) ExtractionStatus(ctx context.Context, setID int64) (ExtractionJob, error) {
@@ -57,21 +64,41 @@ func (s *Service) extract(ctx context.Context, setID, expectedGeneration int64,
 	if setID <= 0 {
 		return ExtractionSummary{}, ErrInvalidInput
 	}
-	status, err := s.index.Status(ctx, setID)
+	var generation document.IndexGeneration
+	var err error
+	if expectedGeneration > 0 {
+		generation, err = s.index.Generation(ctx, setID, expectedGeneration)
+		if err != nil {
+			return ExtractionSummary{}, err
+		}
+		if generation.Status != document.IndexReady || generation.SourceSnapshotID == nil {
+			return ExtractionSummary{}, ErrStaleIndex
+		}
+	} else {
+		status, statusErr := s.index.Status(ctx, setID)
+		if statusErr != nil {
+			return ExtractionSummary{}, statusErr
+		}
+		if status.Status != document.IndexReady {
+			return ExtractionSummary{}, ErrNoIndex
+		}
+		if status.Freshness != document.IndexFreshnessCurrent {
+			return ExtractionSummary{}, ErrStaleIndex
+		}
+		if !status.ExtractionReady {
+			return ExtractionSummary{}, ErrSourceNotApproved
+		}
+		generation, err = s.index.Generation(ctx, setID, status.Generation)
+		if err != nil {
+			return ExtractionSummary{}, err
+		}
+	}
+	chunks, err := s.index.AllChunksForGeneration(ctx, setID, generation.Generation)
 	if err != nil {
 		return ExtractionSummary{}, err
 	}
-	if status.Status != document.IndexReady {
-		return ExtractionSummary{}, ErrNoIndex
-	}
-	if expectedGeneration > 0 && status.Generation != expectedGeneration {
-		return ExtractionSummary{}, ErrStaleIndex
-	}
-	chunks, err := s.index.AllChunks(ctx, setID)
-	if err != nil {
-		return ExtractionSummary{}, err
-	}
-	summary := ExtractionSummary{DocumentSetID: setID, ChunkCount: len(chunks)}
+	summary := ExtractionSummary{DocumentSetID: setID, SourceSnapshotID: generation.SourceSnapshotID,
+		IndexGeneration: generation.Generation, ChunkCount: len(chunks)}
 	type seenProposal struct {
 		Proposal    Proposal
 		Requirement Requirement
@@ -83,9 +110,10 @@ func (s *Service) extract(ctx context.Context, setID, expectedGeneration int64,
 		if len([]rune(queryText)) > 1000 {
 			queryText = string([]rune(queryText)[:1000])
 		}
-		snapshot, err := s.index.RetrieveAndSnapshot(ctx, "REQUIREMENT_EXTRACTION",
+		snapshot, err := s.index.RetrieveAndSnapshotForSubject(ctx, "REQUIREMENT_EXTRACTION",
 			document.RetrievalQuery{DocumentSetID: setID, Query: queryText,
-				Identifier: chunk.Identifier, VersionPolicy: document.VersionLatest, Limit: 8})
+				Identifier: chunk.Identifier, VersionPolicy: document.VersionLatest, Limit: 8,
+				IndexGeneration: generation.Generation}, chunk)
 		if err != nil {
 			return summary, fmt.Errorf("build extraction context for chunk %s: %w", chunk.ChunkKey, err)
 		}
@@ -105,7 +133,8 @@ func (s *Service) extract(ctx context.Context, setID, expectedGeneration int64,
 					break
 				}
 			}
-			saved, created, err := s.repository.SaveProposal(ctx, setID, chunk, candidate)
+			saved, created, err := s.repository.SaveProposal(ctx, setID, chunk,
+				generation.SourceSnapshotID, candidate)
 			if err != nil {
 				return summary, err
 			}

@@ -70,6 +70,11 @@ func TestAuthorizationMiddlewareEnforcesTokenAndRole(t *testing.T) {
 		{name: "editor uploads", method: http.MethodPost, path: "/api/document-sets/1/documents", token: "secret-token", role: "editor", want: http.StatusNoContent},
 		{name: "editor cannot approve", method: http.MethodPost, path: "/api/document-versions/1/review", token: "secret-token", role: "editor", want: http.StatusForbidden},
 		{name: "reviewer approves", method: http.MethodPost, path: "/api/document-versions/1/review", token: "secret-token", role: "reviewer", want: http.StatusNoContent},
+		{name: "editor cannot archive testcase family", method: http.MethodPost, path: "/api/test-case-families/1/archive", token: "secret-token", role: "editor", want: http.StatusForbidden},
+		{name: "reviewer archives testcase family", method: http.MethodPost, path: "/api/test-case-families/1/archive", token: "secret-token", role: "reviewer", want: http.StatusNoContent},
+		{name: "reviewer cannot preview purge", method: http.MethodGet, path: "/api/document-sets/1/purge", token: "secret-token", role: "reviewer", want: http.StatusForbidden},
+		{name: "admin previews purge", method: http.MethodGet, path: "/api/document-sets/1/purge", token: "secret-token", role: "admin", want: http.StatusNoContent},
+		{name: "reviewer cannot purge", method: http.MethodPost, path: "/api/document-sets/1/purge", token: "secret-token", role: "reviewer", want: http.StatusForbidden},
 		{name: "admin repairs", method: http.MethodPost, path: "/api/test-run-items/1/repair", token: "secret-token", role: "admin", want: http.StatusNoContent},
 	}
 	for _, test := range tests {
@@ -95,23 +100,32 @@ func TestLegacyDeprecationHeadersIdentifyOnlyCompatibilityRoutes(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	for _, test := range []struct {
+		method     string
 		path       string
 		deprecated bool
+		link       string
 	}{
-		{path: "/api/analyses/1/generated-tests", deprecated: true},
-		{path: "/api/generated-tests/1/accept", deprecated: true},
-		{path: "/api/evaluations", deprecated: true},
-		{path: "/api/analyses/1/test-scope", deprecated: false},
-		{path: "/api/document-sets/1/test-cases", deprecated: false},
+		{method: http.MethodGet, path: "/api/analyses/1/generated-tests", deprecated: true},
+		{method: http.MethodGet, path: "/api/generated-tests/1/accept", deprecated: true},
+		{method: http.MethodGet, path: "/api/evaluations", deprecated: true},
+		{method: http.MethodGet, path: "/api/analyses/1/test-scope", deprecated: false},
+		{method: http.MethodGet, path: "/api/document-sets/1/test-cases", deprecated: false},
+		{method: http.MethodPost, path: "/api/document-sets/42/test-cases/generate",
+			deprecated: true,
+			link:       `</api/document-sets/42/workflow-operations>; rel="successor-version"`},
 	} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		handler.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
 		got := response.Header().Get("Deprecation") == "true"
 		if got != test.deprecated {
 			t.Fatalf("path=%s deprecated=%v want=%v", test.path, got, test.deprecated)
 		}
 		if test.deprecated && response.Header().Get("Link") == "" {
 			t.Fatalf("path=%s has no successor Link header", test.path)
+		}
+		if test.link != "" && response.Header().Get("Link") != test.link {
+			t.Fatalf("path=%s link=%q want=%q", test.path,
+				response.Header().Get("Link"), test.link)
 		}
 	}
 }

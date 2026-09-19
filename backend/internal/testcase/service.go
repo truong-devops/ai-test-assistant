@@ -2,6 +2,7 @@ package testcase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode"
@@ -29,6 +30,12 @@ type AICallRecorder interface {
 type generatedCase struct {
 	Proposal Proposal
 	Case     TestCase
+}
+
+type suppressedCase struct {
+	KeptIndex     int
+	SuppressedKey string
+	MatchType     string
 }
 
 func NewServiceWithLLM(repository *Repository, requirements RequirementReader,
@@ -62,6 +69,7 @@ func (s *Service) Generate(ctx context.Context, setID int64) (GenerateSummary, e
 	summary := GenerateSummary{DocumentSetID: setID, SuiteID: suite.ID,
 		RequirementCount: len(baseline)}
 	kept := make([]generatedCase, 0)
+	suppressed := make([]suppressedCase, 0)
 	for _, item := range baseline {
 		detail, err := s.requirements.Get(ctx, item.ID)
 		if err != nil {
@@ -84,32 +92,35 @@ func (s *Service) Generate(ctx context.Context, setID int64) (GenerateSummary, e
 			duplicateIndex, matchType := findDuplicate(kept, proposal)
 			if duplicateIndex >= 0 {
 				mergeProposalSources(&kept[duplicateIndex].Proposal, proposal)
-				if err := s.repository.AddRequirementLinks(ctx, kept[duplicateIndex].Case.ID,
-					setID, proposal); err != nil {
-					return summary, err
-				}
-				suppressedKey := hash(proposalIdentity(proposal) + fmt.Sprint(proposal.RequirementIDs))
-				created, err := s.repository.RecordDedupe(ctx, suite, kept[duplicateIndex].Case.ID,
-					suppressedKey, matchType,
-					"Test case có cùng mục tiêu và expected result; requirement source được gộp vào case giữ lại")
-				if err != nil {
-					return summary, err
-				}
-				if created {
-					summary.SuppressedCount++
-				}
+				suppressed = append(suppressed, suppressedCase{KeptIndex: duplicateIndex,
+					SuppressedKey: hash(proposalIdentity(proposal) + fmt.Sprint(proposal.RequirementIDs)),
+					MatchType:     matchType})
 				continue
 			}
-			saved, created, err := s.repository.Save(ctx, suite, proposal)
-			if err != nil {
-				return summary, err
-			}
-			if created {
-				summary.CreatedCount++
-			} else {
-				summary.ReusedCount++
-			}
-			kept = append(kept, generatedCase{Proposal: proposal, Case: saved})
+			kept = append(kept, generatedCase{Proposal: proposal})
+		}
+	}
+	for index := range kept {
+		saved, created, err := s.repository.Save(ctx, suite, kept[index].Proposal)
+		if err != nil {
+			return summary, err
+		}
+		kept[index].Case = saved
+		if created {
+			summary.CreatedCount++
+		} else {
+			summary.ReusedCount++
+		}
+	}
+	for _, item := range suppressed {
+		created, err := s.repository.RecordDedupe(ctx, suite, kept[item.KeptIndex].Case.ID,
+			item.SuppressedKey, item.MatchType,
+			"Test case có cùng mục tiêu và expected result; requirement source được gộp trước khi tạo revision")
+		if err != nil {
+			return summary, err
+		}
+		if created {
+			summary.SuppressedCount++
 		}
 	}
 	return summary, nil
@@ -137,7 +148,92 @@ func (s *Service) Review(ctx context.Context, id int64, input ReviewInput) (Deta
 	if id <= 0 {
 		return Detail{}, ErrInvalidInput
 	}
-	return s.repository.Review(ctx, id, input)
+	current, err := s.repository.Get(ctx, id)
+	if err != nil {
+		return Detail{}, err
+	}
+	if input.ExpectedContentHash != "" && input.ExpectedContentHash != current.TestCase.ContentHash {
+		return Detail{}, &RevisionConflictError{CurrentRevisionID: current.TestCase.ID,
+			CurrentHeadToken: current.TestCase.ContentHash}
+	}
+	target := current.TestCase
+	if hasTestCaseEdits(current.TestCase, input) {
+		family, err := s.repository.GetFamily(ctx, current.TestCase.FamilyID)
+		if err != nil {
+			return Detail{}, err
+		}
+		if family.HeadRevisionID == nil {
+			return Detail{}, ErrNotFound
+		}
+		patch := RevisionPatch{}
+		if value := strings.TrimSpace(input.Title); value != "" && value != current.TestCase.Title {
+			patch.Title = &value
+		}
+		if value := strings.TrimSpace(input.Precondition); value != "" && value != current.TestCase.Precondition {
+			patch.Precondition = &value
+		}
+		if value := strings.TrimSpace(input.TestData); value != "" && value != current.TestCase.TestData {
+			patch.TestData = &value
+		}
+		if value := strings.TrimSpace(input.ExpectedResult); value != "" && value != current.TestCase.ExpectedResult {
+			patch.ExpectedResult = &value
+		}
+		if value := strings.TrimSpace(input.Postcondition); value != "" && value != current.TestCase.Postcondition {
+			patch.Postcondition = &value
+		}
+		if value := strings.ToUpper(strings.TrimSpace(input.Risk)); value != "" && value != current.TestCase.Risk {
+			patch.Risk = &value
+		}
+		encoded, _ := json.Marshal(struct {
+			ID    int64         `json:"id"`
+			Patch RevisionPatch `json:"patch"`
+		}{id, patch})
+		result, err := s.repository.CreateRevision(ctx, current.TestCase.FamilyID,
+			CreateRevisionInput{BaseRevisionID: id, ExpectedHeadRevisionID: *family.HeadRevisionID,
+				ExpectedHeadToken: family.HeadToken, Patch: &patch,
+				Reason: "Edited through legacy review endpoint"},
+			"legacy-review-"+hash(string(encoded)), input.ReviewerName)
+		if err != nil {
+			return Detail{}, err
+		}
+		target = result.Revision
+	}
+	input.ExpectedContentHash = target.ContentHash
+	return s.repository.ReviewExact(ctx, target.ID, input, input.ReviewerName)
+}
+
+func (s *Service) ListFamilies(ctx context.Context, setID int64) ([]Family, error) {
+	return s.repository.ListFamilies(ctx, setID)
+}
+
+func (s *Service) GetFamily(ctx context.Context, familyID int64) (Family, error) {
+	return s.repository.GetFamily(ctx, familyID)
+}
+
+func (s *Service) ListVersions(ctx context.Context, familyID int64) ([]TestCase, error) {
+	return s.repository.ListVersions(ctx, familyID)
+}
+
+func (s *Service) CreateRevision(ctx context.Context, familyID int64, input CreateRevisionInput,
+	idempotencyKey, actor string,
+) (RevisionResult, error) {
+	return s.repository.CreateRevision(ctx, familyID, input, idempotencyKey, actor)
+}
+
+func (s *Service) Restore(ctx context.Context, familyID int64, input RestoreInput,
+	idempotencyKey, actor string,
+) (RevisionResult, error) {
+	return s.repository.Restore(ctx, familyID, input, idempotencyKey, actor)
+}
+
+func (s *Service) Diff(ctx context.Context, familyID, fromID, toID int64) (RevisionDiff, error) {
+	return s.repository.Diff(ctx, familyID, fromID, toID)
+}
+
+func (s *Service) Archive(ctx context.Context, familyID int64, input ArchiveInput,
+	actor string,
+) (Family, error) {
+	return s.repository.Archive(ctx, familyID, input, actor)
 }
 
 func (s *Service) BulkReview(ctx context.Context, input BulkReviewInput) ([]Detail, error) {
@@ -170,6 +266,20 @@ func (s *Service) Coverage(ctx context.Context, setID int64) (CoverageReport, er
 		return CoverageReport{}, ErrInvalidInput
 	}
 	return s.repository.Coverage(ctx, setID)
+}
+
+func (s *Service) PublishRelease(ctx context.Context, setID int64, input PublishReleaseInput,
+	idempotencyKey, actor string,
+) (SuiteRelease, bool, error) {
+	return s.repository.PublishRelease(ctx, setID, input, idempotencyKey, actor)
+}
+
+func (s *Service) ListReleases(ctx context.Context, setID int64) ([]SuiteRelease, error) {
+	return s.repository.ListReleases(ctx, setID)
+}
+
+func (s *Service) GetRelease(ctx context.Context, releaseID int64) (SuiteRelease, error) {
+	return s.repository.GetRelease(ctx, releaseID)
 }
 
 func findDuplicate(items []generatedCase, candidate Proposal) (int, string) {

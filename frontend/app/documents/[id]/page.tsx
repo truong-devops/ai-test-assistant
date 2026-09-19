@@ -4,7 +4,7 @@ import { AppShell, EmptyState } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
 import { UploadDocument } from "@/components/upload-document";
 import { DocumentLifecycle } from "@/components/document-lifecycle";
-import { ApiError, documentMaxUploadBytes, getDocumentSet, getDocuments } from "@/lib/api";
+import { ApiError, documentMaxUploadBytes, getAIBudget, getDocumentSet, getDocuments } from "@/lib/api";
 import { formatDate, humanize } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export default async function DocumentSetPage({ params }: { params: Promise<{ id
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const documents = await getDocuments(set.id);
+  const [documents, budget] = await Promise.all([getDocuments(set.id), getAIBudget(set.id)]);
   return (
     <AppShell active="documents">
       <div className="breadcrumb"><Link href="/documents">Documents</Link><span>/</span><span>{set.name}</span></div>
@@ -31,7 +31,7 @@ export default async function DocumentSetPage({ params }: { params: Promise<{ id
         <Link className="workflow-link" href={`/documents/${set.id}/requirements`}><strong>2. Requirements</strong><span>Inventory, evidence, conflicts, and review</span></Link>
         <Link className="workflow-link" href={`/documents/${set.id}/test-cases`}><strong>3. Test cases</strong><span>Grounded cases and deterministic coverage</span></Link>
       </section>
-      <DocumentLifecycle set={set} />
+      <DocumentLifecycle set={set} budget={budget} />
       {set.status === "ACTIVE" ? <UploadDocument setId={set.id} maxBytes={documentMaxUploadBytes} /> : <p className="notice">This document set is archived. Restore it before uploading another immutable version.</p>}
       {documents.length ? (
         <section className="panel">

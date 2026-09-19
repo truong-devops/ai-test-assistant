@@ -60,13 +60,15 @@ func (g *Generator) proposal(source requirement.Detail, testType, title string) 
 	req := source.Requirement
 	steps := make([]Step, 0, len(source.FlowSteps)+2)
 	if req.Precondition != "" {
-		steps = append(steps, Step{Action: "Thiết lập tiền điều kiện: " + req.Precondition})
+		steps = append(steps, Step{Action: "Thiết lập tiền điều kiện: " + req.Precondition,
+			ExpectedResult: "Tiền điều kiện được thiết lập thành công"})
 	}
 	for _, flowStep := range source.FlowSteps {
 		steps = append(steps, Step{Action: flowStep.Action, ExpectedResult: flowStep.ExpectedResult})
 	}
 	if len(source.FlowSteps) == 0 {
-		steps = append(steps, Step{Action: "Thực hiện hành vi được mô tả trong requirement " + req.RequirementKey})
+		steps = append(steps, Step{Action: "Thực hiện hành vi được mô tả trong requirement " + req.RequirementKey,
+			ExpectedResult: "Hành vi được thực hiện để có thể đối chiếu kết quả"})
 	}
 	steps = append(steps, Step{Action: "Đối chiếu kết quả với requirement đã duyệt",
 		ExpectedResult: req.Statement})

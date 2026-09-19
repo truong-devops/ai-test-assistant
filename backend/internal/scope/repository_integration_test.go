@@ -19,6 +19,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/report"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/scope"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/testcase"
 )
 
 func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
@@ -46,20 +47,43 @@ func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
 	documentID := insertID(t, pool, ctx, `INSERT INTO documents(document_set_id,name,document_type) VALUES($1,'URD','REQUIREMENTS') RETURNING id`, setID)
 	versionID := insertID(t, pool, ctx, `INSERT INTO document_versions(document_id,document_set_id,version_number,original_filename,media_type,size_bytes,sha256,storage_key,approval_status,parse_status) VALUES($1,$2,1,'urd.md','text/markdown',10,$3,$4,'APPROVED','PARSED') RETURNING id`, documentID, setID, strings.Repeat("a", 64), "integration/"+time.Now().Format("150405.000000000"))
 	blockID := insertID(t, pool, ctx, `INSERT INTO document_blocks(document_version_id,ordinal,block_type,content,source_locator) VALUES($1,1,'PARAGRAPH','Approved behavior','line:1') RETURNING id`, versionID)
+	sourceSnapshotID := insertID(t, pool, ctx, `INSERT INTO document_source_snapshots
+		(document_set_id,source_revision,fingerprint,included_count,excluded_count)
+		SELECT id,source_revision,$2,1,0 FROM document_sets WHERE id=$1 RETURNING id`,
+		setID, strings.Repeat("c", 64))
+	if _, err := pool.Exec(ctx, `INSERT INTO document_source_snapshot_items
+		(source_snapshot_id,document_set_id,document_id,document_name,document_version_id,
+		 version_number,sha256,parse_status,approval_status,included)
+		VALUES($1,$2,$3,'URD',$4,1,$5,'PARSED','APPROVED',TRUE)`, sourceSnapshotID,
+		setID, documentID, versionID, strings.Repeat("a", 64)); err != nil {
+		t.Fatal(err)
+	}
 	suiteID := insertID(t, pool, ctx, `INSERT INTO test_suites(document_set_id,name,status) VALUES($1,'Approved suite','APPROVED') RETURNING id`, setID)
 	caseIDs := make([]int64, 0, 2)
 	for index, key := range []string{"UC-B08", "FR-CART-02"} {
-		requirementID := insertID(t, pool, ctx, `INSERT INTO requirements(document_set_id,requirement_key,title,statement,requirement_type,status,confidence) VALUES($1,$2,$3,$3,'FUNCTIONAL','DRAFT',1) RETURNING id`, setID, key, "Requirement "+key)
-		if _, err := pool.Exec(ctx, `INSERT INTO requirement_evidence(requirement_id,document_set_id,document_version_id,document_block_id,source_locator,excerpt_hash) VALUES($1,$2,$3,$4,'line:1',$5)`, requirementID, setID, versionID, blockID, strings.Repeat("b", 64)); err != nil {
-			t.Fatal(err)
+		requirementID := insertID(t, pool, ctx, `INSERT INTO requirements(document_set_id,requirement_key,title,statement,requirement_type,status,confidence,source_snapshot_id) VALUES($1,$2,$3,$3,'FUNCTIONAL','DRAFT',1,$4) RETURNING id`, setID, key, "Requirement "+key, sourceSnapshotID)
+		evidenceID := insertID(t, pool, ctx, `INSERT INTO requirement_evidence(requirement_id,document_set_id,document_version_id,document_block_id,source_locator,excerpt_hash) VALUES($1,$2,$3,$4,'line:1',$5) RETURNING id`, requirementID, setID, versionID, blockID, strings.Repeat("b", 64))
+		if evidenceID <= 0 {
+			t.Fatal("requirement evidence was not created")
 		}
 		if _, err := pool.Exec(ctx, `UPDATE requirements SET status='APPROVED' WHERE id=$1`, requirementID); err != nil {
 			t.Fatal(err)
 		}
 		expected := "Expected " + key
 		sum := sha256.Sum256([]byte(expected))
-		caseID := insertID(t, pool, ctx, `INSERT INTO test_cases(test_suite_id,document_set_id,test_case_key,title,test_type,expected_result,expected_result_hash,status,confidence) VALUES($1,$2,$3,$4,'HAPPY',$5,$6,'DRAFT',1) RETURNING id`, suiteID, setID, "TC-"+key, "Test "+key, expected, hex.EncodeToString(sum[:]))
+		caseID := insertID(t, pool, ctx, `INSERT INTO test_cases(test_suite_id,document_set_id,test_case_key,title,test_type,expected_result,expected_result_hash,status,confidence,source_snapshot_id) VALUES($1,$2,$3,$4,'HAPPY',$5,$6,'DRAFT',1,$7) RETURNING id`, suiteID, setID, "TC-"+key, "Test "+key, expected, hex.EncodeToString(sum[:]), sourceSnapshotID)
 		if _, err := pool.Exec(ctx, `INSERT INTO test_case_requirement_links(test_case_id,requirement_id,document_set_id,coverage_type) VALUES($1,$2,$3,'DIRECT')`, caseID, requirementID, setID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO test_case_evidence_links
+			(test_case_id,family_id,document_set_id,requirement_id,requirement_evidence_id,
+			 document_version_id,document_block_id,source_locator,excerpt_hash)
+			SELECT $1,family_id,$2,$3,$4,$5,$6,'line:1',$7 FROM test_cases WHERE id=$1`,
+			caseID, setID, requirementID, evidenceID, versionID, blockID, strings.Repeat("b", 64)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE test_cases
+			SET content_hash=test_case_revision_content_hash(id),sealed_at=NOW() WHERE id=$1`, caseID); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := pool.Exec(ctx, `UPDATE test_cases SET status='APPROVED' WHERE id=$1`, caseID); err != nil {
@@ -68,16 +92,40 @@ func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
 		caseIDs = append(caseIDs, caseID)
 		_ = index
 	}
+	release, created, err := testcase.NewRepository(pool).PublishRelease(ctx, setID,
+		testcase.PublishReleaseInput{TestSuiteID: suiteID, SourceSnapshotID: &sourceSnapshotID,
+			RevisionIDs: caseIDs, PublishedBy: "QA"}, "scope-release", "qa")
+	if err != nil || !created {
+		t.Fatalf("publish scope release: created=%v error=%v", created, err)
+	}
 	repository := scope.NewRepository(pool)
-	if _, err := repository.Select(ctx, project1, scope.SelectInput{DocumentSetID: setID, TestSuiteID: suiteID, SelectionMode: scope.ModeMappedFallback, SelectedBy: "QA"}); err != nil {
+	if _, err := repository.Select(ctx, project1, scope.SelectInput{DocumentSetID: setID,
+		TestSuiteID: suiteID, SuiteReleaseID: release.ID,
+		SelectionMode: scope.ModeMappedFallback, SelectedBy: "QA"}); err != nil {
 		t.Fatal(err)
+	}
+	caseRepository := testcase.NewRepository(pool)
+	firstFamily, err := caseRepository.GetFamily(ctx, release.Items[0].FamilyID)
+	if err != nil || firstFamily.HeadRevisionID == nil {
+		t.Fatalf("load release family: %+v error=%v", firstFamily, err)
+	}
+	draftData := "new draft input"
+	draft, err := caseRepository.CreateRevision(ctx, release.Items[0].FamilyID,
+		testcase.CreateRevisionInput{BaseRevisionID: release.Items[0].TestCaseID,
+			ExpectedHeadRevisionID: release.Items[0].TestCaseID,
+			ExpectedHeadToken:      firstFamily.HeadToken,
+			Patch:                  &testcase.RevisionPatch{TestData: &draftData},
+			Reason:                 "Draft successor must not replace R1"},
+		"scope-draft-successor", "qa")
+	if err != nil || !draft.Created || draft.Revision.Status != testcase.StatusDraft {
+		t.Fatalf("create draft successor: %+v error=%v", draft, err)
 	}
 	view, err := repository.BaselineView(ctx, project2)
 	if err != nil || view.Bound {
 		t.Fatalf("project baseline leaked: %+v error=%v", view, err)
 	}
 	explicitAnalysis := insertAnalysis(t, pool, ctx, project1, suffix, json.RawMessage(`{"title":"Fix UC-B08 checkout"}`))
-	created, err := repository.SnapshotForAnalysis(ctx, job.AnalysisJob{ID: explicitAnalysis, ProjectID: project1, SourceSHA: "source-one", RawEvent: json.RawMessage(`{"title":"Fix UC-B08 checkout"}`)})
+	created, err = repository.SnapshotForAnalysis(ctx, job.AnalysisJob{ID: explicitAnalysis, ProjectID: project1, SourceSHA: "source-one", RawEvent: json.RawMessage(`{"title":"Fix UC-B08 checkout"}`)})
 	if err != nil || !created {
 		t.Fatalf("explicit snapshot created=%v error=%v", created, err)
 	}
@@ -106,7 +154,9 @@ func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
 	for _, item := range bundle.Items {
 		included[item.TestCaseID] = item.Included
 	}
-	if bundle.SelectionMode != scope.ModeExplicitTrace || len(bundle.Items) != 2 || !included[caseIDs[0]] || included[caseIDs[1]] || len(bundle.Signals) != 3 {
+	if bundle.SuiteReleaseID != release.ID || bundle.SelectionMode != scope.ModeExplicitTrace ||
+		len(bundle.Items) != 2 || !included[caseIDs[0]] || included[caseIDs[1]] ||
+		included[draft.Revision.ID] || len(bundle.Signals) != 3 {
 		t.Fatalf("unexpected explicit scope: %+v", bundle)
 	}
 	if _, err := repository.Decide(ctx, explicitAnalysis, scope.ManualInput{TestCaseID: caseIDs[1], Included: true, ReviewerName: "Lead", Comment: "Regression dependency"}); err != nil {
@@ -164,7 +214,22 @@ func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
 	if fallback.SelectionMode != scope.ModeFullFallback || fallback.Warning == "" || !fallback.Items[0].Included || !fallback.Items[1].Included {
 		t.Fatalf("unsafe fallback: %+v", fallback)
 	}
+	for _, reviewer := range []string{"QA One", "QA Two"} {
+		if _, err := pool.Exec(ctx, `INSERT INTO test_case_reviews
+			(test_case_id,reviewer_name,decision,comment,content_hash,actor)
+			SELECT id,$2,'APPROVED','release review',content_hash,$2 FROM test_cases WHERE id=$1`,
+			bundle.Items[0].TestCaseID, reviewer); err != nil {
+			t.Fatal(err)
+		}
+	}
 	reportService := report.NewService(report.NewRepository(pool))
+	releaseExport, err := reportService.Export(ctx, setID, report.ExportInput{
+		TestSuiteID: suiteID, SuiteReleaseID: &release.ID, Format: report.FormatMarkdown,
+		GeneratedBy: "QA"})
+	if err != nil || releaseExport.RowCount != 2 || releaseExport.SuiteReleaseID == nil ||
+		*releaseExport.SuiteReleaseID != release.ID || strings.Contains(string(releaseExport.Content), "Order created") {
+		t.Fatalf("release export leaked run data: artifact=%+v error=%v", releaseExport, err)
+	}
 	beforeRun, err := reportService.Export(ctx, setID, report.ExportInput{TestSuiteID: suiteID,
 		TestRunID: &bundle.TestRunID, Format: report.FormatMarkdown, GeneratedBy: "QA",
 		TestCaseIDs: []int64{bundle.Items[0].TestCaseID}, SortBy: "TITLE"})
@@ -183,6 +248,20 @@ func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
 	if err != nil || !strings.Contains(string(afterRun.Content), "Order created") || !strings.Contains(string(afterRun.Content), "PASSED") {
 		t.Fatalf("post-run export error=%v", err)
 	}
+	coverage, err := caseRepository.Coverage(ctx, setID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layers := map[string]testcase.CoverageLayer{}
+	for _, layer := range coverage.Layers {
+		layers[layer.Key] = layer
+	}
+	if layers["PUBLISHED"].Numerator != 2 || layers["PUBLISHED"].Denominator != 2 ||
+		layers["AUTOMATED"].Numerator != 1 || layers["AUTOMATED"].Denominator != 2 ||
+		layers["EXECUTED"].Numerator != 1 || layers["EXECUTED"].Denominator != 2 ||
+		layers["EXECUTED"].SuiteReleaseID == nil || *layers["EXECUTED"].SuiteReleaseID != release.ID {
+		t.Fatalf("coverage layers do not expose exact release denominators: %+v", coverage.Layers)
+	}
 	artifact, err := reportService.Export(ctx, setID, report.ExportInput{TestSuiteID: suiteID, TestRunID: &bundle.TestRunID, Format: report.FormatXLSX, GeneratedBy: "QA"})
 	if err != nil {
 		t.Fatal(err)
@@ -193,6 +272,103 @@ func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
 	}
 	if _, err := pool.Exec(ctx, `UPDATE test_exports SET generated_by='tampered' WHERE id=$1`, artifact.ID); err == nil {
 		t.Fatal("immutable export accepted an update")
+	}
+	if _, err := caseRepository.ReviewExact(ctx, draft.Revision.ID, testcase.ReviewInput{
+		ReviewerName: "QA", Decision: testcase.StatusApproved,
+		ExpectedContentHash: draft.Revision.ContentHash}, "qa"); err != nil {
+		t.Fatalf("approve R2 candidate: %v", err)
+	}
+	release2, created, err := caseRepository.PublishRelease(ctx, setID,
+		testcase.PublishReleaseInput{TestSuiteID: suiteID, SourceSnapshotID: &sourceSnapshotID,
+			RevisionIDs: []int64{draft.Revision.ID, release.Items[1].TestCaseID}, PublishedBy: "QA"},
+		"scope-release-r2", "qa")
+	if err != nil || !created {
+		t.Fatalf("publish R2: %+v created=%v error=%v", release2, created, err)
+	}
+	if _, err := repository.Select(ctx, project1, scope.SelectInput{SuiteReleaseID: release2.ID,
+		SelectionMode: scope.ModeMappedFallback, SelectedBy: "QA"}); err != nil {
+		t.Fatalf("bind R2: %v", err)
+	}
+	pinnedR1, err := repository.Get(ctx, explicitAnalysis)
+	if err != nil || pinnedR1.SuiteReleaseID != release.ID ||
+		pinnedR1.Items[0].TestCaseID == draft.Revision.ID {
+		t.Fatalf("existing R1 analysis changed after binding R2: %+v error=%v", pinnedR1, err)
+	}
+	r2Analysis := insertAnalysis(t, pool, ctx, project1, suffix+3,
+		json.RawMessage(`{"title":"Fix UC-B08 after R2"}`))
+	created, err = repository.SnapshotForAnalysis(ctx, job.AnalysisJob{ID: r2Analysis,
+		ProjectID: project1, SourceSHA: "source-r2",
+		RawEvent: json.RawMessage(`{"title":"Fix UC-B08 after R2"}`)})
+	if err != nil || !created {
+		t.Fatalf("snapshot R2: created=%v error=%v", created, err)
+	}
+	pinnedR2, err := repository.Get(ctx, r2Analysis)
+	if err != nil || pinnedR2.SuiteReleaseID != release2.ID {
+		t.Fatalf("new analysis did not pin R2: %+v error=%v", pinnedR2, err)
+	}
+	releaseCases := map[int64]map[int64]bool{
+		release.ID:  {},
+		release2.ID: {},
+	}
+	for _, item := range release.Items {
+		releaseCases[release.ID][item.TestCaseID] = true
+	}
+	for _, item := range release2.Items {
+		releaseCases[release2.ID][item.TestCaseID] = true
+	}
+	for iteration := 0; iteration < 12; iteration++ {
+		targetReleaseID := release.ID
+		if iteration%2 == 0 {
+			targetReleaseID = release2.ID
+		}
+		analysisID := insertAnalysis(t, pool, ctx, project1, suffix+100+int64(iteration),
+			json.RawMessage(`{"title":"Concurrent baseline snapshot"}`))
+		start := make(chan struct{})
+		bindResult := make(chan error, 1)
+		type snapshotOutcome struct {
+			created bool
+			err     error
+		}
+		snapshotResult := make(chan snapshotOutcome, 1)
+		go func() {
+			<-start
+			_, selectErr := repository.Select(ctx, project1, scope.SelectInput{
+				SuiteReleaseID: targetReleaseID, SelectionMode: scope.ModeMappedFallback,
+				SelectedBy: "Concurrent QA"})
+			bindResult <- selectErr
+		}()
+		go func() {
+			<-start
+			createdSnapshot, snapshotErr := repository.SnapshotForAnalysis(ctx, job.AnalysisJob{
+				ID: analysisID, ProjectID: project1, SourceSHA: "concurrent-source",
+				RawEvent: json.RawMessage(`{"title":"Concurrent baseline snapshot"}`)})
+			snapshotResult <- snapshotOutcome{created: createdSnapshot, err: snapshotErr}
+		}()
+		close(start)
+		if err := <-bindResult; err != nil {
+			t.Fatalf("concurrent bind iteration %d: %v", iteration, err)
+		}
+		snapshot := <-snapshotResult
+		if snapshot.err != nil || !snapshot.created {
+			t.Fatalf("concurrent snapshot iteration %d: created=%v error=%v",
+				iteration, snapshot.created, snapshot.err)
+		}
+		concurrentBundle, err := repository.Get(ctx, analysisID)
+		allowed := releaseCases[concurrentBundle.SuiteReleaseID]
+		if err != nil || len(concurrentBundle.Items) != len(allowed) {
+			t.Fatalf("concurrent snapshot iteration %d is incomplete: %+v error=%v",
+				iteration, concurrentBundle, err)
+		}
+		for _, item := range concurrentBundle.Items {
+			if !allowed[item.TestCaseID] {
+				t.Fatalf("concurrent snapshot iteration %d mixed release %d with case %d: %+v",
+					iteration, concurrentBundle.SuiteReleaseID, item.TestCaseID, concurrentBundle.Items)
+			}
+		}
+	}
+	if _, err := repository.Select(ctx, project1, scope.SelectInput{SuiteReleaseID: release2.ID,
+		SelectionMode: scope.ModeMappedFallback, SelectedBy: "QA"}); err != nil {
+		t.Fatalf("restore R2 binding after concurrency test: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE projects SET pipeline_mode='LEGACY' WHERE id=$1`, project1); err != nil {
 		t.Fatal(err)

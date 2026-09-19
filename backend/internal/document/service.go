@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/aibudget"
 )
 
 const (
@@ -31,6 +33,12 @@ type Repository interface {
 type Service struct {
 	repository Repository
 	files      FileStore
+	budget     *aibudget.Manager
+}
+
+func (s *Service) ConfigureAIBudget(manager *aibudget.Manager) *Service {
+	s.budget = manager
+	return s
 }
 
 func NewService(repository Repository, files FileStore) *Service {
@@ -87,7 +95,9 @@ func (s *Service) UpdateLifecycle(ctx context.Context, id int64, input Lifecycle
 	input.Reason = strings.TrimSpace(input.Reason)
 	if id <= 0 || input.Actor == "" || input.Reason == "" ||
 		(input.Status != SetStatusActive && input.Status != SetStatusArchived) ||
-		input.RetentionDays < 30 || input.RetentionDays > 3650 {
+		input.RetentionDays < 30 || input.RetentionDays > 3650 ||
+		(input.AITokenBudget != 0 && (input.AITokenBudget < 1000 || input.AITokenBudget > 1000000000)) ||
+		input.AICostBudgetMicroUSD < 0 || input.AICostBudgetMicroUSD > 1000000000000 {
 		return Set{}, ErrInvalidInput
 	}
 	repository, ok := s.repository.(interface {
@@ -97,6 +107,73 @@ func (s *Service) UpdateLifecycle(ctx context.Context, id int64, input Lifecycle
 		return Set{}, ErrUnsupported
 	}
 	return repository.UpdateLifecycle(ctx, id, input)
+}
+
+func (s *Service) PurgePreview(ctx context.Context, id int64) (PurgePreview, error) {
+	if id <= 0 {
+		return PurgePreview{}, ErrNotFound
+	}
+	repository, ok := s.repository.(interface {
+		PurgePreview(context.Context, int64) (PurgePreview, error)
+	})
+	if !ok {
+		return PurgePreview{}, ErrUnsupported
+	}
+	return repository.PurgePreview(ctx, id)
+}
+
+func (s *Service) Purge(ctx context.Context, id int64, input PurgeInput) (PurgeResult, error) {
+	input.Actor = strings.TrimSpace(input.Actor)
+	input.Reason = strings.TrimSpace(input.Reason)
+	input.Confirmation = strings.TrimSpace(input.Confirmation)
+	if id <= 0 || input.Actor == "" || input.Reason == "" || input.Confirmation == "" {
+		return PurgeResult{}, ErrInvalidInput
+	}
+	repository, ok := s.repository.(interface {
+		BeginPurge(context.Context, int64, PurgeInput) (PurgePlan, error)
+		CompletePurge(context.Context, PurgePlan) error
+		FailPurge(context.Context, PurgePlan, error) error
+	})
+	if !ok {
+		return PurgeResult{}, ErrUnsupported
+	}
+	plan, err := repository.BeginPurge(ctx, id, input)
+	if err != nil {
+		return PurgeResult{}, err
+	}
+	for _, key := range plan.StorageKeys {
+		if err = s.files.Delete(ctx, key); err != nil {
+			_ = repository.FailPurge(context.WithoutCancel(ctx), plan, err)
+			return PurgeResult{}, fmt.Errorf("delete document object: %w", err)
+		}
+	}
+	if err = repository.CompletePurge(ctx, plan); err != nil {
+		_ = repository.FailPurge(context.WithoutCancel(ctx), plan, err)
+		return PurgeResult{}, err
+	}
+	return PurgeResult{AuditID: plan.AuditID, DocumentSetID: id, Status: "COMPLETED",
+		DeletedObjects: len(plan.StorageKeys)}, nil
+}
+
+func (s *Service) AIBudgetStatus(ctx context.Context, id int64) (AIBudgetStatus, error) {
+	if id <= 0 {
+		return AIBudgetStatus{}, ErrNotFound
+	}
+	if s.budget == nil {
+		return AIBudgetStatus{}, ErrUnsupported
+	}
+	if _, err := s.repository.GetSet(ctx, id); err != nil {
+		return AIBudgetStatus{}, err
+	}
+	status, err := s.budget.Status(ctx, id)
+	if err != nil {
+		return AIBudgetStatus{}, err
+	}
+	return AIBudgetStatus{DocumentSetID: status.DocumentSetID, TokenBudget: status.TokenBudget,
+		UsedTokens: status.UsedTokens, ReservedTokens: status.ReservedTokens,
+		RemainingTokens: status.RemainingTokens, CostBudgetMicroUSD: status.CostBudgetMicroUSD,
+		UsedCostMicroUSD: status.UsedCostMicroUSD, ReservedCostMicroUSD: status.ReservedCostMicroUSD,
+		RemainingCostMicroUSD: status.RemainingCostMicroUSD}, nil
 }
 
 func (s *Service) Upload(ctx context.Context, setID int64, input UploadInput,

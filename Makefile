@@ -5,13 +5,17 @@ LOG_TAIL ?= 100
 READY_URL ?= http://127.0.0.1:8080/ready
 PROD_COMPOSE = docker compose --env-file "$(ENV_FILE)" -f "$(COMPOSE_FILE)"
 
-.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test sandbox-security-check frontend-install frontend-typecheck frontend-build evaluate evaluate-document evaluate-import rebuild rebuild-be rebuild-fe rebuild-worker rebuild-all prod-help prod-config prod-up prod-migrate prod-gemini-setup prod-gemini-up prod-gemini-smoke prod-rebuild-api prod-rebuild-worker prod-rebuild-backend prod-rebuild-frontend prod-rebuild-app prod-rebuild-all prod-worker-restart prod-status prod-logs prod-worker-logs prod-worker-logs-follow backup restore
+.PHONY: dev-up dev-down migrate-up migrate-down test test-integration lint build smoke sample-test sandbox-build sandbox-test sandbox-security-check frontend-install frontend-typecheck frontend-build evaluate evaluate-document evaluate-import document-e2e-verify prod-document-e2e-verify rebuild rebuild-be rebuild-fe rebuild-worker rebuild-all prod-help prod-config prod-up prod-migrate prod-gemini-setup prod-gemini-up prod-gemini-smoke prod-rebuild-api prod-rebuild-worker prod-rebuild-backend prod-rebuild-frontend prod-rebuild-app prod-rebuild-all prod-worker-restart prod-status prod-logs prod-worker-logs prod-worker-logs-follow backup restore
 
 EVALUATION_DATASET ?= evaluation/datasets/controlled-v1.json
 EVALUATION_OUTPUT ?= evaluation/results/controlled-v1
 DOCUMENT_EVALUATION_DATASET ?= evaluation/datasets/document-controlled-v1.json
 DOCUMENT_EVALUATION_OUTPUT ?= evaluation/results/document-controlled-v1.json
 EVALUATION_DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/ai_test_assistant?sslmode=disable
+DOCUMENT_SET_ID ?=
+PROJECT_ID ?=
+ANALYSIS_ID ?=
+TEST_RUN_ID ?=
 
 dev-up: sandbox-build
 	$(COMPOSE) up --build -d
@@ -46,12 +50,19 @@ evaluate-document:
 	mkdir -p evaluation/results
 	cd backend && go run ./cmd/document-evaluate -input "../$(DOCUMENT_EVALUATION_DATASET)" -output "../$(DOCUMENT_EVALUATION_OUTPUT)"
 
+document-e2e-verify:
+	cd backend && go run ./cmd/document-e2e-verify -database-url "$(EVALUATION_DATABASE_URL)" -document-set-id "$(DOCUMENT_SET_ID)" -project-id "$(PROJECT_ID)" -analysis-id "$(ANALYSIS_ID)" -test-run-id "$(TEST_RUN_ID)"
+
+prod-document-e2e-verify: prod-config
+	test -n "$(DOCUMENT_SET_ID)" -a -n "$(PROJECT_ID)" -a -n "$(ANALYSIS_ID)" -a -n "$(TEST_RUN_ID)"
+	$(PROD_COMPOSE) run --rm --no-deps --entrypoint /document-e2e-verify api -document-set-id "$(DOCUMENT_SET_ID)" -project-id "$(PROJECT_ID)" -analysis-id "$(ANALYSIS_ID)" -test-run-id "$(TEST_RUN_ID)"
+
 lint:
 	cd backend && go vet ./...
 	cd examples/go-microservices && go vet ./...
 
 build: frontend-build
-	cd backend && go build ./cmd/api ./cmd/worker ./cmd/evaluate ./cmd/document-evaluate ./cmd/healthcheck
+	cd backend && go build ./cmd/api ./cmd/worker ./cmd/evaluate ./cmd/document-evaluate ./cmd/document-e2e-verify ./cmd/healthcheck
 
 prod-help:
 	@echo "Production commands:"
@@ -64,6 +75,7 @@ prod-help:
 	@echo "  make prod-gemini-setup        Store the Gemini key and update .env.production"
 	@echo "  make prod-gemini-up           Configure Gemini, rebuild and restart the worker"
 	@echo "  make prod-gemini-smoke        Call Gemini directly without creating an analysis"
+	@echo "  make prod-document-e2e-verify Verify persisted proof for the real document-to-XLSX demo"
 	@echo "  make prod-rebuild-api         Rebuild only the API after API-only changes"
 	@echo "  make prod-rebuild-worker      Rebuild only the worker after worker/LLM changes"
 	@echo "  make prod-rebuild-backend     Run migrations and rebuild API plus worker"

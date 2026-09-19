@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/document"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/requirement"
@@ -14,9 +15,9 @@ import (
 )
 
 type DocumentIndexService interface {
-	Index(context.Context, int64) (document.IndexStatus, error)
+	IndexWithOptions(context.Context, int64, document.IndexOptions) (document.IndexStatus, error)
 	Status(context.Context, int64) (document.IndexStatus, error)
-	ListChunks(context.Context, int64, string, string, int) ([]document.SemanticChunk, error)
+	ListGenerationChunks(context.Context, int64, int64, string, string, int) ([]document.SemanticChunk, error)
 	Retrieve(context.Context, document.RetrievalQuery) ([]document.SemanticChunk, error)
 	ReviewVersion(context.Context, int64, document.VersionReviewInput) (document.VersionReview, error)
 }
@@ -39,6 +40,16 @@ type TestCaseWorkflowService interface {
 	Review(context.Context, int64, testcase.ReviewInput) (testcase.Detail, error)
 	BulkReview(context.Context, testcase.BulkReviewInput) ([]testcase.Detail, error)
 	Coverage(context.Context, int64) (testcase.CoverageReport, error)
+	ListFamilies(context.Context, int64) ([]testcase.Family, error)
+	GetFamily(context.Context, int64) (testcase.Family, error)
+	ListVersions(context.Context, int64) ([]testcase.TestCase, error)
+	CreateRevision(context.Context, int64, testcase.CreateRevisionInput, string, string) (testcase.RevisionResult, error)
+	Restore(context.Context, int64, testcase.RestoreInput, string, string) (testcase.RevisionResult, error)
+	Diff(context.Context, int64, int64, int64) (testcase.RevisionDiff, error)
+	Archive(context.Context, int64, testcase.ArchiveInput, string) (testcase.Family, error)
+	PublishRelease(context.Context, int64, testcase.PublishReleaseInput, string, string) (testcase.SuiteRelease, bool, error)
+	ListReleases(context.Context, int64) ([]testcase.SuiteRelease, error)
+	GetRelease(context.Context, int64) (testcase.SuiteRelease, error)
 }
 
 type documentIndexHandler struct{ service DocumentIndexService }
@@ -48,8 +59,18 @@ func (h documentIndexHandler) index(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result, err := h.service.Index(r.Context(), setID)
+	var input document.IndexOptions
+	if r.ContentLength != 0 && !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := h.service.IndexWithOptions(r.Context(), setID, input)
 	if err != nil {
+		var blocked *document.SourceSnapshotBlockedError
+		if errors.As(err, &blocked) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": blocked.Error(),
+				"code": "SOURCE_SNAPSHOT_BLOCKED", "issues": blocked.Issues})
+			return
+		}
 		writeWorkflowError(w, err, "could not index document set")
 		return
 	}
@@ -75,8 +96,9 @@ func (h documentIndexHandler) chunks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	results, err := h.service.ListChunks(r.Context(), setID, r.URL.Query().Get("type"),
-		r.URL.Query().Get("flow_type"), limit)
+	generation, _ := strconv.ParseInt(r.URL.Query().Get("generation"), 10, 64)
+	results, err := h.service.ListGenerationChunks(r.Context(), setID, generation,
+		r.URL.Query().Get("type"), r.URL.Query().Get("flow_type"), limit)
 	if err != nil {
 		writeWorkflowError(w, err, "could not list document chunks")
 		return
@@ -296,7 +318,190 @@ func (h testCaseWorkflowHandler) review(w http.ResponseWriter, r *http.Request) 
 		writeWorkflowError(w, err, "could not review test case")
 		return
 	}
+	if result.TestCase.ID != id {
+		w.Header().Set("Location", "/api/test-cases/"+strconv.FormatInt(result.TestCase.ID, 10))
+		w.Header().Set("Deprecation", "true")
+		w.Header().Set("Link", `</api/test-case-families/`+
+			strconv.FormatInt(result.TestCase.FamilyID, 10)+`/versions>; rel="successor-version"`)
+	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h testCaseWorkflowHandler) listFamilies(w http.ResponseWriter, r *http.Request) {
+	setID, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	results, err := h.service.ListFamilies(r.Context(), setID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not list test case families")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"families": results})
+}
+
+func (h testCaseWorkflowHandler) getFamily(w http.ResponseWriter, r *http.Request) {
+	familyID, ok := positiveInt64Path(w, r, "id", "test case family")
+	if !ok {
+		return
+	}
+	result, err := h.service.GetFamily(r.Context(), familyID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not get test case family")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h testCaseWorkflowHandler) listVersions(w http.ResponseWriter, r *http.Request) {
+	familyID, ok := positiveInt64Path(w, r, "id", "test case family")
+	if !ok {
+		return
+	}
+	results, err := h.service.ListVersions(r.Context(), familyID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not list test case revisions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"versions": results})
+}
+
+func (h testCaseWorkflowHandler) createRevision(w http.ResponseWriter, r *http.Request) {
+	familyID, ok := positiveInt64Path(w, r, "id", "test case family")
+	if !ok {
+		return
+	}
+	var input testcase.CreateRevisionInput
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := h.service.CreateRevision(r.Context(), familyID, input,
+		r.Header.Get("Idempotency-Key"), workflowActor(r))
+	if err != nil {
+		writeWorkflowError(w, err, "could not create test case revision")
+		return
+	}
+	w.Header().Set("Location", result.Location)
+	status := http.StatusOK
+	if result.Created {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, result)
+}
+
+func (h testCaseWorkflowHandler) restore(w http.ResponseWriter, r *http.Request) {
+	familyID, ok := positiveInt64Path(w, r, "id", "test case family")
+	if !ok {
+		return
+	}
+	var input testcase.RestoreInput
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := h.service.Restore(r.Context(), familyID, input,
+		r.Header.Get("Idempotency-Key"), workflowActor(r))
+	if err != nil {
+		writeWorkflowError(w, err, "could not restore test case revision")
+		return
+	}
+	w.Header().Set("Location", result.Location)
+	status := http.StatusOK
+	if result.Created {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, result)
+}
+
+func (h testCaseWorkflowHandler) diff(w http.ResponseWriter, r *http.Request) {
+	familyID, ok := positiveInt64Path(w, r, "id", "test case family")
+	if !ok {
+		return
+	}
+	fromID, errFrom := strconv.ParseInt(r.URL.Query().Get("from"), 10, 64)
+	toID, errTo := strconv.ParseInt(r.URL.Query().Get("to"), 10, 64)
+	if errFrom != nil || errTo != nil || fromID <= 0 || toID <= 0 {
+		writeError(w, http.StatusBadRequest, "from and to revision IDs are required")
+		return
+	}
+	result, err := h.service.Diff(r.Context(), familyID, fromID, toID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not diff test case revisions")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h testCaseWorkflowHandler) archive(w http.ResponseWriter, r *http.Request) {
+	familyID, ok := positiveInt64Path(w, r, "id", "test case family")
+	if !ok {
+		return
+	}
+	var input testcase.ArchiveInput
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := h.service.Archive(r.Context(), familyID, input, workflowActor(r))
+	if err != nil {
+		writeWorkflowError(w, err, "could not archive test case family")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h testCaseWorkflowHandler) publishRelease(w http.ResponseWriter, r *http.Request) {
+	setID, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	var input testcase.PublishReleaseInput
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, created, err := h.service.PublishRelease(r.Context(), setID, input,
+		r.Header.Get("Idempotency-Key"), workflowActor(r))
+	if err != nil {
+		writeWorkflowError(w, err, "could not publish test suite release")
+		return
+	}
+	w.Header().Set("Location", "/api/test-suite-releases/"+strconv.FormatInt(result.ID, 10))
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, result)
+}
+
+func (h testCaseWorkflowHandler) listReleases(w http.ResponseWriter, r *http.Request) {
+	setID, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	results, err := h.service.ListReleases(r.Context(), setID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not list test suite releases")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"releases": results})
+}
+
+func (h testCaseWorkflowHandler) getRelease(w http.ResponseWriter, r *http.Request) {
+	releaseID, ok := positiveInt64Path(w, r, "id", "test suite release")
+	if !ok {
+		return
+	}
+	result, err := h.service.GetRelease(r.Context(), releaseID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not get test suite release")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func workflowActor(r *http.Request) string {
+	if value := strings.TrimSpace(r.Header.Get("X-Authenticated-Actor")); value != "" {
+		return value
+	}
+	return "API_USER"
 }
 
 func (h testCaseWorkflowHandler) bulkReview(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +547,19 @@ func decodeWorkflowJSON(w http.ResponseWriter, r *http.Request, target any) bool
 }
 
 func writeWorkflowError(w http.ResponseWriter, err error, fallback string) {
+	var revisionConflict *testcase.RevisionConflictError
 	switch {
+	case errors.As(err, &revisionConflict):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": revisionConflict.Error(),
+			"code":                "TESTCASE_HEAD_CONFLICT",
+			"current_revision_id": revisionConflict.CurrentRevisionID,
+			"current_head_token":  revisionConflict.CurrentHeadToken})
+	case errors.Is(err, testcase.ErrIdempotencyConflict):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(),
+			"code": "IDEMPOTENCY_KEY_REUSED"})
+	case errors.Is(err, testcase.ErrEvidenceInvalid):
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error(),
+			"code": "TESTCASE_EVIDENCE_INVALID"})
 	case errors.Is(err, document.ErrNotFound), errors.Is(err, requirement.ErrNotFound),
 		errors.Is(err, testcase.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
@@ -350,11 +567,19 @@ func writeWorkflowError(w http.ResponseWriter, err error, fallback string) {
 		errors.Is(err, requirement.ErrInvalidInput), errors.Is(err, testcase.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, document.ErrNoParsedDocuments), errors.Is(err, document.ErrIndexNotReady),
-		errors.Is(err, document.ErrSourceReviewBlocked),
+		errors.Is(err, document.ErrSourceReviewBlocked), errors.Is(err, document.ErrSourceSnapshotBlocked),
+		errors.Is(err, document.ErrIndexStale), errors.Is(err, requirement.ErrStaleIndex),
 		errors.Is(err, requirement.ErrNoIndex), errors.Is(err, requirement.ErrMissingEvidence),
-		errors.Is(err, requirement.ErrReviewBlocked), errors.Is(err, testcase.ErrNoApprovedSource),
+		errors.Is(err, requirement.ErrReviewBlocked), errors.Is(err, requirement.ErrSourceNotApproved),
+		errors.Is(err, testcase.ErrNoApprovedSource),
 		errors.Is(err, testcase.ErrReviewBlocked), errors.Is(err, document.ErrUnapprovedEvidence):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, testcase.ErrFamilyArchived):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(),
+			"code": "TESTCASE_FAMILY_ARCHIVED"})
+	case errors.Is(err, testcase.ErrReleaseScope):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(),
+			"code": "SUITE_RELEASE_SCOPE_INVALID"})
 	default:
 		writeError(w, http.StatusInternalServerError, fallback)
 	}

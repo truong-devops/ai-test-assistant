@@ -9,6 +9,7 @@ import (
 const (
 	SetStatusActive   = "ACTIVE"
 	SetStatusArchived = "ARCHIVED"
+	SetStatusPurging  = "PURGING"
 
 	TypeRequirements   = "REQUIREMENTS"
 	TypeUserStory      = "USER_STORY"
@@ -41,33 +42,85 @@ const (
 )
 
 var (
-	ErrNotFound       = errors.New("document resource not found")
-	ErrInvalidInput   = errors.New("invalid document input")
-	ErrAlreadyExists  = errors.New("document resource already exists")
-	ErrUnsupported    = errors.New("unsupported document format")
-	ErrFileTooLarge   = errors.New("document file is too large")
-	ErrUnsafeDocument = errors.New("unsafe document archive")
-	ErrLeaseLost      = errors.New("document parse lease lost")
+	ErrNotFound        = errors.New("document resource not found")
+	ErrInvalidInput    = errors.New("invalid document input")
+	ErrAlreadyExists   = errors.New("document resource already exists")
+	ErrUnsupported     = errors.New("unsupported document format")
+	ErrFileTooLarge    = errors.New("document file is too large")
+	ErrUnsafeDocument  = errors.New("unsafe document archive")
+	ErrLeaseLost       = errors.New("document parse lease lost")
+	ErrRetentionNotMet = errors.New("document retention period has not elapsed")
+	ErrPurgeBlocked    = errors.New("document purge is blocked by immutable references")
 )
 
 type Set struct {
-	ID            int64      `json:"id"`
-	Name          string     `json:"name"`
-	ProductName   string     `json:"product_name"`
-	Scope         string     `json:"scope"`
-	Description   string     `json:"description"`
-	Status        string     `json:"status"`
-	RetentionDays int        `json:"retention_days"`
-	ArchivedAt    *time.Time `json:"archived_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID                   int64      `json:"id"`
+	Name                 string     `json:"name"`
+	ProductName          string     `json:"product_name"`
+	Scope                string     `json:"scope"`
+	Description          string     `json:"description"`
+	Status               string     `json:"status"`
+	RetentionDays        int        `json:"retention_days"`
+	AITokenBudget        int64      `json:"ai_token_budget"`
+	AICostBudgetMicroUSD int64      `json:"ai_cost_budget_microusd"`
+	ArchivedAt           *time.Time `json:"archived_at,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+	SourceRevision       int64      `json:"source_revision"`
 }
 
 type LifecycleInput struct {
-	Status        string `json:"status"`
-	RetentionDays int    `json:"retention_days"`
-	Actor         string `json:"actor"`
-	Reason        string `json:"reason"`
+	Status               string `json:"status"`
+	RetentionDays        int    `json:"retention_days"`
+	AITokenBudget        int64  `json:"ai_token_budget"`
+	AICostBudgetMicroUSD int64  `json:"ai_cost_budget_microusd"`
+	Actor                string `json:"actor"`
+	Reason               string `json:"reason"`
+}
+
+type AIBudgetStatus struct {
+	DocumentSetID         int64 `json:"document_set_id"`
+	TokenBudget           int64 `json:"token_budget"`
+	UsedTokens            int64 `json:"used_tokens"`
+	ReservedTokens        int64 `json:"reserved_tokens"`
+	RemainingTokens       int64 `json:"remaining_tokens"`
+	CostBudgetMicroUSD    int64 `json:"cost_budget_microusd"`
+	UsedCostMicroUSD      int64 `json:"used_cost_microusd"`
+	ReservedCostMicroUSD  int64 `json:"reserved_cost_microusd"`
+	RemainingCostMicroUSD int64 `json:"remaining_cost_microusd"`
+}
+
+type PurgePreview struct {
+	DocumentSetID      int64      `json:"document_set_id"`
+	Name               string     `json:"name"`
+	Status             string     `json:"status"`
+	RetentionDays      int        `json:"retention_days"`
+	ArchivedAt         *time.Time `json:"archived_at,omitempty"`
+	PurgeEligibleAt    *time.Time `json:"purge_eligible_at,omitempty"`
+	Eligible           bool       `json:"eligible"`
+	Blockers           []string   `json:"blockers"`
+	StorageObjectCount int        `json:"storage_object_count"`
+	StorageBytes       int64      `json:"storage_bytes"`
+	Confirmation       string     `json:"confirmation"`
+}
+
+type PurgeInput struct {
+	Actor        string `json:"actor"`
+	Reason       string `json:"reason"`
+	Confirmation string `json:"confirmation"`
+}
+
+type PurgePlan struct {
+	AuditID       int64
+	DocumentSetID int64
+	StorageKeys   []string
+}
+
+type PurgeResult struct {
+	AuditID        int64  `json:"audit_id"`
+	DocumentSetID  int64  `json:"document_set_id"`
+	Status         string `json:"status"`
+	DeletedObjects int    `json:"deleted_objects"`
 }
 
 type Document struct {

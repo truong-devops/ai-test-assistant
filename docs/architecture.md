@@ -1,7 +1,8 @@
 # Architecture
 
-> **Architecture status – 2026-09-16:** this document records the architecture
-> implemented by document-driven Phases 0–10, Phase 11 rollout controls, and the still-running code-first
+> **Architecture status – 2026-09-19:** this document records the architecture
+> implemented by document-driven Phases 0–10, Phase 11 rollout controls,
+> workflow/versioning UV-00–UV-04, and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
 > target architecture and its ordered backend/frontend work are defined in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
@@ -44,13 +45,16 @@ document parse worker -> leased version -> checksum verification
                       -> passive DOCX/Markdown parser
                       -> ordered blocks + source locators -> PARSED/FAILED
 
+explicit workflow intent -> HTTP 202 durable job + frozen input snapshot
+workflow worker -> lease + heartbeat + bounded retry + atomic output publish
+                -> shared progress/error/usage read model
 explicit index action -> semantic chunks per identifier/flow/table row
                       -> normalized embedding + retained raw evidence
                       -> document-set/version filtered hybrid retrieval
                       -> immutable context snapshots
 
-explicit extraction -> HTTP 202 durable job bound to index generation
-worker -> retrieve per semantic unit -> strict schema/rule extractor
+explicit extraction -> delegated durable job bound to index generation
+extraction worker -> retrieve per semantic unit -> strict schema/rule extractor
        -> progress + evidence-bound requirement + flow steps
        -> deterministic dedupe -> conflict/TBD inventory
        -> PO/BA review + immutable requirement version
@@ -60,7 +64,8 @@ approved requirements -> generator per requirement/flow
                       -> exact/semantic dedupe -> QA review/versioning
                       -> database-derived coverage matrix
 
-project -> selected approved suite -> webhook-time immutable baseline snapshot
+approved testcase revisions -> immutable suite release manifest
+project -> selected suite release -> webhook-time immutable baseline snapshot
 PR/MR identifiers -> explicit testcase scope; uncertain mapping -> full suite
 changed path/module/symbol -> technical signals only, never expected behavior
 approved testcase + Go context -> versioned/reviewed automation artifact
@@ -87,10 +92,14 @@ extraction/generation use context marked as untrusted, strict output schemas and
 persisted raw call/snapshot provenance. The disabled-provider development path
 uses deterministic draft generation.
 
-Index and requirement extraction are background-worker actions; extraction
-returns a job and progress endpoint so provider latency is independent of HTTP
-timeouts. Test-case and initial automation generation remain explicit review
-actions and are bounded by provider timeouts.
+Index, requirement extraction and testcase generation are explicit background
+workflow operations. One read model reports role-derived capabilities,
+machine-readable blockers, active/recent jobs and the next action. The shared
+workflow job owns idempotency, input pinning, retry/cancel and usage reporting;
+requirement extraction delegates to its established queue rather than adding a
+second scheduler. Provider latency is therefore independent of HTTP write
+timeouts. Initial automation generation remains an explicit review action and
+is bounded by provider timeouts.
 
 ## Implemented baseline architecture
 

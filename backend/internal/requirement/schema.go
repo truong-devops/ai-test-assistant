@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"unicode/utf8"
 )
@@ -83,22 +84,42 @@ func normalizeProposal(item *Proposal) error {
 	item.Identifier = strings.ToUpper(strings.TrimSpace(item.Identifier))
 	item.Title = strings.TrimSpace(item.Title)
 	item.Statement = strings.TrimSpace(item.Statement)
-	item.RequirementType = strings.ToUpper(strings.TrimSpace(item.RequirementType))
-	item.FlowType = strings.ToUpper(strings.TrimSpace(item.FlowType))
+	item.RequirementType = normalizeRequirementType(item.RequirementType)
+	item.FlowType = normalizeFlowType(item.FlowType)
 	item.Actor = strings.TrimSpace(item.Actor)
 	item.Precondition = strings.TrimSpace(item.Precondition)
 	item.Postcondition = strings.TrimSpace(item.Postcondition)
-	item.Priority = strings.ToUpper(strings.TrimSpace(item.Priority))
-	item.Risk = strings.ToUpper(strings.TrimSpace(item.Risk))
-	item.Status = strings.ToUpper(strings.TrimSpace(item.Status))
+	item.Priority = normalizeLevel(item.Priority)
+	item.Risk = normalizeLevel(item.Risk)
+	item.Status = normalizeDraftStatus(item.Status)
+	if item.Confidence > 1 && item.Confidence <= 100 {
+		// Prompt-only JSON fallbacks occasionally express confidence as a
+		// percentage. It is equivalent information, so normalize it rather than
+		// failing a long-running extraction job after a valid provider call.
+		item.Confidence /= 100
+	}
 	if item.Title == "" || item.Statement == "" || utf8.RuneCountInString(item.Title) > 300 ||
 		utf8.RuneCountInString(item.Statement) > 12000 || strings.ContainsRune(item.Statement, '\x00') {
 		return fmt.Errorf("title or statement is empty, oversized, or invalid")
 	}
-	if !validRequirementType(item.RequirementType) || !validFlowType(item.FlowType) ||
-		!validLevel(item.Priority) || !validLevel(item.Risk) ||
-		item.Status != StatusDraft && item.Status != StatusTBD || item.Confidence < 0 || item.Confidence > 1 {
-		return fmt.Errorf("invalid enum or confidence")
+	if !validRequirementType(item.RequirementType) {
+		return fmt.Errorf("invalid requirement_type %q", item.RequirementType)
+	}
+	if !validFlowType(item.FlowType) {
+		return fmt.Errorf("invalid flow_type %q", item.FlowType)
+	}
+	if !validLevel(item.Priority) {
+		return fmt.Errorf("invalid priority %q", item.Priority)
+	}
+	if !validLevel(item.Risk) {
+		return fmt.Errorf("invalid risk %q", item.Risk)
+	}
+	if item.Status != StatusDraft && item.Status != StatusTBD {
+		return fmt.Errorf("invalid status %q: provider cannot approve or reject requirements", item.Status)
+	}
+	if math.IsNaN(item.Confidence) || math.IsInf(item.Confidence, 0) ||
+		item.Confidence < 0 || item.Confidence > 1 {
+		return fmt.Errorf("invalid confidence %v: expected a decimal from 0 to 1 or a percentage from 0 to 100", item.Confidence)
 	}
 	for index := range item.Steps {
 		item.Steps[index].Action = strings.TrimSpace(item.Steps[index].Action)
@@ -108,6 +129,77 @@ func normalizeProposal(item *Proposal) error {
 		}
 	}
 	return nil
+}
+
+func enumKey(value string) string {
+	value = strings.ToUpper(foldVietnameseText(strings.TrimSpace(value)))
+	replacer := strings.NewReplacer("-", "_", " ", "_", "/", "_", ".", "_")
+	value = replacer.Replace(value)
+	for strings.Contains(value, "__") {
+		value = strings.ReplaceAll(value, "__", "_")
+	}
+	return strings.Trim(value, "_")
+}
+
+func normalizeRequirementType(value string) string {
+	switch enumKey(value) {
+	case "FUNCTIONAL", "FUNCTIONAL_REQUIREMENT", "FUNCTIONAL_REQUIREMENTS", "FR":
+		return TypeFunctional
+	case "NON_FUNCTIONAL", "NONFUNCTIONAL", "NON_FUNCTIONAL_REQUIREMENT",
+		"NON_FUNCTIONAL_REQUIREMENTS", "NFR":
+		return TypeNonFunctional
+	case "BUSINESS_RULE", "BUSINESS_RULES", "BUSINESS_REQUIREMENT":
+		return TypeBusinessRule
+	case "ACCEPTANCE_CRITERION", "ACCEPTANCE_CRITERIA", "ACCEPTANCE":
+		return TypeAcceptanceCriterion
+	case "USE_CASE", "USECASE", "USER_STORY", "SCENARIO":
+		return TypeUseCase
+	case "REGRESSION", "REGRESSION_REQUIREMENT":
+		return TypeRegression
+	default:
+		return enumKey(value)
+	}
+}
+
+func normalizeFlowType(value string) string {
+	switch enumKey(value) {
+	case "", "NONE", "NA", "N_A", "NOT_APPLICABLE":
+		return "NONE"
+	case "MAIN", "MAIN_FLOW", "PRIMARY", "PRIMARY_FLOW", "HAPPY_PATH":
+		return "MAIN"
+	case "ALTERNATE", "ALTERNATIVE", "ALTERNATE_FLOW", "ALTERNATIVE_FLOW":
+		return "ALTERNATE"
+	case "EXCEPTION", "EXCEPTION_FLOW", "ERROR_FLOW", "FAILURE_FLOW":
+		return "EXCEPTION"
+	default:
+		return enumKey(value)
+	}
+}
+
+func normalizeLevel(value string) string {
+	switch enumKey(value) {
+	case "LOW", "MINOR", "THAP":
+		return "LOW"
+	case "", "MEDIUM", "MODERATE", "NORMAL", "TRUNG_BINH":
+		return "MEDIUM"
+	case "HIGH", "CRITICAL", "SEVERE", "CAO":
+		return "HIGH"
+	default:
+		return enumKey(value)
+	}
+}
+
+func normalizeDraftStatus(value string) string {
+	switch enumKey(value) {
+	case "", "DRAFT", "PROPOSED", "PENDING", "PENDING_REVIEW", "NEEDS_REVIEW":
+		return StatusDraft
+	case "TBD", "UNCLEAR", "NEEDS_CLARIFICATION", "REQUIRES_CLARIFICATION":
+		return StatusTBD
+	default:
+		// In particular, do not turn provider-supplied APPROVED/REJECTED into a
+		// draft. Human ownership of the business baseline is an invariant.
+		return enumKey(value)
+	}
 }
 
 func validRequirementType(value string) bool {

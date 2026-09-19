@@ -26,11 +26,19 @@ export function TestCaseReview({ testCase }: { testCase: BusinessTestCase }) {
       const response = await fetch(`/api/backend/api/test-cases/${testCase.id}/review`, {
         method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ reviewer_name: reviewer.trim(), decision, comment: comment.trim(),
-          title, precondition, test_data: testData, expected_result: expected, postcondition, risk }),
+          title, precondition, test_data: testData, expected_result: expected, postcondition, risk,
+          expected_content_hash: testCase.content_hash }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string; test_case?: BusinessTestCase;
+      };
       if (!response.ok) {
         setError(payload.error ?? "Could not review test case.");
+        return;
+      }
+      const reviewed = payload.test_case;
+      if (reviewed && reviewed.id !== testCase.id) {
+        router.push(`/documents/${testCase.document_set_id}/test-cases/${reviewed.id}?created=v${reviewed.version_number}`);
         return;
       }
       router.refresh();

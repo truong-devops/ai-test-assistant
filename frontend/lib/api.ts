@@ -14,6 +14,7 @@ import type {
   ProvenanceBundle,
   ImpactBundle,
   DocumentSet,
+  AIBudgetStatus,
   DocumentPipelineMetrics,
   SourceDocument,
   DocumentVersionDetail,
@@ -26,12 +27,16 @@ import type {
   OpenQuestion,
   BusinessTestCase,
   BusinessTestCaseDetail,
+  TestCaseFamily,
+  TestCaseRevisionDiff,
+  SuiteRelease,
   CoverageReport,
   TestExport,
   BaselineView,
   AnalysisTestScope,
   AutomationHistory,
 	TestRunDetail,
+  DocumentWorkflow,
 } from "@/lib/types";
 import { backendAuthHeaders } from "@/lib/backend-auth";
 
@@ -58,7 +63,19 @@ export const documentRoutes = {
   questions: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/open-questions`,
   testCases: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/test-cases`,
   testCase: (id: string | number) => `/api/test-cases/${encodeURIComponent(String(id))}`,
+  testCaseFamilies: (setId: string | number) =>
+    `/api/document-sets/${encodeURIComponent(String(setId))}/test-case-families`,
+  testCaseFamily: (id: string | number) =>
+    `/api/test-case-families/${encodeURIComponent(String(id))}`,
+  testCaseVersions: (id: string | number) =>
+    `/api/test-case-families/${encodeURIComponent(String(id))}/versions`,
+  testCaseDiff: (id: string | number, from: string | number, to: string | number) =>
+    `/api/test-case-families/${encodeURIComponent(String(id))}/diff?from=${encodeURIComponent(String(from))}&to=${encodeURIComponent(String(to))}`,
   coverage: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/coverage`,
+  suiteReleases: (setId: string | number) =>
+    `/api/document-sets/${encodeURIComponent(String(setId))}/suite-releases`,
+  aiBudget: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/ai-budget`,
+  workflow: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/workflow`,
 } as const;
 
 export class ApiError extends Error {
@@ -115,6 +132,14 @@ export async function getDocumentSet(id: string | number): Promise<DocumentSet> 
   return request<DocumentSet>(documentRoutes.set(id));
 }
 
+export async function getAIBudget(setId: string | number): Promise<AIBudgetStatus> {
+  return request<AIBudgetStatus>(documentRoutes.aiBudget(setId));
+}
+
+export async function getDocumentWorkflow(setId: string | number): Promise<DocumentWorkflow> {
+  return request<DocumentWorkflow>(documentRoutes.workflow(setId));
+}
+
 export async function getDocuments(setId: string | number): Promise<SourceDocument[]> {
   return (await request<{ documents: SourceDocument[] }>(
     documentRoutes.documents(setId),
@@ -131,8 +156,9 @@ export async function getDocumentIndex(setId: string | number): Promise<Document
   return (await request<{ index: DocumentIndexStatus }>(documentRoutes.index(setId))).index;
 }
 
-export async function getDocumentChunks(setId: string | number): Promise<SemanticChunk[]> {
-  return (await request<{ chunks: SemanticChunk[] }>(documentRoutes.chunks(setId))).chunks;
+export async function getDocumentChunks(setId: string | number, generation?: number): Promise<SemanticChunk[]> {
+  const query = generation && generation > 0 ? `?generation=${encodeURIComponent(String(generation))}` : "";
+  return (await request<{ chunks: SemanticChunk[] }>(`${documentRoutes.chunks(setId)}${query}`)).chunks;
 }
 
 export async function getRequirements(setId: string | number): Promise<Requirement[]> {
@@ -165,12 +191,33 @@ export async function getBusinessTestCase(id: string | number): Promise<Business
   return request<BusinessTestCaseDetail>(documentRoutes.testCase(id));
 }
 
+export async function getTestCaseFamilies(setId: string | number): Promise<TestCaseFamily[]> {
+  return (await request<{ families: TestCaseFamily[] }>(documentRoutes.testCaseFamilies(setId))).families;
+}
+
+export async function getTestCaseFamily(id: string | number): Promise<TestCaseFamily> {
+  return request<TestCaseFamily>(documentRoutes.testCaseFamily(id));
+}
+
+export async function getTestCaseVersions(id: string | number): Promise<BusinessTestCase[]> {
+  return (await request<{ versions: BusinessTestCase[] }>(documentRoutes.testCaseVersions(id))).versions;
+}
+
+export async function getTestCaseRevisionDiff(id: string | number, from: string | number,
+  to: string | number): Promise<TestCaseRevisionDiff> {
+  return request<TestCaseRevisionDiff>(documentRoutes.testCaseDiff(id, from, to));
+}
+
 export async function getCoverage(setId: string | number): Promise<CoverageReport> {
   return request<CoverageReport>(documentRoutes.coverage(setId));
 }
 
 export async function getTestExports(setId: string | number): Promise<TestExport[]> {
   return (await request<{ exports: TestExport[] }>(`/api/document-sets/${encodeURIComponent(String(setId))}/exports`)).exports;
+}
+
+export async function getSuiteReleases(setId: string | number): Promise<SuiteRelease[]> {
+  return (await request<{ releases: SuiteRelease[] }>(documentRoutes.suiteReleases(setId))).releases;
 }
 
 export async function getProjectBaseline(projectId: string | number): Promise<BaselineView> {

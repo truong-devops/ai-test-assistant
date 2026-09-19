@@ -50,7 +50,7 @@ func (r *Repository) ClaimNext(ctx context.Context, lease time.Duration) (Run, e
 		UPDATE test_runs r SET status='RUNNING',started_at=COALESCE(started_at,NOW()),finished_at=NULL,
 		attempt_count=attempt_count+1,lease_expires_at=NOW()+$1::interval,error_message=''
 		FROM candidate WHERE r.id=candidate.id
-		RETURNING r.id,r.test_suite_id,r.project_id,r.analysis_job_id,r.source_sha,r.target_sha,
+		RETURNING r.id,r.test_suite_id,r.suite_release_id,r.project_id,r.analysis_job_id,r.source_sha,r.target_sha,
 		r.environment,r.environment_fingerprint,r.image_reference,r.image_digest,r.status,
 		r.execution_requested_at,r.execution_requested_by,r.attempt_count,r.error_message,
 		r.requested_at,r.started_at,r.finished_at`
@@ -208,7 +208,7 @@ func (r *Repository) RenewLease(ctx context.Context, claimed Run, lease time.Dur
 
 func (r *Repository) Get(ctx context.Context, id int64) (Run, error) {
 	var result Run
-	if err := r.pool.QueryRow(ctx, `SELECT id,test_suite_id,project_id,analysis_job_id,source_sha,target_sha,
+	if err := r.pool.QueryRow(ctx, `SELECT id,test_suite_id,suite_release_id,project_id,analysis_job_id,source_sha,target_sha,
 		environment,environment_fingerprint,image_reference,image_digest,status,execution_requested_at,
 		execution_requested_by,attempt_count,error_message,requested_at,started_at,finished_at
 		FROM test_runs WHERE id=$1`, id).Scan(runDestinations(&result)...); err != nil {
@@ -315,7 +315,7 @@ func (r *Repository) ReviewClassification(ctx context.Context, itemID int64, inp
 }
 
 func runDestinations(run *Run) []any {
-	return []any{&run.ID, &run.TestSuiteID, &run.ProjectID, &run.AnalysisJobID, &run.SourceSHA, &run.TargetSHA, &run.Environment, &run.EnvironmentFingerprint, &run.ImageReference, &run.ImageDigest, &run.Status, &run.ExecutionRequestedAt, &run.ExecutionRequestedBy, &run.AttemptCount, &run.ErrorMessage, &run.RequestedAt, &run.StartedAt, &run.FinishedAt}
+	return []any{&run.ID, &run.TestSuiteID, &run.SuiteReleaseID, &run.ProjectID, &run.AnalysisJobID, &run.SourceSHA, &run.TargetSHA, &run.Environment, &run.EnvironmentFingerprint, &run.ImageReference, &run.ImageDigest, &run.Status, &run.ExecutionRequestedAt, &run.ExecutionRequestedBy, &run.AttemptCount, &run.ErrorMessage, &run.RequestedAt, &run.StartedAt, &run.FinishedAt}
 }
 func itemDestinations(item *Item) []any {
 	return []any{&item.ID, &item.TestRunID, &item.TestCaseID, &item.TestCaseKey, &item.Title, &item.ExpectedResult, &item.ExpectedResultHash, &item.AutomationArtifactID, &item.AutomationSourceHash, &item.AttemptNumber, &item.Status, &item.ActualResult, &item.Command, &item.ExitCode, &item.DurationMS, &item.OutputTruncated, &item.CreatedAt}

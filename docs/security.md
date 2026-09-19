@@ -73,8 +73,10 @@ API keys, SCM tokens, webhook secrets, or database credentials. Historical
 prompts, responses, and denormalized source chunks are intentionally retained
 for thesis reproducibility and therefore remain sensitive project data. The
 full `/api/analyses/{id}/export` endpoint remains behind the authenticated
-service and private reverse proxy. Archive/retention audit exists, but physical
-purge and a final long-term retention decision are still required.
+service and private reverse proxy. Physical purge is admin-only, waits for the
+configured retention period, requires exact typed confirmation, refuses project
+baselines, immutable analysis snapshots and test runs, deletes storage idempotently, and
+keeps its audit row outside the deleted document-set foreign-key graph.
 
 ## Document intake findings
 
@@ -110,8 +112,11 @@ becoming business truth, but they do not replace human review.
 Index and requirement extraction use durable worker queues. Extraction captures
 the index generation, renews a lease, persists per-chunk progress and retries
 without holding an HTTP request, removing the reverse-proxy 502 failure mode.
-Per-call output limits, HTTP rate limits and per-repair cost limits exist; a
-total token/cost quota per user/document set remains open before multi-tenant use.
+Per-call output limits, HTTP rate limits and per-repair cost limits are combined
+with a document-set token/cost budget. Every LLM call reserves a conservative
+amount under a row lock before it starts, records actual usage on success, and
+releases failed or expired reservations. Per-user quotas remain future work for
+a multi-tenant identity model.
 
 ## Guarded technical repair findings
 

@@ -128,13 +128,14 @@ type RepairRequest struct {
 }
 
 type RepairSubject struct {
-	Job          RepairJob
-	Artifact     Artifact
-	ActualResult string
-	Evidence     json.RawMessage
-	TestCaseID   int64
-	AnalysisID   int64
-	PackageName  string
+	Job           RepairJob
+	Artifact      Artifact
+	ActualResult  string
+	Evidence      json.RawMessage
+	TestCaseID    int64
+	AnalysisID    int64
+	DocumentSetID int64
+	PackageName   string
 }
 
 type proposedArtifact struct {

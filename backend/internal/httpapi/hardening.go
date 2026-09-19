@@ -53,10 +53,21 @@ func legacyDeprecationHeaders(next http.Handler) http.Handler {
 		legacy := strings.HasPrefix(path, "/api/evaluations") ||
 			strings.HasPrefix(path, "/api/generated-tests/") ||
 			(strings.HasPrefix(path, "/api/analyses/") &&
-				containsAny(path, "/recommendations", "/generated-tests", "/validations", "/repairs"))
+				containsAny(path, "/recommendations", "/generated-tests", "/validations", "/repairs")) ||
+			(r.Method == http.MethodPost && strings.HasPrefix(path, "/api/document-sets/") &&
+				(strings.HasSuffix(path, "/index") || strings.HasSuffix(path, "/requirements/extract") ||
+					strings.HasSuffix(path, "/test-cases/generate") ||
+					strings.HasSuffix(path, "/test-cases/regenerate")))
 		if legacy {
 			w.Header().Set("Deprecation", "true")
-			w.Header().Set("Link", `</api/document-sets>; rel="successor-version"`)
+			if strings.HasPrefix(path, "/api/document-sets/") {
+				remainder := strings.TrimPrefix(path, "/api/document-sets/")
+				setID, _, _ := strings.Cut(remainder, "/")
+				w.Header().Set("Link", "</api/document-sets/"+setID+
+					`/workflow-operations>; rel="successor-version"`)
+			} else {
+				w.Header().Set("Link", `</api/document-sets>; rel="successor-version"`)
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -72,11 +83,14 @@ func containsAny(value string, needles ...string) bool {
 }
 
 func requiredRole(r *http.Request) string {
+	if strings.Contains(r.URL.Path, "/purge") {
+		return "admin"
+	}
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		return "viewer"
 	}
 	path := r.URL.Path
-	for _, marker := range []string{"/review", "/classification", "/execute", "/exports", "/repair", "/lifecycle", "/pipeline-mode", "/document-baseline", "/test-scope"} {
+	for _, marker := range []string{"/review", "/classification", "/execute", "/exports", "/repair", "/lifecycle", "/archive", "/pipeline-mode", "/document-baseline", "/test-scope", "/suite-releases"} {
 		if strings.Contains(path, marker) {
 			return "reviewer"
 		}

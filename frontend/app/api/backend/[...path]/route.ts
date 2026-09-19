@@ -52,8 +52,18 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const headers = new Headers({ Accept: "application/json", ...backendAuthHeaders() });
   const contentType = request.headers.get("content-type");
   const requestID = request.headers.get("x-request-id");
+  const idempotencyKey = request.headers.get("idempotency-key");
+  const ifMatch = request.headers.get("if-match");
+  const ifNoneMatch = request.headers.get("if-none-match");
+  const ifUnmodifiedSince = request.headers.get("if-unmodified-since");
+  const expectedRevision = request.headers.get("x-expected-revision");
   if (contentType) headers.set("content-type", contentType);
   if (requestID) headers.set("x-request-id", requestID);
+  if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
+  if (ifMatch) headers.set("if-match", ifMatch);
+  if (ifNoneMatch) headers.set("if-none-match", ifNoneMatch);
+  if (ifUnmodifiedSince) headers.set("if-unmodified-since", ifUnmodifiedSince);
+  if (expectedRevision) headers.set("x-expected-revision", expectedRevision);
   let body: ArrayBuffer | undefined;
   try {
     const limit = isDocumentUpload(path) ? documentMaxBytes + (1 * 1024 * 1024) : genericMaxBodyBytes;
@@ -72,7 +82,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       cache: "no-store",
     });
     const responseHeaders = new Headers();
-    for (const name of ["content-type", "content-disposition", "content-length", "x-content-sha256", "x-request-id"]) {
+    for (const name of ["content-type", "content-disposition", "content-length", "x-content-sha256",
+      "x-request-id", "location", "deprecation", "link", "retry-after", "etag", "last-modified"]) {
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);
     }

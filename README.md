@@ -16,16 +16,20 @@ Documents -> requirements -> reviewed test cases -> PR/MR automation
 See [the Vietnamese system overview](docs.md) and
 [the document-driven refactor plan](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 for the authoritative target direction and phase checklist.
+The active UX/versioning follow-up is tracked in
+[DOCUMENT_WORKFLOW_UX_AND_TESTCASE_VERSIONING_PLAN.md](docs/DOCUMENT_WORKFLOW_UX_AND_TESTCASE_VERSIONING_PLAN.md).
 
 ## Current implementation status
 
-Document-driven refactor Phases 0–10 are now implemented alongside the earlier
+Document-driven refactor Phases 0–11 are now implemented alongside the earlier
 Phases 0–13 baseline. Users can upload immutable DOCX/Markdown versions, approve
 source versions, build a semantic document index, review cited requirements and
 conflict/TBD items, generate grounded business test cases, and inspect a
 deterministic requirement-to-test coverage matrix in the Next.js Documents
-workspace. Projects can bind an approved suite, webhook analyses snapshot a
-safe execution scope, and approved cases can produce reviewed Go automation
+workspace. Testcase scenarios now have stable families and immutable revisions;
+QA can publish an exact suite release, and projects bind that release rather
+than a mutable “latest” query. Webhook analyses and test runs pin the release,
+and approved cases can produce reviewed Go automation
 artifacts plus immutable XLSX/Markdown exports. Approved artifacts now run at
 the webhook source SHA in the isolated Docker sandbox; results retain the image
 digest/environment fingerprint and distinguish product, automation, infra,
@@ -35,6 +39,12 @@ LLM request until a reverse proxy returns 502. Technical repair is restricted
 to `AUTOMATION_ERROR`; database and prompt guardrails preserve expected hashes
 and semantic assertions.
 
+Indexing, requirement extraction and testcase generation now share one durable
+workflow API/read model. Commands freeze their source input, return HTTP 202,
+survive browser reloads and worker restarts, and expose progress, structured
+blockers, retry/cancel state and attempt-level AI usage. Extraction is bridged
+to its existing queue so there is only one scheduler for that work.
+
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
@@ -42,8 +52,10 @@ isolated Docker validation, bounded repair, provenance and human review. These
 capabilities are being reused incrementally. Phase 11 now supplies a
 per-project pipeline flag, document-first overview, service-token RBAC,
 pipeline metrics, lifecycle audit, coordinated database/file backup, legacy
-deprecation headers, and a document-quality evaluation CLI. Production E2E
-acceptance and physical-retention purge remain explicit rollout gates.
+deprecation headers, a document-quality evaluation CLI, document-set AI budgets,
+and guarded retention-based physical purge. A persisted-evidence verifier makes
+production E2E acceptance explicit; it still requires a real SCM webhook, LLM,
+and sandbox run before the environment-specific DoD can be checked.
 
 [PROJECT_SPEC.md](PROJECT_SPEC.md) and the older graduation roadmap document
 the implemented/historical code-first baseline. New implementation work should
@@ -126,6 +138,11 @@ Document-driven endpoints:
 - `GET /api/document-sets/{id}/documents`
 - `GET /api/documents/{id}/versions/{version}`
 - `POST /api/document-versions/{id}/review`
+- `GET /api/document-sets/{id}/workflow`
+- `POST /api/document-sets/{id}/workflow-operations`
+- `GET /api/document-workflow-jobs/{id}`
+- `POST /api/document-workflow-jobs/{id}/retry`
+- `POST /api/document-workflow-jobs/{id}/cancel`
 - `POST /api/document-sets/{id}/index`
 - `GET /api/document-sets/{id}/index`
 - `GET /api/document-sets/{id}/chunks`
@@ -144,6 +161,14 @@ Document-driven endpoints:
 - `GET /api/test-cases/{id}`
 - `POST /api/test-cases/{id}/review`
 - `POST /api/test-cases/bulk-review`
+- `GET /api/document-sets/{id}/test-case-families`
+- `GET /api/test-case-families/{id}`
+- `GET|POST /api/test-case-families/{id}/versions`
+- `GET /api/test-case-families/{id}/diff`
+- `POST /api/test-case-families/{id}/restore`
+- `POST /api/test-case-families/{id}/archive`
+- `POST|GET /api/document-sets/{id}/suite-releases`
+- `GET /api/test-suite-releases/{id}`
 - `POST|GET /api/document-sets/{id}/exports`
 - `GET /api/test-exports/{id}/download`
 - `GET|POST /api/projects/{id}/document-baseline`

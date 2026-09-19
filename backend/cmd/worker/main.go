@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/aibudget"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analysis"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/analyzer"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/automation"
@@ -31,7 +32,9 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/requirement"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/scm"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/testcase"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
+	workflowjob "github.com/maccuatruong/ai-test-assistant/backend/internal/workflow"
 )
 
 func main() {
@@ -136,17 +139,29 @@ func main() {
 	documentProcessor := document.NewProcessor(documentStore, document.NewStructuredParser(), documentRepository)
 	documentIndexService := document.NewIndexService(document.NewIndexRepository(database.Pool()), embedder)
 	providerName := strings.ToLower(strings.TrimSpace(cfg.LLM.Provider))
+	aiBudget := aibudget.NewManager(database.Pool(), cfg.LLM.InputCostPerMillionUSD,
+		cfg.LLM.OutputCostPerMillionUSD)
 	var requirementExtractor requirement.Extractor = requirement.DeterministicExtractor{}
 	if providerName != "" && providerName != "disabled" && providerName != "none" {
 		requirementExtractor = requirement.NewLLMExtractor(llmProvider, providerName,
-			cfg.LLM.Model, cfg.LLM.MaxOutputTokens)
+			cfg.LLM.Model, cfg.LLM.MaxOutputTokens).ConfigureBudget(aiBudget)
 	}
 	requirementRepository := requirement.NewRepository(database.Pool())
 	requirementService := requirement.NewService(requirementRepository, documentIndexService, requirementExtractor)
+	testCaseRepository := testcase.NewRepository(database.Pool())
+	testCaseService := testcase.NewService(testCaseRepository, requirementService)
+	if providerName != "" && providerName != "disabled" && providerName != "none" {
+		testCaseService = testcase.NewServiceWithLLM(testCaseRepository, requirementService,
+			testcase.NewLLMGenerator(llmProvider, providerName, cfg.LLM.Model,
+				cfg.LLM.MaxOutputTokens).ConfigureBudget(aiBudget), requirementRepository)
+	}
+	workflowRepository := workflowjob.NewRepository(database.Pool())
+	workflowService := workflowjob.NewService(workflowRepository, documentIndexService,
+		requirementService, testCaseService, cfg.Worker.MaxAttempts)
 	automationRepository := automation.NewRepository(database.Pool())
 	automationRepairProcessor := automation.NewRepairProcessor(automationRepository, llmProvider,
 		providerName, cfg.LLM.Model, cfg.LLM.InputCostPerMillionUSD,
-		cfg.LLM.OutputCostPerMillionUSD)
+		cfg.LLM.OutputCostPerMillionUSD).ConfigureBudget(aiBudget)
 	executionRepository := execution.NewRepository(database.Pool())
 	executionProcessor := execution.NewProcessor(projectRepository,
 		validation.NewWorkspaceManager(sourceClient, validation.WorkspaceOptions{}), sandboxRunner,
@@ -184,6 +199,12 @@ func main() {
 			requirementService, requirement.WorkerOptions{
 				PollInterval: options.PollInterval, RetryDelay: options.RetryDelay,
 				LeaseDuration: options.LeaseDuration, MaxAttempts: options.MaxAttempts,
+				ProcessTimeout: cfg.Requirement.ExtractionTimeout,
+			}),
+		workflowjob.NewWorker(logger.With("phase", "document-workflow"), workflowRepository,
+			workflowService, workflowjob.WorkerOptions{
+				PollInterval: options.PollInterval, RetryDelay: options.RetryDelay,
+				LeaseDuration:  options.LeaseDuration,
 				ProcessTimeout: cfg.Requirement.ExtractionTimeout,
 			}),
 		automation.NewRepairWorker(logger.With("phase", "document-automation-repair"),

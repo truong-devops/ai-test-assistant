@@ -7,7 +7,9 @@
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 > for the remaining target API.
 
-All responses use JSON. Errors have the shape `{"error":"message"}`.
+All responses use JSON. Legacy errors have the shape `{"error":"message"}`.
+Workflow command errors additionally return stable `code`, `retryable`,
+`request_id`, `blocked_by`, `next_action` and optional structured `details`.
 
 ## Authentication and roles
 
@@ -18,7 +20,7 @@ trusted frontend/reverse proxy also sends `X-Authenticated-Role` with one of:
 - `editor`: create/upload/extract/generate mutations;
 - `reviewer`: approval, classification, execution, export, repair, lifecycle
   and pipeline-mode decisions;
-- `admin`: all operations.
+- `admin`: all operations; physical purge preview/execution requires this role.
 
 `/health`, `/ready`, and SCM webhooks are exempt because webhooks use their own
 provider signature/secret. `X-Authenticated-Role` is trusted only after the
@@ -105,8 +107,14 @@ write endpoint.
 - `GET /api/document-metrics` returns aggregate parse, extraction, approval,
   suite/artifact and execution counters for the document-first overview.
 - `POST /api/document-sets/{id}/lifecycle` updates `ACTIVE`/`ARCHIVED` and
-  retention days (30–3650) with mandatory actor/reason audit. Archive is
-  recoverable and blocks new uploads; it does not physically purge files.
+  retention days (30–3650) plus total token/cost budgets with mandatory
+  actor/reason audit. Archive is recoverable and blocks new uploads.
+- `GET /api/document-sets/{id}/ai-budget` returns total, used, actively reserved,
+  and remaining tokens and micro-USD.
+- `GET /api/document-sets/{id}/purge` is admin-only and previews retention
+  eligibility, object totals, exact confirmation text, and immutable-reference
+  blockers. `POST` to the same route permanently deletes an eligible archived
+  set and its document objects while retaining the independent purge audit.
 - `POST /api/document-sets/{id}/documents` accepts a multipart upload and
   returns HTTP 202 because parsing is asynchronous.
 - `GET /api/document-sets/{id}/documents` lists logical documents with their
@@ -144,6 +152,27 @@ such as `line:18`, `lines:20-25`, `word/body/p[12]`, or
 `word/body/table[4]`. A parser failure leaves the original file/version intact.
 XLSX import is not supported in Phase 2; XLSX report export is implemented as
 an output-only Phase 6 capability.
+
+## Unified document workflow (workflow/versioning UV-04)
+
+- `GET /api/document-sets/{id}/workflow` returns source revision, five workflow
+  steps, role-derived capabilities, machine-readable blockers, active/recent
+  jobs and `next_action`.
+- `POST /api/document-sets/{id}/workflow-operations` accepts
+  `INDEX_DOCUMENTS`, `EXTRACT_REQUIREMENTS`, or `GENERATE_TESTCASES`. It requires
+  `Idempotency-Key`, freezes the effective input and returns HTTP 202 with
+  `job`, `status_url`, `Location`, `ETag`, and `Retry-After`.
+- `GET /api/document-workflow-jobs/{id}` returns durable progress, unit counts,
+  attempts, error/retry state, output references and attributed token/cost use.
+- `POST /api/document-workflow-jobs/{id}/retry` and `/cancel` accept
+  `expected_revision`; stale concurrent commands return a revision conflict.
+
+The browser polls the returned status URL with backoff and stops at
+`SUCCEEDED`, `PARTIAL_FAILED`, `FAILED`, or `CANCELED`. Reusing an idempotency
+key with the same command returns the original job even if current source or
+budget state has since changed; reusing it for a different command returns a
+conflict. Legacy synchronous mutation routes remain available during migration
+and advertise deprecation/link headers pointing clients to this API.
 
 ## Document index and source review (Phase 3)
 
@@ -207,7 +236,19 @@ changes.
   approved cited requirement baseline only.
 - `POST /api/document-sets/{id}/test-cases/regenerate` repeats generation
   idempotently and reports created/reused/suppressed counts.
-- `GET /api/document-sets/{id}/test-cases` returns latest test-case versions.
+- `GET /api/document-sets/{id}/test-cases` returns latest test-case versions and
+  the latest execution for that exact revision when one exists. A successor
+  never inherits the actual result or status of its predecessor.
+- `GET /api/document-sets/{id}/test-case-families` returns stable testcase
+  identities with separate latest and latest-approved revisions.
+- `GET /api/test-case-families/{id}` and `.../{id}/versions` return one family
+  and its immutable revision history.
+- `POST /api/test-case-families/{id}/versions` creates a draft revision and
+  requires `Idempotency-Key` plus the expected head revision/token.
+- `GET /api/test-case-families/{id}/diff?from={revisionId}&to={revisionId}` returns
+  a structured field/step/evidence diff.
+- `POST /api/test-case-families/{id}/restore` copies an old revision into a new
+  draft; `POST .../{id}/archive` archives the identity without deleting history.
 - `GET /api/test-cases/{id}` returns steps, requirement links, approved source
   excerpts, and review history.
 - `POST /api/test-cases/{id}/review` accepts reviewer, decision, comment and
@@ -215,7 +256,10 @@ changes.
 - `POST /api/test-cases/bulk-review` accepts at most 200 IDs with one reviewer,
   decision and comment.
 - `GET /api/document-sets/{id}/coverage` deterministically rebuilds the
-  requirement ↔ test-case matrix from database links.
+  requirement ↔ test-case matrix from database links and returns separate
+  `DESIGNED`, `PUBLISHED`, `AUTOMATED`, and `EXECUTED` layers. Every layer
+  exposes its numerator/denominator; release layers also expose source snapshot,
+  immutable release ID, and release number.
 
 Expected results must equal an approved requirement statement or an explicit
 expected result from its approved flow step. Invented LLM expectations are
@@ -226,15 +270,25 @@ conflict/TBD exists—even if the approved-only ratio is 100%.
 
 ## Export, execution scope and automation (Phases 6–8)
 
+- `POST /api/document-sets/{id}/suite-releases` publishes an immutable manifest
+  of approved `revision_ids`. It requires `test_suite_id`, `published_by` and an
+  `Idempotency-Key`; a partial approved-requirement scope also requires
+  `scope_decision`.
+- `GET /api/document-sets/{id}/suite-releases` and
+  `GET /api/test-suite-releases/{id}` return release metadata, exact revision
+  items, source snapshot, coverage decision and manifest hash.
+
 - `POST /api/document-sets/{id}/exports` creates an immutable XLSX or Markdown
-  snapshot for a suite and optional run. The body requires `test_suite_id`,
-  `format`, and `generated_by`; optional `test_case_ids` and `sort_by` preserve
-  the chosen workspace filter/order.
+  snapshot for a working selection, published `suite_release_id`, or optional
+  run. The body requires `test_suite_id`, `format`, and `generated_by`; optional
+  `test_case_ids` are only for working/run selection. A release export always
+  uses the complete immutable manifest.
 - `GET /api/document-sets/{id}/exports` lists artifact metadata and hashes.
 - `GET /api/test-exports/{id}/download` returns stored bytes with
   `X-Content-SHA256` and attachment headers.
-- `GET|POST /api/projects/{id}/document-baseline` lists/selects the approved
-  document set and suite used by future webhooks.
+- `GET|POST /api/projects/{id}/document-baseline` lists/selects a published
+  `suite_release_id` used by future webhooks. Document-set/suite fields remain
+  in the request as ownership guards and for legacy-client compatibility.
 - `GET|POST /api/analyses/{id}/test-scope` returns the immutable baseline
   snapshot, selection reasons/confidence and technical signals, or audits a
   manual testcase include/exclude decision.

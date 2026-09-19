@@ -1,9 +1,9 @@
 # Kế hoạch chuyển đổi sang Document-Driven Testing
 
 - **Ngày chốt định hướng:** 10/09/2026
-- **Cập nhật triển khai:** 16/09/2026
-- **Trạng thái:** Phase 0–10 hoàn thành; Phase 11 đã triển khai phần lõi và còn
-  các bước nghiệm thu tích hợp với hạ tầng thật
+- **Cập nhật triển khai:** 17/09/2026
+- **Trạng thái:** Phase 0–11 đã triển khai; Definition of Done E2E chờ chạy
+  verifier trên hạ tầng demo thật
 - **Phạm vi:** Backend Go, Frontend Next.js, PostgreSQL/pgvector, LLM,
   GitHub/GitLab và Docker Sandbox
 
@@ -149,8 +149,8 @@ thống nhất thuật ngữ trước khi thay schema/API.
 - [x] Chốt upload MVP là DOCX + Markdown; XLSX là output ở Phase 6, chưa import.
 - [x] Chốt Product Owner/BA duyệt document/requirement, QA/Test Lead duyệt test
   case, Developer/QA Automation duyệt artifact.
-- [x] Chốt MVP giữ file gốc và evidence theo vòng đời document set; chưa có API
-  xóa, retention theo thời gian và coordinated backup/restore ở Phase 11.
+- [x] Chốt MVP giữ file gốc và evidence theo vòng đời document set; API purge,
+  retention theo thời gian và coordinated backup/restore được thực hiện ở Phase 11.
 - [x] PO đã duyệt hướng triển khai qua yêu cầu thực hiện Phase 0–2; bằng chứng
   phê duyệt học thuật riêng của mentor được quản lý ngoài runtime repository.
 
@@ -752,13 +752,15 @@ chỉ sau khi dữ liệu mới ổn định.
 - [x] Feature flag chuyển pipeline theo project.
 - [x] Backfill không gán giả citation cho dữ liệu cũ: project tồn tại được đặt
   `LEGACY`, project mới mặc định `DOCUMENT_DRIVEN`.
-- [ ] Retention/delete/export policy cho document và evidence: đã có archive,
-  retention và export; physical purge chủ động vẫn chưa mở để tránh xóa nhầm.
+- [x] Retention/delete/export policy cho document và evidence: physical purge
+  chỉ mở cho admin sau khi archive hết hạn, yêu cầu confirmation chính xác,
+  chặn baseline/snapshot/test run còn tham chiếu và giữ audit độc lập sau khi xóa.
 - [x] Service-token auth và role `viewer/editor/reviewer/admin` cho upload,
   approve, execute và export; identity người dùng cuối do reverse proxy/OIDC cấp.
 - [x] Audit mọi approval và manual classification override.
-- [ ] Rate/token/cost limit theo document set/job: đã có HTTP rate limit,
-  per-call token cap và per-repair cost cap; tổng budget của cả document set chưa có.
+- [x] Rate/token/cost limit theo document set/job: reservation nguyên tử trước
+  lời gọi LLM, finalize usage thực tế, tự nhả reservation lỗi/hết hạn và hiển thị
+  used/reserved/remaining theo document set.
 - [x] Metrics cho parse, extraction, approval, generation và execution.
 - [x] Backup/restore bao gồm file storage và database tại cùng quiesced point.
 - [x] Endpoint compatibility cũ trả `Deprecation` và successor `Link` header.
@@ -797,9 +799,21 @@ số liệu luận văn phải được thay bằng annotation/trial thật, kh�
   có deprecation header mà không tạo citation giả.
 - [x] README/API/database/deployment/security docs phản ánh trạng thái triển khai.
 
-Phase 11 chưa thể đánh dấu `DONE` cho đến khi chạy kịch bản E2E với credential
-GitHub/GitLab, LLM và sandbox của môi trường demo, đồng thời chốt chính sách
-physical purge và tổng token/cost budget theo document set.
+Phần triển khai Phase 11 đã hoàn tất. Definition of Done môi trường thật vẫn chỉ
+được đánh dấu sau khi chạy `make prod-document-e2e-verify` với ID của demo dùng
+credential GitHub/GitLab, LLM và sandbox; verifier kiểm tra 11 bằng chứng lưu
+trong database và thoát khác 0 nếu thiếu bất kỳ mắt xích nào.
+
+### Bằng chứng xác minh Phase 11 (17/09/2026)
+
+- Migration 22 thêm trạng thái purge, giới hạn token/cost, reservation ledger và
+  audit purge không phụ thuộc foreign key của document set.
+- Integration test xác minh reservation/finalize/over-budget và purge cả file +
+  graph `document → block → requirement → evidence` nhưng vẫn giữ audit.
+- Backend unit suite, PostgreSQL integration suite, `go vet`, frontend production
+  build, migration idempotency và API Docker image đều chạy thành công.
+- Binary `/document-e2e-verify` nằm trong API image; thử với ID không tồn tại trả
+  `passed: false` và exit khác 0, nên không thể đánh dấu DoD khi thiếu bằng chứng.
 
 ## 7. API document-driven hiện tại
 
@@ -811,6 +825,9 @@ GET  /api/document-sets
 GET  /api/document-metrics
 GET  /api/document-sets/{id}
 POST /api/document-sets/{id}/lifecycle
+GET  /api/document-sets/{id}/ai-budget
+GET  /api/document-sets/{id}/purge
+POST /api/document-sets/{id}/purge
 
 POST /api/document-sets/{id}/documents
 GET  /api/document-sets/{id}/documents

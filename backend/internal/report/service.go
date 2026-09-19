@@ -34,7 +34,8 @@ func (s *Service) Export(ctx context.Context, setID int64, input ExportInput) (E
 	}
 	if setID <= 0 || input.TestSuiteID <= 0 || input.GeneratedBy == "" ||
 		(input.Format != FormatXLSX && input.Format != FormatMarkdown) ||
-		(input.SortBy != "KEY" && input.SortBy != "TITLE" && input.SortBy != "RISK") {
+		(input.SortBy != "KEY" && input.SortBy != "TITLE" && input.SortBy != "RISK") ||
+		input.SuiteReleaseID != nil && (*input.SuiteReleaseID <= 0 || len(input.TestCaseIDs) > 0) {
 		return ExportArtifact{}, ErrInvalidInput
 	}
 	seen := map[int64]bool{}
@@ -67,7 +68,8 @@ func (s *Service) Export(ctx context.Context, setID int64, input ExportInput) (E
 	}
 	artifact := ExportArtifact{
 		DocumentSetID: setID, TestSuiteID: input.TestSuiteID, TestRunID: input.TestRunID,
-		Format: input.Format, Filename: fmt.Sprintf("%s-%s.%s", slug(snapshot.TestSuiteName), now.Format("20060102-150405"), extension),
+		SuiteReleaseID: snapshot.SuiteReleaseID,
+		Format:         input.Format, Filename: fmt.Sprintf("%s-%s.%s", slug(snapshot.TestSuiteName), now.Format("20060102-150405"), extension),
 		ContentType: contentType, Content: content, ContentHash: digest(content), SnapshotHash: digest(snapshotJSON),
 		RowCount: len(snapshot.Rows), GeneratedBy: input.GeneratedBy,
 	}
