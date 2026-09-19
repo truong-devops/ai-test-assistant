@@ -29,6 +29,7 @@ import type {
   BusinessTestCaseDetail,
   TestCaseFamily,
   TestCaseRevisionDiff,
+  SuiteRelease,
   CoverageReport,
   TestExport,
   BaselineView,
@@ -70,6 +71,8 @@ export const documentRoutes = {
   testCaseDiff: (id: string | number, from: string | number, to: string | number) =>
     `/api/test-case-families/${encodeURIComponent(String(id))}/diff?from=${encodeURIComponent(String(from))}&to=${encodeURIComponent(String(to))}`,
   coverage: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/coverage`,
+  suiteReleases: (setId: string | number) =>
+    `/api/document-sets/${encodeURIComponent(String(setId))}/suite-releases`,
   aiBudget: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/ai-budget`,
 } as const;
 
@@ -205,6 +208,10 @@ export async function getCoverage(setId: string | number): Promise<CoverageRepor
 
 export async function getTestExports(setId: string | number): Promise<TestExport[]> {
   return (await request<{ exports: TestExport[] }>(`/api/document-sets/${encodeURIComponent(String(setId))}/exports`)).exports;
+}
+
+export async function getSuiteReleases(setId: string | number): Promise<SuiteRelease[]> {
+  return (await request<{ releases: SuiteRelease[] }>(documentRoutes.suiteReleases(setId))).releases;
 }
 
 export async function getProjectBaseline(projectId: string | number): Promise<BaselineView> {

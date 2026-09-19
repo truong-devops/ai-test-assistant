@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// This test records VER-06 at the UV-00 baseline. UV-03 must build a run export
-// from the revision pinned in the run item, not the latest leaf in the suite.
-func TestUV00CharacterizationRunExportSelectsDraftSuccessorInsteadOfExecutedRevision(t *testing.T) {
+// E01 regression: a run export is built from its pinned run item even after a
+// newer draft revision exists in the same testcase family.
+func TestUV03RunExportKeepsExecutedRevisionAfterDraftSuccessor(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -71,11 +71,12 @@ func TestUV00CharacterizationRunExportSelectsDraftSuccessorInsteadOfExecutedRevi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Rows) != 1 || snapshot.Rows[0].TestCaseID != successorID ||
-		snapshot.Rows[0].Status != "NY" || snapshot.Rows[0].ActualResult != "" {
-		t.Fatalf("baseline changed: run export no longer substitutes the draft leaf; rows=%+v", snapshot.Rows)
+	if len(snapshot.Rows) != 1 || snapshot.Rows[0].TestCaseID != executedID ||
+		snapshot.Rows[0].Status != "P" || snapshot.Rows[0].ActualResult != "Đơn v1 được tạo" ||
+		snapshot.Rows[0].ExpectedResult != "Đơn v1 được tạo" {
+		t.Fatalf("run export did not preserve the executed revision: rows=%+v", snapshot.Rows)
 	}
-	if snapshot.Rows[0].TestCaseID == executedID {
-		t.Fatalf("characterization invalid: export already selected the executed revision: %+v", snapshot.Rows[0])
+	if snapshot.Rows[0].TestCaseID == successorID {
+		t.Fatalf("run export substituted the newer draft: %+v", snapshot.Rows[0])
 	}
 }

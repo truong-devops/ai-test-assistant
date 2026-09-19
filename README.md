@@ -16,6 +16,8 @@ Documents -> requirements -> reviewed test cases -> PR/MR automation
 See [the Vietnamese system overview](docs.md) and
 [the document-driven refactor plan](docs/DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 for the authoritative target direction and phase checklist.
+The active UX/versioning follow-up is tracked in
+[DOCUMENT_WORKFLOW_UX_AND_TESTCASE_VERSIONING_PLAN.md](docs/DOCUMENT_WORKFLOW_UX_AND_TESTCASE_VERSIONING_PLAN.md).
 
 ## Current implementation status
 
@@ -24,8 +26,10 @@ Phases 0–13 baseline. Users can upload immutable DOCX/Markdown versions, appro
 source versions, build a semantic document index, review cited requirements and
 conflict/TBD items, generate grounded business test cases, and inspect a
 deterministic requirement-to-test coverage matrix in the Next.js Documents
-workspace. Projects can bind an approved suite, webhook analyses snapshot a
-safe execution scope, and approved cases can produce reviewed Go automation
+workspace. Testcase scenarios now have stable families and immutable revisions;
+QA can publish an exact suite release, and projects bind that release rather
+than a mutable “latest” query. Webhook analyses and test runs pin the release,
+and approved cases can produce reviewed Go automation
 artifacts plus immutable XLSX/Markdown exports. Approved artifacts now run at
 the webhook source SHA in the isolated Docker sandbox; results retain the image
 digest/environment fingerprint and distinguish product, automation, infra,
@@ -146,6 +150,14 @@ Document-driven endpoints:
 - `GET /api/test-cases/{id}`
 - `POST /api/test-cases/{id}/review`
 - `POST /api/test-cases/bulk-review`
+- `GET /api/document-sets/{id}/test-case-families`
+- `GET /api/test-case-families/{id}`
+- `GET|POST /api/test-case-families/{id}/versions`
+- `GET /api/test-case-families/{id}/diff`
+- `POST /api/test-case-families/{id}/restore`
+- `POST /api/test-case-families/{id}/archive`
+- `POST|GET /api/document-sets/{id}/suite-releases`
+- `GET /api/test-suite-releases/{id}`
 - `POST|GET /api/document-sets/{id}/exports`
 - `GET /api/test-exports/{id}/download`
 - `GET|POST /api/projects/{id}/document-baseline`

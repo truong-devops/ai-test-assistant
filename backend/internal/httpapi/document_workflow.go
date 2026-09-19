@@ -47,6 +47,9 @@ type TestCaseWorkflowService interface {
 	Restore(context.Context, int64, testcase.RestoreInput, string, string) (testcase.RevisionResult, error)
 	Diff(context.Context, int64, int64, int64) (testcase.RevisionDiff, error)
 	Archive(context.Context, int64, testcase.ArchiveInput, string) (testcase.Family, error)
+	PublishRelease(context.Context, int64, testcase.PublishReleaseInput, string, string) (testcase.SuiteRelease, bool, error)
+	ListReleases(context.Context, int64) ([]testcase.SuiteRelease, error)
+	GetRelease(context.Context, int64) (testcase.SuiteRelease, error)
 }
 
 type documentIndexHandler struct{ service DocumentIndexService }
@@ -445,6 +448,55 @@ func (h testCaseWorkflowHandler) archive(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (h testCaseWorkflowHandler) publishRelease(w http.ResponseWriter, r *http.Request) {
+	setID, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	var input testcase.PublishReleaseInput
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, created, err := h.service.PublishRelease(r.Context(), setID, input,
+		r.Header.Get("Idempotency-Key"), workflowActor(r))
+	if err != nil {
+		writeWorkflowError(w, err, "could not publish test suite release")
+		return
+	}
+	w.Header().Set("Location", "/api/test-suite-releases/"+strconv.FormatInt(result.ID, 10))
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, result)
+}
+
+func (h testCaseWorkflowHandler) listReleases(w http.ResponseWriter, r *http.Request) {
+	setID, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	results, err := h.service.ListReleases(r.Context(), setID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not list test suite releases")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"releases": results})
+}
+
+func (h testCaseWorkflowHandler) getRelease(w http.ResponseWriter, r *http.Request) {
+	releaseID, ok := positiveInt64Path(w, r, "id", "test suite release")
+	if !ok {
+		return
+	}
+	result, err := h.service.GetRelease(r.Context(), releaseID)
+	if err != nil {
+		writeWorkflowError(w, err, "could not get test suite release")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func workflowActor(r *http.Request) string {
 	if value := strings.TrimSpace(r.Header.Get("X-Authenticated-Actor")); value != "" {
 		return value
@@ -525,6 +577,9 @@ func writeWorkflowError(w http.ResponseWriter, err error, fallback string) {
 	case errors.Is(err, testcase.ErrFamilyArchived):
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(),
 			"code": "TESTCASE_FAMILY_ARCHIVED"})
+	case errors.Is(err, testcase.ErrReleaseScope):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(),
+			"code": "SUITE_RELEASE_SCOPE_INVALID"})
 	default:
 		writeError(w, http.StatusInternalServerError, fallback)
 	}

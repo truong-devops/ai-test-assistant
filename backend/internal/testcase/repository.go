@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -51,7 +52,15 @@ func (r *Repository) RecordDedupe(ctx context.Context, suite Suite, keptID int64
 }
 
 func (r *Repository) List(ctx context.Context, setID int64) ([]TestCase, error) {
-	const query = `SELECT ` + testCaseColumnList + ` FROM test_cases
+	const query = `SELECT ` + testCaseColumnList + `,
+		COALESCE((SELECT jsonb_build_object(
+			'test_run_id',run.id,'status',item.status,'actual_result',item.actual_result,
+			'run_at',COALESCE(run.finished_at,run.started_at,run.requested_at))
+			FROM test_run_items item JOIN test_runs run ON run.id=item.test_run_id
+			WHERE item.test_case_id=test_cases.id
+			ORDER BY COALESCE(run.finished_at,run.started_at,run.requested_at) DESC,
+				item.attempt_number DESC,item.id DESC LIMIT 1),'null'::jsonb)
+		FROM test_cases
 		WHERE id IN (SELECT head_revision_id FROM test_case_families
 			WHERE document_set_id=$1 AND archived=FALSE)
 		ORDER BY test_case_key`
@@ -63,8 +72,16 @@ func (r *Repository) List(ctx context.Context, setID int64) ([]TestCase, error) 
 	results := make([]TestCase, 0)
 	for rows.Next() {
 		var item TestCase
-		if err := rows.Scan(testCaseDestinations(&item)...); err != nil {
+		var executionJSON []byte
+		if err := rows.Scan(append(testCaseDestinations(&item), &executionJSON)...); err != nil {
 			return nil, fmt.Errorf("scan test case: %w", err)
+		}
+		if string(executionJSON) != "null" {
+			var execution ExecutionState
+			if err := json.Unmarshal(executionJSON, &execution); err != nil {
+				return nil, fmt.Errorf("decode latest test execution: %w", err)
+			}
+			item.LatestExecution = &execution
 		}
 		results = append(results, item)
 	}
@@ -164,7 +181,8 @@ func (r *Repository) Get(ctx context.Context, id int64) (Detail, error) {
 }
 
 func (r *Repository) Coverage(ctx context.Context, setID int64) (CoverageReport, error) {
-	report := CoverageReport{DocumentSetID: setID, Matrix: make([]CoverageCell, 0)}
+	report := CoverageReport{DocumentSetID: setID, Matrix: make([]CoverageCell, 0),
+		Layers: make([]CoverageLayer, 0, 4)}
 	rows, err := r.pool.Query(ctx, `SELECT r.id,r.requirement_key,r.title,r.status,r.flow_type,
 		COALESCE(array_remove(array_agg(DISTINCT t.id),NULL),'{}'),
 		COALESCE(array_remove(array_agg(DISTINCT t.test_type) FILTER (WHERE t.status<>'REJECTED'),NULL),'{}'),
@@ -229,7 +247,65 @@ func (r *Repository) Coverage(ctx context.Context, setID int64) (CoverageReport,
 	}
 	report.BaselineComplete = report.ApprovedDenominator > 0 && report.UncoveredCount == 0 &&
 		report.ConflictCount == 0 && report.TBDCount == 0
+	var workingSnapshotID *int64
+	if err := r.pool.QueryRow(ctx, `SELECT CASE WHEN count(DISTINCT source_snapshot_id)
+		FILTER (WHERE source_snapshot_id IS NOT NULL)=1 THEN min(source_snapshot_id) ELSE NULL END
+		FROM requirements WHERE document_set_id=$1 AND status='APPROVED'
+		AND NOT EXISTS(SELECT 1 FROM requirements newer
+			WHERE newer.supersedes_requirement_id=requirements.id)`, setID).Scan(&workingSnapshotID); err != nil {
+		return report, fmt.Errorf("load working coverage source: %w", err)
+	}
+	report.Layers = append(report.Layers, coverageLayer("DESIGNED", "Có thiết kế",
+		report.CoveredCount, report.ApprovedDenominator, workingSnapshotID, nil))
+	var releaseID int64
+	var releaseNumber int
+	var sourceSnapshotID *int64
+	var approvedRequirements, coveredRequirements, releaseCases, automatedCases, executedCases int
+	err = r.pool.QueryRow(ctx, `SELECT release.id,release.release_number,release.source_snapshot_id,
+		release.approved_requirement_count,release.covered_requirement_count,
+		count(item.test_case_id),
+		count(item.test_case_id) FILTER (WHERE EXISTS(
+			SELECT 1 FROM automation_artifacts artifact
+			WHERE artifact.test_case_id=item.test_case_id AND artifact.status='APPROVED'
+			AND artifact.expected_result_hash=item.expected_result_hash)),
+		count(item.test_case_id) FILTER (WHERE EXISTS(
+			SELECT 1 FROM test_runs run JOIN test_run_items run_item ON run_item.test_run_id=run.id
+			WHERE run.suite_release_id=release.id AND run_item.test_case_id=item.test_case_id
+			AND run_item.status<>'NOT_RUN'))
+		FROM test_suite_releases release
+		JOIN test_suite_release_items item ON item.release_id=release.id
+		WHERE release.id=(SELECT latest.id FROM test_suite_releases latest
+			WHERE latest.document_set_id=$1 ORDER BY latest.release_number DESC,latest.id DESC LIMIT 1)
+		GROUP BY release.id`, setID).Scan(&releaseID, &releaseNumber, &sourceSnapshotID,
+		&approvedRequirements, &coveredRequirements, &releaseCases, &automatedCases,
+		&executedCases)
+	if err == nil {
+		report.Layers = append(report.Layers,
+			coverageLayer("PUBLISHED", "Đã duyệt trong bộ", coveredRequirements,
+				approvedRequirements, sourceSnapshotID, &releaseID, &releaseNumber),
+			coverageLayer("AUTOMATED", "Có automation", automatedCases,
+				releaseCases, sourceSnapshotID, &releaseID, &releaseNumber),
+			coverageLayer("EXECUTED", "Đã chạy", executedCases,
+				releaseCases, sourceSnapshotID, &releaseID, &releaseNumber))
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return report, fmt.Errorf("load published coverage layers: %w", err)
+	}
 	return report, rows.Err()
+}
+
+func coverageLayer(key, label string, numerator, denominator int,
+	sourceSnapshotID, suiteReleaseID *int64, releaseNumber ...*int,
+) CoverageLayer {
+	result := CoverageLayer{Key: key, Label: label, Numerator: numerator,
+		Denominator: denominator, SourceSnapshotID: sourceSnapshotID,
+		SuiteReleaseID: suiteReleaseID}
+	if len(releaseNumber) > 0 {
+		result.ReleaseNumber = releaseNumber[0]
+	}
+	if denominator > 0 {
+		result.Percent = float64(numerator) * 100 / float64(denominator)
+	}
+	return result
 }
 
 func testCaseDestinations(item *TestCase) []any {

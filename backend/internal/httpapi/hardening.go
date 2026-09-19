@@ -79,7 +79,7 @@ func requiredRole(r *http.Request) string {
 		return "viewer"
 	}
 	path := r.URL.Path
-	for _, marker := range []string{"/review", "/classification", "/execute", "/exports", "/repair", "/lifecycle", "/archive", "/pipeline-mode", "/document-baseline", "/test-scope"} {
+	for _, marker := range []string{"/review", "/classification", "/execute", "/exports", "/repair", "/lifecycle", "/archive", "/pipeline-mode", "/document-baseline", "/test-scope", "/suite-releases"} {
 		if strings.Contains(path, marker) {
 			return "reviewer"
 		}

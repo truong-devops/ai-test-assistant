@@ -30,6 +30,7 @@ var (
 type Run struct {
 	ID                     int64                  `json:"id"`
 	TestSuiteID            int64                  `json:"test_suite_id"`
+	SuiteReleaseID         *int64                 `json:"suite_release_id,omitempty"`
 	ProjectID              *int64                 `json:"project_id,omitempty"`
 	AnalysisJobID          *int64                 `json:"analysis_job_id,omitempty"`
 	SourceSHA              string                 `json:"source_sha"`

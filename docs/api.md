@@ -213,7 +213,19 @@ changes.
   approved cited requirement baseline only.
 - `POST /api/document-sets/{id}/test-cases/regenerate` repeats generation
   idempotently and reports created/reused/suppressed counts.
-- `GET /api/document-sets/{id}/test-cases` returns latest test-case versions.
+- `GET /api/document-sets/{id}/test-cases` returns latest test-case versions and
+  the latest execution for that exact revision when one exists. A successor
+  never inherits the actual result or status of its predecessor.
+- `GET /api/document-sets/{id}/test-case-families` returns stable testcase
+  identities with separate latest and latest-approved revisions.
+- `GET /api/test-case-families/{id}` and `.../{id}/versions` return one family
+  and its immutable revision history.
+- `POST /api/test-case-families/{id}/versions` creates a draft revision and
+  requires `Idempotency-Key` plus the expected head revision/token.
+- `GET /api/test-case-families/{id}/diff?from={revisionId}&to={revisionId}` returns
+  a structured field/step/evidence diff.
+- `POST /api/test-case-families/{id}/restore` copies an old revision into a new
+  draft; `POST .../{id}/archive` archives the identity without deleting history.
 - `GET /api/test-cases/{id}` returns steps, requirement links, approved source
   excerpts, and review history.
 - `POST /api/test-cases/{id}/review` accepts reviewer, decision, comment and
@@ -221,7 +233,10 @@ changes.
 - `POST /api/test-cases/bulk-review` accepts at most 200 IDs with one reviewer,
   decision and comment.
 - `GET /api/document-sets/{id}/coverage` deterministically rebuilds the
-  requirement ↔ test-case matrix from database links.
+  requirement ↔ test-case matrix from database links and returns separate
+  `DESIGNED`, `PUBLISHED`, `AUTOMATED`, and `EXECUTED` layers. Every layer
+  exposes its numerator/denominator; release layers also expose source snapshot,
+  immutable release ID, and release number.
 
 Expected results must equal an approved requirement statement or an explicit
 expected result from its approved flow step. Invented LLM expectations are
@@ -232,15 +247,25 @@ conflict/TBD exists—even if the approved-only ratio is 100%.
 
 ## Export, execution scope and automation (Phases 6–8)
 
+- `POST /api/document-sets/{id}/suite-releases` publishes an immutable manifest
+  of approved `revision_ids`. It requires `test_suite_id`, `published_by` and an
+  `Idempotency-Key`; a partial approved-requirement scope also requires
+  `scope_decision`.
+- `GET /api/document-sets/{id}/suite-releases` and
+  `GET /api/test-suite-releases/{id}` return release metadata, exact revision
+  items, source snapshot, coverage decision and manifest hash.
+
 - `POST /api/document-sets/{id}/exports` creates an immutable XLSX or Markdown
-  snapshot for a suite and optional run. The body requires `test_suite_id`,
-  `format`, and `generated_by`; optional `test_case_ids` and `sort_by` preserve
-  the chosen workspace filter/order.
+  snapshot for a working selection, published `suite_release_id`, or optional
+  run. The body requires `test_suite_id`, `format`, and `generated_by`; optional
+  `test_case_ids` are only for working/run selection. A release export always
+  uses the complete immutable manifest.
 - `GET /api/document-sets/{id}/exports` lists artifact metadata and hashes.
 - `GET /api/test-exports/{id}/download` returns stored bytes with
   `X-Content-SHA256` and attachment headers.
-- `GET|POST /api/projects/{id}/document-baseline` lists/selects the approved
-  document set and suite used by future webhooks.
+- `GET|POST /api/projects/{id}/document-baseline` lists/selects a published
+  `suite_release_id` used by future webhooks. Document-set/suite fields remain
+  in the request as ownership guards and for legacy-client compatibility.
 - `GET|POST /api/analyses/{id}/test-scope` returns the immutable baseline
   snapshot, selection reasons/confidence and technical signals, or audits a
   manual testcase include/exclude decision.

@@ -19,23 +19,33 @@ var (
 )
 
 type Candidate struct {
-	DocumentSetID     int64  `json:"document_set_id"`
-	DocumentSetName   string `json:"document_set_name"`
-	TestSuiteID       int64  `json:"test_suite_id"`
-	TestSuiteName     string `json:"test_suite_name"`
-	ApprovedTestCases int    `json:"approved_test_cases"`
+	DocumentSetID      int64     `json:"document_set_id"`
+	DocumentSetName    string    `json:"document_set_name"`
+	TestSuiteID        int64     `json:"test_suite_id"`
+	TestSuiteName      string    `json:"test_suite_name"`
+	SuiteReleaseID     int64     `json:"suite_release_id"`
+	ReleaseNumber      int       `json:"release_number"`
+	ReleaseName        string    `json:"release_name"`
+	ManifestHash       string    `json:"manifest_hash"`
+	ReleasePublishedAt time.Time `json:"release_published_at"`
+	ApprovedTestCases  int       `json:"approved_test_cases"`
 }
 
 type Baseline struct {
-	ProjectID       int64     `json:"project_id"`
-	DocumentSetID   int64     `json:"document_set_id"`
-	DocumentSetName string    `json:"document_set_name"`
-	TestSuiteID     int64     `json:"test_suite_id"`
-	TestSuiteName   string    `json:"test_suite_name"`
-	SelectionMode   string    `json:"selection_mode"`
-	SelectedBy      string    `json:"selected_by"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ProjectID          int64     `json:"project_id"`
+	DocumentSetID      int64     `json:"document_set_id"`
+	DocumentSetName    string    `json:"document_set_name"`
+	TestSuiteID        int64     `json:"test_suite_id"`
+	TestSuiteName      string    `json:"test_suite_name"`
+	SuiteReleaseID     int64     `json:"suite_release_id"`
+	ReleaseNumber      int       `json:"release_number"`
+	ReleaseName        string    `json:"release_name"`
+	ManifestHash       string    `json:"manifest_hash"`
+	ReleasePublishedAt time.Time `json:"release_published_at"`
+	SelectionMode      string    `json:"selection_mode"`
+	SelectedBy         string    `json:"selected_by"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type BaselineView struct {
@@ -45,10 +55,11 @@ type BaselineView struct {
 }
 
 type SelectInput struct {
-	DocumentSetID int64  `json:"document_set_id"`
-	TestSuiteID   int64  `json:"test_suite_id"`
-	SelectionMode string `json:"selection_mode"`
-	SelectedBy    string `json:"selected_by"`
+	DocumentSetID  int64  `json:"document_set_id"`
+	TestSuiteID    int64  `json:"test_suite_id"`
+	SuiteReleaseID int64  `json:"suite_release_id"`
+	SelectionMode  string `json:"selection_mode"`
+	SelectedBy     string `json:"selected_by"`
 }
 
 type Item struct {
@@ -91,6 +102,7 @@ type Bundle struct {
 	ProjectID           int64      `json:"project_id"`
 	DocumentSetID       int64      `json:"document_set_id"`
 	TestSuiteID         int64      `json:"test_suite_id"`
+	SuiteReleaseID      int64      `json:"suite_release_id"`
 	TestRunID           int64      `json:"test_run_id"`
 	BaselineHash        string     `json:"baseline_hash"`
 	ExplicitIdentifiers []string   `json:"explicit_identifiers"`

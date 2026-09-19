@@ -335,17 +335,14 @@ func (r *Repository) ReviewExact(ctx context.Context, id int64, input ReviewInpu
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO test_case_reviews
 		(test_case_id,reviewer_name,decision,comment,content_hash,actor)
-		VALUES($1,$2,$3,$4,$5,$6)
-		ON CONFLICT(test_case_id) DO UPDATE SET reviewer_name=EXCLUDED.reviewer_name,
-		decision=EXCLUDED.decision,comment=EXCLUDED.comment,
-		content_hash=EXCLUDED.content_hash,actor=EXCLUDED.actor,created_at=NOW()`,
+		VALUES($1,$2,$3,$4,$5,$6)`,
 		id, input.ReviewerName, input.Decision,
 		strings.TrimSpace(input.Comment), current.ContentHash, actor); err != nil {
 		return Detail{}, fmt.Errorf("save testcase review: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO test_case_revision_audit
 		(family_id,test_case_id,event_type,actor,display_name,content_hash,reason,metadata)
-		VALUES($1,$2,'REVIEWED',$3,$4,$5,$6,jsonb_build_object('decision',$7))`,
+		VALUES($1,$2,'REVIEWED',$3,$4,$5,$6,jsonb_build_object('decision',$7::text))`,
 		current.FamilyID, id, actor, input.ReviewerName, current.ContentHash,
 		strings.TrimSpace(input.Comment), input.Decision); err != nil {
 		return Detail{}, fmt.Errorf("audit testcase review: %w", err)

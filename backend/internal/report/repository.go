@@ -21,7 +21,8 @@ func (r *Repository) BuildSnapshot(ctx context.Context, setID int64, input Expor
 	result := Snapshot{
 		DocumentSetID: setID, TestSuiteID: input.TestSuiteID, TestRunID: input.TestRunID,
 		GeneratedAt: now.UTC(), GeneratedBy: input.GeneratedBy,
-		DocumentVersions: []DocumentVersionRef{}, Rows: []ExecutionRow{}, RunHistory: []RunHistoryRow{},
+		DocumentVersions: []DocumentVersionRef{}, RevisionManifest: []RevisionRef{},
+		Rows: []ExecutionRow{}, RunHistory: []RunHistoryRow{},
 		TestCaseFilter: input.TestCaseIDs, SortBy: input.SortBy,
 	}
 	if err := r.pool.QueryRow(ctx, `SELECT d.name,d.product_name,d.scope,s.name
@@ -33,22 +34,52 @@ func (r *Repository) BuildSnapshot(ctx context.Context, setID int64, input Expor
 		}
 		return Snapshot{}, fmt.Errorf("load export scope: %w", err)
 	}
+	resolvedReleaseID := input.SuiteReleaseID
 	if input.TestRunID != nil {
-		var valid bool
-		if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM test_runs WHERE id=$1 AND test_suite_id=$2)`,
-			*input.TestRunID, input.TestSuiteID).Scan(&valid); err != nil || !valid {
-			if err != nil {
-				return Snapshot{}, fmt.Errorf("validate test run: %w", err)
+		var runReleaseID *int64
+		if err := r.pool.QueryRow(ctx, `SELECT suite_release_id FROM test_runs
+			WHERE id=$1 AND test_suite_id=$2`, *input.TestRunID, input.TestSuiteID).
+			Scan(&runReleaseID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return Snapshot{}, ErrNotFound
 			}
+			return Snapshot{}, fmt.Errorf("validate test run: %w", err)
+		}
+		if resolvedReleaseID != nil && runReleaseID != nil && *resolvedReleaseID != *runReleaseID {
 			return Snapshot{}, ErrNotFound
 		}
+		if runReleaseID != nil {
+			resolvedReleaseID = runReleaseID
+		}
 	}
-	versionRows, err := r.pool.Query(ctx, `SELECT d.name,v.version_number,v.sha256,v.approval_status
+	if resolvedReleaseID != nil {
+		if err := r.pool.QueryRow(ctx, `SELECT release_number,name,manifest_hash
+			FROM test_suite_releases WHERE id=$1 AND test_suite_id=$2 AND document_set_id=$3`,
+			*resolvedReleaseID, input.TestSuiteID, setID).Scan(&result.ReleaseNumber,
+			&result.ReleaseName, &result.ReleaseManifestHash); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return Snapshot{}, ErrNotFound
+			}
+			return Snapshot{}, fmt.Errorf("load suite release: %w", err)
+		}
+		result.SuiteReleaseID = resolvedReleaseID
+	}
+	versionQuery := `SELECT d.name,v.version_number,v.sha256,v.approval_status
 		FROM documents d JOIN document_versions v ON v.document_id=d.id
 		WHERE d.document_set_id=$1 AND NOT EXISTS(
 			SELECT 1 FROM document_versions newer WHERE newer.document_id=v.document_id
-			AND newer.version_number>v.version_number)
-		ORDER BY d.name`, setID)
+			AND newer.version_number>v.version_number) ORDER BY d.name`
+	versionArgs := []any{setID}
+	if resolvedReleaseID != nil {
+		versionQuery = `SELECT item.document_name,item.version_number,item.sha256,
+			item.approval_status FROM test_suite_releases release
+			JOIN document_source_snapshot_items item
+			  ON item.source_snapshot_id=release.source_snapshot_id
+			WHERE release.id=$1 AND item.included=TRUE
+			ORDER BY item.document_name,item.document_id`
+		versionArgs = []any{*resolvedReleaseID}
+	}
+	versionRows, err := r.pool.Query(ctx, versionQuery, versionArgs...)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("list export document versions: %w", err)
 	}
@@ -71,13 +102,14 @@ func (r *Repository) BuildSnapshot(ctx context.Context, setID int64, input Expor
 			E'\n' ORDER BY s.ordinal) FROM test_case_steps s WHERE s.test_case_id=t.id),''),
 		t.test_data,t.actor,t.expected_result,t.risk,
 		COALESCE(run.environment,''),COALESCE(item.actual_result,''),COALESCE(item.status,'NOT_RUN'),
-		COALESCE((SELECT string_agg(d.name || ' v' || v.version_number || ' — ' || e.source_locator,
+		COALESCE((SELECT string_agg(d.name || ' v' || v.version_number || ' — ' || tel.source_locator,
 			E'\n' ORDER BY d.name,v.version_number,e.source_locator)
-			FROM test_case_requirement_links l JOIN requirement_evidence e ON e.requirement_id=l.requirement_id
+			FROM test_case_evidence_links tel
+			JOIN requirement_evidence e ON e.id=tel.requirement_evidence_id
 			JOIN document_versions v ON v.id=e.document_version_id JOIN documents d ON d.id=v.document_id
-			WHERE l.test_case_id=t.id),''),
+			WHERE tel.test_case_id=t.id),''),
 		COALESCE((SELECT string_agg(value,E'\n') FROM jsonb_array_elements_text(t.assumptions) value),''),t.automation_status,t.status,
-		COALESCE(review.reviewer_name,'')
+		COALESCE(review.reviewer_name,''),t.family_id,t.version_number,t.content_hash
 		FROM test_cases t
 		LEFT JOIN LATERAL (
 			SELECT latest.* FROM test_run_items latest
@@ -85,10 +117,21 @@ func (r *Repository) BuildSnapshot(ctx context.Context, setID int64, input Expor
 			ORDER BY latest.attempt_number DESC,latest.id DESC LIMIT 1
 		) item ON TRUE
 		LEFT JOIN test_runs run ON run.id=item.test_run_id
-		LEFT JOIN test_case_reviews review ON review.test_case_id=t.id
-		WHERE t.test_suite_id=$1 AND (cardinality($3::bigint[])=0 OR t.id=ANY($3)) AND NOT EXISTS(
-			SELECT 1 FROM test_cases newer WHERE newer.supersedes_test_case_id=t.id)
-		ORDER BY t.test_case_key,t.version_number DESC`, input.TestSuiteID, input.TestRunID, input.TestCaseIDs)
+		LEFT JOIN LATERAL (SELECT latest_review.reviewer_name FROM test_case_reviews latest_review
+			WHERE latest_review.test_case_id=t.id
+			ORDER BY latest_review.created_at DESC,latest_review.id DESC LIMIT 1) review ON TRUE
+		WHERE t.test_suite_id=$1 AND (cardinality($3::bigint[])=0 OR t.id=ANY($3)) AND (
+			($2::bigint IS NOT NULL AND EXISTS(SELECT 1 FROM test_run_items selected_run
+				WHERE selected_run.test_run_id=$2 AND selected_run.test_case_id=t.id)) OR
+			($2::bigint IS NULL AND $4::bigint IS NOT NULL AND EXISTS(
+				SELECT 1 FROM test_suite_release_items selected_release
+				WHERE selected_release.release_id=$4 AND selected_release.test_case_id=t.id)) OR
+			($2::bigint IS NULL AND $4::bigint IS NULL AND EXISTS(
+				SELECT 1 FROM test_case_families family
+				WHERE family.id=t.family_id AND family.head_revision_id=t.id AND family.archived=FALSE))
+		)
+		ORDER BY t.test_case_key,t.version_number DESC`, input.TestSuiteID, input.TestRunID,
+		input.TestCaseIDs, resolvedReleaseID)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("list export test cases: %w", err)
 	}
@@ -96,11 +139,13 @@ func (r *Repository) BuildSnapshot(ctx context.Context, setID int64, input Expor
 	for rows.Next() {
 		var item ExecutionRow
 		var steps, evidence, reviewer string
+		var revision RevisionRef
 		if err := rows.Scan(&item.TestCaseID, &item.TestCaseKey, &item.RequirementTrace,
 			&item.Objective, &item.Preconditions, &steps, &item.TestData, &item.Role,
 			&item.ExpectedResult, &item.Priority, &item.Environment, &item.ActualResult,
 			&item.Status, &evidence, &item.Notes, &item.AutomationStatus,
-			&item.SourceStatus, &reviewer); err != nil {
+			&item.SourceStatus, &reviewer, &revision.FamilyID, &revision.RevisionNumber,
+			&revision.ContentHash); err != nil {
 			rows.Close()
 			return Snapshot{}, fmt.Errorf("scan export test case: %w", err)
 		}
@@ -108,6 +153,9 @@ func (r *Repository) BuildSnapshot(ctx context.Context, setID int64, input Expor
 		item.Evidence = splitLines(evidence)
 		item.Status = managementStatus(item.Status)
 		result.Rows = append(result.Rows, item)
+		revision.TestCaseID = item.TestCaseID
+		revision.TestCaseKey = item.TestCaseKey
+		result.RevisionManifest = append(result.RevisionManifest, revision)
 		if reviewer != "" {
 			reviewers[reviewer] = struct{}{}
 		}
@@ -129,7 +177,8 @@ func (r *Repository) BuildSnapshot(ctx context.Context, setID int64, input Expor
 		COALESCE((SELECT string_agg(e.evidence_type || ': ' || COALESCE(NULLIF(e.content,''),e.storage_key),E'\n'
 			ORDER BY e.id) FROM test_run_evidence e WHERE e.test_run_item_id=i.id),''),i.created_at
 		FROM test_run_items i JOIN test_runs r ON r.id=i.test_run_id JOIN test_cases t ON t.id=i.test_case_id
-		WHERE r.test_suite_id=$1 ORDER BY i.created_at,r.id,i.attempt_number`, input.TestSuiteID)
+		WHERE r.test_suite_id=$1 AND ($2::bigint IS NULL OR r.id=$2)
+		ORDER BY i.created_at,r.id,i.attempt_number`, input.TestSuiteID, input.TestRunID)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("list run history: %w", err)
 	}
@@ -181,12 +230,12 @@ func (r *Repository) Save(ctx context.Context, artifact ExportArtifact, snapshot
 	if err != nil {
 		return ExportArtifact{}, fmt.Errorf("encode export snapshot: %w", err)
 	}
-	const query = `INSERT INTO test_exports(document_set_id,test_suite_id,test_run_id,format,filename,
+	const query = `INSERT INTO test_exports(document_set_id,test_suite_id,test_run_id,suite_release_id,format,filename,
 		content_type,content,content_hash,snapshot,snapshot_hash,row_count,generated_by,created_at)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		RETURNING id,created_at`
 	if err := r.pool.QueryRow(ctx, query, artifact.DocumentSetID, artifact.TestSuiteID,
-		artifact.TestRunID, artifact.Format, artifact.Filename, artifact.ContentType,
+		artifact.TestRunID, artifact.SuiteReleaseID, artifact.Format, artifact.Filename, artifact.ContentType,
 		artifact.Content, artifact.ContentHash, snapshotJSON, artifact.SnapshotHash,
 		artifact.RowCount, artifact.GeneratedBy, snapshot.GeneratedAt).Scan(&artifact.ID, &artifact.CreatedAt); err != nil {
 		return ExportArtifact{}, fmt.Errorf("save export: %w", err)
@@ -196,7 +245,7 @@ func (r *Repository) Save(ctx context.Context, artifact ExportArtifact, snapshot
 }
 
 func (r *Repository) List(ctx context.Context, setID int64) ([]ExportArtifact, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id,document_set_id,test_suite_id,test_run_id,format,filename,
+	rows, err := r.pool.Query(ctx, `SELECT id,document_set_id,test_suite_id,test_run_id,suite_release_id,format,filename,
 		content_type,content_hash,snapshot_hash,row_count,generated_by,created_at
 		FROM test_exports WHERE document_set_id=$1 ORDER BY created_at DESC,id DESC`, setID)
 	if err != nil {
@@ -206,7 +255,7 @@ func (r *Repository) List(ctx context.Context, setID int64) ([]ExportArtifact, e
 	result := []ExportArtifact{}
 	for rows.Next() {
 		var item ExportArtifact
-		if err := rows.Scan(&item.ID, &item.DocumentSetID, &item.TestSuiteID, &item.TestRunID,
+		if err := rows.Scan(&item.ID, &item.DocumentSetID, &item.TestSuiteID, &item.TestRunID, &item.SuiteReleaseID,
 			&item.Format, &item.Filename, &item.ContentType, &item.ContentHash,
 			&item.SnapshotHash, &item.RowCount, &item.GeneratedBy, &item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan export: %w", err)
@@ -219,10 +268,10 @@ func (r *Repository) List(ctx context.Context, setID int64) ([]ExportArtifact, e
 
 func (r *Repository) Get(ctx context.Context, id int64) (ExportArtifact, error) {
 	var item ExportArtifact
-	if err := r.pool.QueryRow(ctx, `SELECT id,document_set_id,test_suite_id,test_run_id,format,filename,
+	if err := r.pool.QueryRow(ctx, `SELECT id,document_set_id,test_suite_id,test_run_id,suite_release_id,format,filename,
 		content_type,content,content_hash,snapshot_hash,row_count,generated_by,created_at
 		FROM test_exports WHERE id=$1`, id).Scan(&item.ID, &item.DocumentSetID,
-		&item.TestSuiteID, &item.TestRunID, &item.Format, &item.Filename, &item.ContentType,
+		&item.TestSuiteID, &item.TestRunID, &item.SuiteReleaseID, &item.Format, &item.Filename, &item.ContentType,
 		&item.Content, &item.ContentHash, &item.SnapshotHash, &item.RowCount,
 		&item.GeneratedBy, &item.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

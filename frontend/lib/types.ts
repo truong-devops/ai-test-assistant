@@ -231,6 +231,12 @@ export type BusinessTestCase = {
   sealed_at?: string;
   created_at: string;
   updated_at: string;
+  latest_execution?: {
+    test_run_id: number;
+    status: "NOT_RUN" | "PASSED" | "PRODUCT_FAILED" | "AUTOMATION_ERROR" | "INFRA_ERROR" | "TIMED_OUT" | "BLOCKED";
+    actual_result: string;
+    run_at: string;
+  };
 };
 
 export type TestCaseFamily = {
@@ -248,6 +254,38 @@ export type TestCaseFamily = {
   updated_at: string;
   latest_revision?: BusinessTestCase;
   latest_approved_revision?: BusinessTestCase;
+};
+
+export type SuiteReleaseItem = {
+  release_id: number;
+  family_id: number;
+  test_case_id: number;
+  ordinal: number;
+  public_key: string;
+  revision_number: number;
+  content_hash: string;
+  expected_result_hash: string;
+  revision: BusinessTestCase;
+};
+
+export type SuiteRelease = {
+  id: number;
+  test_suite_id: number;
+  document_set_id: number;
+  release_number: number;
+  name: string;
+  source_snapshot_id?: number;
+  manifest_hash: string;
+  scope_status: "COMPLETE" | "PARTIAL";
+  approved_requirement_count: number;
+  covered_requirement_count: number;
+  uncovered_requirement_ids: number[];
+  scope_decision: string;
+  published_by: string;
+  origin: "USER_PUBLISHED" | "MIGRATED_CURRENT_STATE";
+  published_at: string;
+  created_at: string;
+  items: SuiteReleaseItem[];
 };
 
 export type TestCaseStepInput = { action: string; expected_result: string };
@@ -394,6 +432,16 @@ export type CoverageReport = {
   rejected_count: number;
   duplicate_count: number;
   uncovered_count: number;
+  layers: Array<{
+    key: "DESIGNED" | "PUBLISHED" | "AUTOMATED" | "EXECUTED";
+    label: string;
+    numerator: number;
+    denominator: number;
+    percent: number;
+    source_snapshot_id?: number;
+    suite_release_id?: number;
+    release_number?: number;
+  }>;
   matrix: Array<{
     requirement_id: number;
     requirement_key: string;
@@ -435,6 +483,7 @@ export type TestExport = {
   document_set_id: number;
   test_suite_id: number;
   test_run_id?: number;
+  suite_release_id?: number;
   format: "XLSX" | "MARKDOWN";
   filename: string;
   content_type: string;
@@ -452,6 +501,11 @@ export type ProjectDocumentBaseline = {
   document_set_name: string;
   test_suite_id: number;
   test_suite_name: string;
+  suite_release_id: number;
+  release_number: number;
+  release_name: string;
+  manifest_hash: string;
+  release_published_at: string;
   selection_mode: "FULL_APPROVED" | "MAPPED_WITH_FULL_FALLBACK";
   selected_by: string;
   created_at: string;
@@ -461,7 +515,11 @@ export type ProjectDocumentBaseline = {
 export type BaselineView = {
   bound: boolean;
   baseline?: ProjectDocumentBaseline;
-  candidates: Array<{ document_set_id: number; document_set_name: string; test_suite_id: number; test_suite_name: string; approved_test_cases: number }>;
+  candidates: Array<{ document_set_id: number; document_set_name: string;
+    test_suite_id: number; test_suite_name: string; suite_release_id: number;
+    release_number: number; release_name: string; manifest_hash: string;
+    release_published_at: string;
+    approved_test_cases: number }>;
 };
 
 export type AnalysisTestScope = {
@@ -469,6 +527,7 @@ export type AnalysisTestScope = {
   project_id: number;
   document_set_id: number;
   test_suite_id: number;
+  suite_release_id: number;
   test_run_id: number;
   baseline_hash: string;
   explicit_identifiers: string[];
@@ -518,6 +577,7 @@ export type AutomationRepairJob = {
 export type TestRun = {
   id: number;
   test_suite_id: number;
+  suite_release_id?: number;
   project_id?: number;
   analysis_job_id?: number;
   source_sha: string;

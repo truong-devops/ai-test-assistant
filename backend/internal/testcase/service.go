@@ -268,6 +268,20 @@ func (s *Service) Coverage(ctx context.Context, setID int64) (CoverageReport, er
 	return s.repository.Coverage(ctx, setID)
 }
 
+func (s *Service) PublishRelease(ctx context.Context, setID int64, input PublishReleaseInput,
+	idempotencyKey, actor string,
+) (SuiteRelease, bool, error) {
+	return s.repository.PublishRelease(ctx, setID, input, idempotencyKey, actor)
+}
+
+func (s *Service) ListReleases(ctx context.Context, setID int64) ([]SuiteRelease, error) {
+	return s.repository.ListReleases(ctx, setID)
+}
+
+func (s *Service) GetRelease(ctx context.Context, releaseID int64) (SuiteRelease, error) {
+	return s.repository.GetRelease(ctx, releaseID)
+}
+
 func findDuplicate(items []generatedCase, candidate Proposal) (int, string) {
 	identity := proposalIdentity(candidate)
 	for index, item := range items {

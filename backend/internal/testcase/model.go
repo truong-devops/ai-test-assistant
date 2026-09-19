@@ -32,6 +32,7 @@ var (
 	ErrIdempotencyConflict = errors.New("idempotency key was already used with different input")
 	ErrFamilyArchived      = errors.New("test case family is archived")
 	ErrEvidenceInvalid     = errors.New("test case evidence is invalid or outside the family scope")
+	ErrReleaseScope        = errors.New("suite release scope is incomplete or inconsistent")
 )
 
 type Suite struct {
@@ -42,6 +43,51 @@ type Suite struct {
 	Status        string    `json:"status"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+const (
+	ReleaseScopeComplete = "COMPLETE"
+	ReleaseScopePartial  = "PARTIAL"
+)
+
+type SuiteRelease struct {
+	ID                       int64         `json:"id"`
+	TestSuiteID              int64         `json:"test_suite_id"`
+	DocumentSetID            int64         `json:"document_set_id"`
+	ReleaseNumber            int           `json:"release_number"`
+	Name                     string        `json:"name"`
+	SourceSnapshotID         *int64        `json:"source_snapshot_id,omitempty"`
+	ManifestHash             string        `json:"manifest_hash"`
+	ScopeStatus              string        `json:"scope_status"`
+	ApprovedRequirementCount int           `json:"approved_requirement_count"`
+	CoveredRequirementCount  int           `json:"covered_requirement_count"`
+	UncoveredRequirementIDs  []int64       `json:"uncovered_requirement_ids"`
+	ScopeDecision            string        `json:"scope_decision"`
+	PublishedBy              string        `json:"published_by"`
+	Origin                   string        `json:"origin"`
+	PublishedAt              time.Time     `json:"published_at"`
+	CreatedAt                time.Time     `json:"created_at"`
+	Items                    []ReleaseItem `json:"items"`
+}
+
+type ReleaseItem struct {
+	ReleaseID          int64    `json:"release_id"`
+	FamilyID           int64    `json:"family_id"`
+	TestCaseID         int64    `json:"test_case_id"`
+	Ordinal            int      `json:"ordinal"`
+	PublicKey          string   `json:"public_key"`
+	RevisionNumber     int      `json:"revision_number"`
+	ContentHash        string   `json:"content_hash"`
+	ExpectedResultHash string   `json:"expected_result_hash"`
+	Revision           TestCase `json:"revision"`
+}
+
+type PublishReleaseInput struct {
+	TestSuiteID      int64   `json:"test_suite_id"`
+	SourceSnapshotID *int64  `json:"source_snapshot_id,omitempty"`
+	RevisionIDs      []int64 `json:"revision_ids"`
+	PublishedBy      string  `json:"published_by"`
+	ScopeDecision    string  `json:"scope_decision,omitempty"`
 }
 
 type TestCase struct {
@@ -77,6 +123,14 @@ type TestCase struct {
 	SealedAt           *time.Time      `json:"sealed_at,omitempty"`
 	CreatedAt          time.Time       `json:"created_at"`
 	UpdatedAt          time.Time       `json:"updated_at"`
+	LatestExecution    *ExecutionState `json:"latest_execution,omitempty"`
+}
+
+type ExecutionState struct {
+	TestRunID    int64     `json:"test_run_id"`
+	Status       string    `json:"status"`
+	ActualResult string    `json:"actual_result"`
+	RunAt        time.Time `json:"run_at"`
 }
 
 type Step struct {
@@ -289,15 +343,27 @@ type CoverageCell struct {
 }
 
 type CoverageReport struct {
-	DocumentSetID       int64          `json:"document_set_id"`
-	ApprovedDenominator int            `json:"approved_denominator"`
-	CoveredCount        int            `json:"covered_count"`
-	CoveragePercent     float64        `json:"coverage_percent"`
-	BaselineComplete    bool           `json:"baseline_complete"`
-	ConflictCount       int            `json:"conflict_count"`
-	TBDCount            int            `json:"tbd_count"`
-	RejectedCount       int            `json:"rejected_count"`
-	DuplicateCount      int            `json:"duplicate_count"`
-	UncoveredCount      int            `json:"uncovered_count"`
-	Matrix              []CoverageCell `json:"matrix"`
+	DocumentSetID       int64           `json:"document_set_id"`
+	ApprovedDenominator int             `json:"approved_denominator"`
+	CoveredCount        int             `json:"covered_count"`
+	CoveragePercent     float64         `json:"coverage_percent"`
+	BaselineComplete    bool            `json:"baseline_complete"`
+	ConflictCount       int             `json:"conflict_count"`
+	TBDCount            int             `json:"tbd_count"`
+	RejectedCount       int             `json:"rejected_count"`
+	DuplicateCount      int             `json:"duplicate_count"`
+	UncoveredCount      int             `json:"uncovered_count"`
+	Layers              []CoverageLayer `json:"layers"`
+	Matrix              []CoverageCell  `json:"matrix"`
+}
+
+type CoverageLayer struct {
+	Key              string  `json:"key"`
+	Label            string  `json:"label"`
+	Numerator        int     `json:"numerator"`
+	Denominator      int     `json:"denominator"`
+	Percent          float64 `json:"percent"`
+	SourceSnapshotID *int64  `json:"source_snapshot_id,omitempty"`
+	SuiteReleaseID   *int64  `json:"suite_release_id,omitempty"`
+	ReleaseNumber    *int    `json:"release_number,omitempty"`
 }

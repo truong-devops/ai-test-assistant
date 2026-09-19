@@ -1,6 +1,6 @@
 # Architecture
 
-> **Architecture status – 2026-09-16:** this document records the architecture
+> **Architecture status – 2026-09-19:** this document records the architecture
 > implemented by document-driven Phases 0–10, Phase 11 rollout controls, and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
 > target architecture and its ordered backend/frontend work are defined in
@@ -60,7 +60,8 @@ approved requirements -> generator per requirement/flow
                       -> exact/semantic dedupe -> QA review/versioning
                       -> database-derived coverage matrix
 
-project -> selected approved suite -> webhook-time immutable baseline snapshot
+approved testcase revisions -> immutable suite release manifest
+project -> selected suite release -> webhook-time immutable baseline snapshot
 PR/MR identifiers -> explicit testcase scope; uncertain mapping -> full suite
 changed path/module/symbol -> technical signals only, never expected behavior
 approved testcase + Go context -> versioned/reviewed automation artifact

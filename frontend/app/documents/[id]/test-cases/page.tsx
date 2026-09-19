@@ -5,7 +5,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { TestCaseWorkspace } from "@/components/test-case-workspace";
 import { WorkflowAction } from "@/components/workflow-action";
 import { ExportControls } from "@/components/export-controls";
-import { ApiError, getBusinessTestCases, getCoverage, getDocumentSet, getTestExports } from "@/lib/api";
+import { SuiteReleasePublisher } from "@/components/suite-release-publisher";
+import { ApiError, getBusinessTestCases, getCoverage, getDocumentSet, getSuiteReleases, getTestExports } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +19,15 @@ export default async function TestCasesPage({ params }: { params: Promise<{ id: 
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const [testCases, coverage, exports] = await Promise.all([getBusinessTestCases(id), getCoverage(id), getTestExports(id)]);
+  const [testCases, coverage, exports, releases] = await Promise.all([getBusinessTestCases(id), getCoverage(id), getTestExports(id), getSuiteReleases(id)]);
   return <AppShell active="documents">
     <div className="breadcrumb"><Link href="/documents">Documents</Link><span>/</span><Link href={`/documents/${id}`}>{set.name}</Link><span>/</span><span>Test cases</span></div>
     <div className="page-heading"><div><p className="eyebrow">Phase 5 · Grounded test design</p><h1>Test cases and coverage</h1><p className="page-description">Generation runs per approved requirement/flow. Coverage is rebuilt from database links and keeps conflict/TBD outside the approved denominator.</p></div><WorkflowAction endpoint={`/api/document-sets/${id}/test-cases/${testCases.length ? "regenerate" : "generate"}`} label={testCases.length ? "Regenerate" : "Generate test cases"} pendingLabel="Generating…" /></div>
-    <div className="summary-grid"><article className="stat-card accent"><p>Approved coverage</p><strong>{coverage.baseline_complete ? `${coverage.coverage_percent.toFixed(1)}%` : `${coverage.covered_count}/${coverage.approved_denominator}`}</strong><small>{coverage.baseline_complete ? "Baseline complete" : "Not complete while conflict/TBD/uncovered remains"}</small></article><article className="stat-card"><p>Uncovered</p><strong>{coverage.uncovered_count}</strong><small>Approved baseline only</small></article><article className="stat-card warning"><p>Outside denominator</p><strong>{coverage.conflict_count + coverage.tbd_count}</strong><small>{coverage.conflict_count} conflict · {coverage.tbd_count} TBD</small></article><article className="stat-card"><p>Duplicates suppressed</p><strong>{coverage.duplicate_count}</strong><small>Exact or semantic matches</small></article></div>
-    {testCases.length ? <TestCaseWorkspace setId={set.id} testCases={testCases} /> : <EmptyState title="No business test cases" message="Approve at least one cited requirement, then generate the test baseline." />}
-	{testCases.length ? <ExportControls setId={set.id} suiteId={testCases[0].test_suite_id} exports={exports} testCases={testCases} /> : null}
+    <div className="summary-grid"><article className="stat-card accent"><p>Working design coverage</p><strong>{coverage.baseline_complete ? `${coverage.coverage_percent.toFixed(1)}%` : `${coverage.covered_count}/${coverage.approved_denominator}`}</strong><small>{coverage.baseline_complete ? "Working design complete" : "Not complete while conflict/TBD/uncovered remains"}</small></article><article className="stat-card"><p>Uncovered</p><strong>{coverage.uncovered_count}</strong><small>Current approved requirements</small></article><article className="stat-card warning"><p>Outside denominator</p><strong>{coverage.conflict_count + coverage.tbd_count}</strong><small>{coverage.conflict_count} conflict · {coverage.tbd_count} TBD</small></article><article className="stat-card"><p>Duplicates suppressed</p><strong>{coverage.duplicate_count}</strong><small>Exact or semantic matches</small></article></div>
+    <div className="summary-grid">{coverage.layers.map((layer) => <article className="stat-card" key={layer.key}><p>{layer.label}</p><strong>{layer.numerator}/{layer.denominator}</strong><small>{layer.denominator ? `${layer.percent.toFixed(1)}%` : "No denominator"}{layer.release_number ? ` · R${layer.release_number}` : " · working set"}{layer.source_snapshot_id ? ` · source #${layer.source_snapshot_id}` : ""}</small></article>)}</div>
+	{testCases.length ? <TestCaseWorkspace setId={set.id} testCases={testCases} /> : <EmptyState title="No business test cases" message="Approve at least one cited requirement, then generate the test baseline." />}
+	{testCases.length ? <SuiteReleasePublisher setId={set.id} suiteId={testCases[0].test_suite_id} testCases={testCases} releases={releases} /> : null}
+	{testCases.length ? <ExportControls setId={set.id} suiteId={testCases[0].test_suite_id} exports={exports} testCases={testCases} releases={releases} /> : null}
     <section className="document-preview-section panel"><div className="panel-header"><div><h2>Requirement ↔ test-case matrix</h2><p>Rejected test cases remain visible in the audit; unresolved source states are reported separately.</p></div><span className="section-counter">{coverage.matrix.length} requirements</span></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Requirement</th><th>Flow</th><th>Source status</th><th>Test cases</th><th>Coverage</th><th>Warnings</th></tr></thead><tbody>{coverage.matrix.map((cell) => {
       const testCaseIds = cell.test_case_ids ?? [];
       const testTypes = cell.test_types ?? [];

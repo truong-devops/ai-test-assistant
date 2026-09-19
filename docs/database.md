@@ -1,13 +1,15 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–22.
+> This page documents the schema currently implemented by migrations 1–25.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
 > Migration 17 adds immutable exports, execution-scope snapshots and separated
 > automation provenance; migrations 18–21 add typed execution, asynchronous
 > extraction, guarded repair, lifecycle and rollout controls. Migration 22 adds
-> physical-retention purge and document-set AI budgets.
+> physical-retention purge and document-set AI budgets. Migrations 23–25 add
+> exact document-source snapshots, stable testcase families/revisions and
+> immutable suite releases pinned by downstream consumers.
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
 
@@ -65,6 +67,28 @@ records. Approval requires a link to an approved requirement with evidence.
 Approved title/scenario/expected fields are immutable, while review edits append
 a superseding version and copy evidence links. Coverage is not stored as an AI
 summary: the API rebuilds it from current requirements and test-case links.
+
+## Source snapshots, testcase revisions and suite releases (migrations 23–25)
+
+`document_source_snapshots` and their items freeze the exact document version
+membership used by an index/extraction generation. Historical chunks stay
+queryable but cannot become subjects of a newer extraction unless they belong
+to that generation.
+
+`test_case_families` is the stable scenario identity. Every `test_cases` row is
+an immutable revision with canonical content hash, parent/restore provenance,
+exact requirement/evidence links and an optimistic head token. Revision command
+and audit tables provide idempotency, CAS conflict reporting and actor history;
+legacy chains that may contain mixed scenarios are reported for manual review.
+
+`test_suite_releases` freezes one source snapshot and a manifest of
+`family → test_case revision`. `test_suite_release_items` duplicates identity,
+revision, content and expected-result hashes so DB constraints can reject
+cross-set/family references. Published rows are immutable. Project baselines,
+analysis snapshots, test runs and exports carry `suite_release_id`; a new draft
+or R2 therefore cannot change an R1 analysis/run/export. Migration 25 creates a
+clearly labelled `MIGRATED_CURRENT_STATE` release for every legacy project
+binding without claiming it was historically published by a user.
 
 ## Export, execution scope and automation (migration 17)
 

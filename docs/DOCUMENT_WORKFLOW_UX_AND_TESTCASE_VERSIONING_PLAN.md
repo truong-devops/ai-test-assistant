@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **kế hoạch đề xuất; chưa triển khai các thay đổi trong tài liệu này**.
+- Trạng thái: **đang triển khai; UV-00 đến UV-03 đã nghiệm thu, UV-04 là bước kế tiếp**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -29,10 +29,10 @@ Quy ước thực hiện:
 - `[ ]`: chưa hoàn thành; áp dụng cho toàn bộ hạng mục triển khai bên dưới.
 - `[x]`: chỉ đánh dấu sau khi có code, kiểm tra phù hợp và bằng chứng nghiệm thu.
 - Mỗi phase phải ghi commit, kiểm tra đã chạy, giới hạn còn lại vào mục 12.
-- Chỉ thay đổi tài liệu ở lần lập kế hoạch này; không coi endpoint, bảng dữ liệu,
-  trạng thái hay lệnh kiểm thử **đề xuất** là tính năng đã tồn tại.
-- Các phát hiện dưới đây dựa trên đọc code; chưa phải kết quả tái hiện trên VM.
-  UV-00 bổ sung fixture và kiểm thử tái hiện các tình huống quan trọng.
+- Nội dung chưa đánh dấu vẫn là đề xuất; chỉ coi endpoint, bảng dữ liệu hoặc trạng
+  thái là đã tồn tại khi checklist và bằng chứng phase tương ứng đã được cập nhật.
+- Các phát hiện ban đầu dựa trên đọc code. Từ UV-00 trở đi, fixture và integration
+  test PostgreSQL được dùng để chuyển từng phát hiện thành regression test.
 
 ## 2. Hiện trạng và nguyên nhân khó sử dụng
 
@@ -550,44 +550,44 @@ File trọng tâm: `backend/internal/testcase/`, testcase HTTP handlers/router,
 
 Backend/database:
 
-- [ ] Publish suite release gồm manifest revision IDs, nguồn/requirement snapshot,
+- [x] Publish suite release gồm manifest revision IDs, nguồn/requirement snapshot,
   reviewer/audit và hash; publish idempotent, transaction nhất quán.
-- [ ] Hiển thị rõ phần requirement chưa bao phủ/ngoài phạm vi khi chốt bộ một phần;
+- [x] Hiển thị rõ phần requirement chưa bao phủ/ngoài phạm vi khi chốt bộ một phần;
   lưu phạm vi và quyết định review, không tự gán “complete”.
-- [ ] Project binding chọn release ID; webhook snapshot pin release và toàn bộ
+- [x] Project binding chọn release ID; webhook snapshot pin release và toàn bộ
   revision liên quan một lần, kể cả request review/update xảy ra đồng thời.
-- [ ] Tách latest revision, latest approved revision và revision trong release.
+- [x] Tách latest revision, latest approved revision và revision trong release.
   Bản approved cũ không bị loại vì có successor draft/rejected.
-- [ ] Automation subject, source hash/expected hash và execute eligibility kiểm
+- [x] Automation subject, source hash/expected hash và execute eligibility kiểm
   tra đúng pinned revision. Trạng thái artifact cũ không lan sang revision mới.
-- [ ] Coverage tách “có thiết kế”, “đã duyệt trong bộ”, “có automation”, “đã chạy”;
+- [x] Coverage tách “có thiết kế”, “đã duyệt trong bộ”, “có automation”, “đã chạy”;
   mỗi chỉ số dùng denominator/source snapshot công khai.
-- [ ] Export `run` bắt đầu từ run items/snapshot, không từ latest testcase; source
+- [x] Export `run` bắt đầu từ run items/snapshot, không từ latest testcase; source
   metadata lấy từ evidence/pinned release thay vì latest document toàn set.
-- [ ] Export review chọn đúng event liên quan hoặc aggregate reviewer, không nhân
+- [x] Export review chọn đúng event liên quan hoặc aggregate reviewer, không nhân
   dòng theo số lần review; bản đã lưu không được tạo lại ngầm khi download.
-- [ ] XLSX thêm revision/release/source version ở cột hoặc sheet Metadata phù hợp;
+- [x] XLSX thêm revision/release/source version ở cột hoặc sheet Metadata phù hợp;
   bảo toàn bố cục mẫu báo cáo đang dùng, không tự nhận là giống mẫu nếu chưa đối chiếu.
 
 Frontend:
 
-- [ ] Bộ lọc `Bộ làm việc / Bộ đã chốt Rn`; mỗi case hiện version được chọn.
-- [ ] Project baseline selector hiển thị release và thời điểm chốt.
-- [ ] Export chọn rõ draft selection, approved release hoặc một run; mặc định hợp
+- [x] Bộ lọc `Bộ làm việc / Bộ đã chốt Rn`; mỗi case hiện version được chọn.
+- [x] Project baseline selector hiển thị release và thời điểm chốt.
+- [x] Export chọn rõ draft selection, approved release hoặc một run; mặc định hợp
   với ngữ cảnh đang xem, hiển thị số case trước tải xuống.
-- [ ] Actual/PASS/FAIL chỉ hiện khi có run của revision đó; phân biệt “Chưa chạy”.
-- [ ] Sửa các nhãn export/coverage hiện có cho đúng: lọc danh sách không tự đổi
+- [x] Actual/PASS/FAIL chỉ hiện khi có run của revision đó; phân biệt “Chưa chạy”.
+- [x] Sửa các nhãn export/coverage hiện có cho đúng: lọc danh sách không tự đổi
   tập export; tập export phải được chọn và hiển thị rõ, không đồng thời ghi
   “xuất toàn bộ” trong khi API chỉ nhận subset đã lọc.
 
 Kiểm tra và Definition of Done:
 
-- [ ] v1 approved trong R1, v2 draft: PR mới dùng R1/v1 cho tới khi đổi binding.
-- [ ] R2/v2 được chọn không thay PR/run đã snapshot R1/v1.
-- [ ] Export lại run v1 sau v2 vẫn có v1, đúng steps/expected/actual/evidence.
-- [ ] Một testcase có nhiều review event vẫn một dòng testcase trong export.
-- [ ] Export working/release không tự gắn actual của revision khác.
-- [ ] Baseline publish/update đồng thời với webhook có kết quả trọn vẹn R1 hoặc
+- [x] v1 approved trong R1, v2 draft: PR mới dùng R1/v1 cho tới khi đổi binding.
+- [x] R2/v2 được chọn không thay PR/run đã snapshot R1/v1.
+- [x] Export lại run v1 sau v2 vẫn có v1, đúng steps/expected/actual/evidence.
+- [x] Một testcase có nhiều review event vẫn một dòng testcase trong export.
+- [x] Export working/release không tự gắn actual của revision khác.
+- [x] Baseline publish/update đồng thời với webhook có kết quả trọn vẹn R1 hoặc
   R2, không ghép nửa bộ; không chọn artifact khác set/revision/SHA policy.
 
 File trọng tâm: `backend/internal/{scope,automation,execution,report,testcase}/`,
@@ -994,8 +994,8 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 
 - [x] UV-00 — Contract, prototype và fixture tái hiện.
 - [x] UV-01 — Source/index snapshot và extraction đúng phạm vi.
-- [ ] UV-02 — Identity/revision backend, concurrency và migration.
-- [ ] UV-03 — Suite release, pinning, coverage/run/export đúng version.
+- [x] UV-02 — Identity/revision backend, concurrency và migration.
+- [x] UV-03 — Suite release, pinning, coverage/run/export đúng version.
 - [ ] UV-04 — Async jobs, retry, progress và workflow API.
 - [ ] UV-05 — Workspace hướng dẫn, upload/review nguồn và navigation.
 - [ ] UV-06 — Requirement batch review và đối chiếu nguồn.
@@ -1037,3 +1037,53 @@ dấu hết checklist code chưa thay thế bằng chứng đó.
   test UV-00 với PostgreSQL. Không thay đổi hành vi production ở phase này.
 - Khảo sát ba người chưa chạy; chỉ mới chốt protocol để không bịa bằng chứng
   usability. Việc thực thi và tổng hợp số liệu được tiếp tục ở UV-09.
+
+### Bằng chứng UV-01 — 18/09/2026
+
+- Migration `000023_document_source_snapshots` tạo source snapshot bất biến,
+  generation membership và liên kết extraction/requirement với đúng snapshot.
+- Integration tests `uv01_source_snapshot_integration_test.go` ở package
+  `document` và `requirement` kiểm tra S01–S04: upload mới làm stale, chunk lịch
+  sử không lọt vào subject mới, job đang chạy giữ input, và approval-only change
+  không ép embed lại nội dung không đổi.
+- API/proxy chuyển generation và precondition cần thiết; trang index hiển thị
+  generation đang xem thay vì trộn chunk lịch sử.
+
+### Bằng chứng UV-02 — 19/09/2026
+
+- Migration `000024_testcase_families_revisions` backfill family/public key,
+  provenance, canonical content hash, head token, idempotency command và audit;
+  row ID/FK cũ được giữ nguyên, chain nghi ngờ được đưa vào migration issues.
+- API đã có list family/version, read revision, diff, create revision, restore và
+  archive; legacy edit route dùng cùng revision service và trả Location mới.
+- `uv02_revision_integration_test.go` kiểm tra hai NEGATIVE độc lập, step/data và
+  citation change, no-op, idempotency collision, concurrent head conflict,
+  restore v1 thành v4, foreign scope và sealed-child immutability.
+- Khi chạy lại toàn bộ integration suite trên PostgreSQL sạch, fixture `scope`
+  cũ đã được bổ sung exact evidence/seal theo guardrail UV-02. `go test ./...`,
+  `go vet ./...`, frontend typecheck/build và integration `./internal/...` đều đạt.
+
+### Tiến độ UV-03 — 19/09/2026
+
+- Migration `000025_suite_releases_and_pinned_consumers` thêm release/manifest
+  bất biến, exact revision items, source snapshot, scope decision và release refs
+  cho project baseline, analysis snapshot, run và export. Backfill từ schema 24
+  đã được chạy thử: tạo `MIGRATED_CURRENT_STATE`, giữ đúng một testcase legacy
+  và nối project baseline vào release chuyển tiếp.
+- Publish API có idempotency, family/scope/evidence guard, coverage thiếu và audit
+  người publish. Project selector chỉ bind published release; webhook analysis
+  snapshot và test run pin một release ID nên publish R2 không trộn vào R1.
+- Run export bắt đầu từ `test_run_items`; test E01 chứng minh v1 đã chạy vẫn được
+  xuất sau khi có v2 draft. Review được chọn bằng lateral latest nên nhiều review
+  event không nhân dòng (E02). XLSX/Markdown metadata chứa release manifest và
+  danh sách testcase revision.
+- UI đã có chọn revision để publish, danh sách Rn, project release selector và
+  export tách rõ working set / published release / run.
+- Coverage công khai bốn lớp `DESIGNED/PUBLISHED/AUTOMATED/EXECUTED`
+  cùng denominator, source snapshot và Rn. Workspace chỉ hiện actual/status
+  của run gắn đúng revision; test PASS v1 không lan sang successor v2.
+- Integration test chạy lặp thao tác đổi binding R1/R2 đồng thời với
+  webhook snapshot, và xác nhận mỗi analysis nhận trọn một manifest. Exact
+  testcase ID, expected hash và approved artifact policy chặn artifact khác revision.
+- UV-03 đã hoàn tất; toàn bộ unit, vet, frontend production build và
+  PostgreSQL integration suite đã qua trên schema 25.
