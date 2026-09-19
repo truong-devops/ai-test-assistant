@@ -7,7 +7,9 @@
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md)
 > for the remaining target API.
 
-All responses use JSON. Errors have the shape `{"error":"message"}`.
+All responses use JSON. Legacy errors have the shape `{"error":"message"}`.
+Workflow command errors additionally return stable `code`, `retryable`,
+`request_id`, `blocked_by`, `next_action` and optional structured `details`.
 
 ## Authentication and roles
 
@@ -150,6 +152,27 @@ such as `line:18`, `lines:20-25`, `word/body/p[12]`, or
 `word/body/table[4]`. A parser failure leaves the original file/version intact.
 XLSX import is not supported in Phase 2; XLSX report export is implemented as
 an output-only Phase 6 capability.
+
+## Unified document workflow (workflow/versioning UV-04)
+
+- `GET /api/document-sets/{id}/workflow` returns source revision, five workflow
+  steps, role-derived capabilities, machine-readable blockers, active/recent
+  jobs and `next_action`.
+- `POST /api/document-sets/{id}/workflow-operations` accepts
+  `INDEX_DOCUMENTS`, `EXTRACT_REQUIREMENTS`, or `GENERATE_TESTCASES`. It requires
+  `Idempotency-Key`, freezes the effective input and returns HTTP 202 with
+  `job`, `status_url`, `Location`, `ETag`, and `Retry-After`.
+- `GET /api/document-workflow-jobs/{id}` returns durable progress, unit counts,
+  attempts, error/retry state, output references and attributed token/cost use.
+- `POST /api/document-workflow-jobs/{id}/retry` and `/cancel` accept
+  `expected_revision`; stale concurrent commands return a revision conflict.
+
+The browser polls the returned status URL with backoff and stops at
+`SUCCEEDED`, `PARTIAL_FAILED`, `FAILED`, or `CANCELED`. Reusing an idempotency
+key with the same command returns the original job even if current source or
+budget state has since changed; reusing it for a different command returns a
+conflict. Legacy synchronous mutation routes remain available during migration
+and advertise deprecation/link headers pointing clients to this API.
 
 ## Document index and source review (Phase 3)
 

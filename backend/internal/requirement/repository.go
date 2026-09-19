@@ -36,7 +36,8 @@ func (r *Repository) EnqueueExtraction(ctx context.Context, setID, generation in
 		RETURNING id,document_set_id,index_generation,source_snapshot_id,source_revision,is_current,
 		status,total_chunks,processed_chunks,
 		created_count,reused_count,conflict_count,open_question_count,requested_by,
-		attempt_count,error_message,created_at,started_at,finished_at`
+		attempt_count,error_message,created_at,started_at,finished_at,
+		workflow_job_id,workflow_unit_id`
 	var result ExtractionJob
 	if err := r.pool.QueryRow(ctx, query, setID, generation, sourceSnapshotID,
 		sourceRevision, total, requestedBy).
@@ -50,7 +51,8 @@ func (r *Repository) LatestExtraction(ctx context.Context, setID int64) (Extract
 	const query = `SELECT id,document_set_id,index_generation,source_snapshot_id,source_revision,is_current,
 		status,total_chunks,processed_chunks,
 		created_count,reused_count,conflict_count,open_question_count,requested_by,
-		attempt_count,error_message,created_at,started_at,finished_at
+		attempt_count,error_message,created_at,started_at,finished_at,
+		workflow_job_id,workflow_unit_id
 		FROM requirement_extraction_jobs WHERE document_set_id=$1
 		ORDER BY created_at DESC,id DESC LIMIT 1`
 	var result ExtractionJob
@@ -78,8 +80,9 @@ func (r *Repository) ClaimExtraction(ctx context.Context, lease time.Duration) (
 		RETURNING job.id,job.document_set_id,job.index_generation,job.source_snapshot_id,
 			job.source_revision,job.is_current,job.status,job.total_chunks,
 		job.processed_chunks,job.created_count,job.reused_count,job.conflict_count,
-		job.open_question_count,job.requested_by,job.attempt_count,job.error_message,
-		job.created_at,job.started_at,job.finished_at`
+			job.open_question_count,job.requested_by,job.attempt_count,job.error_message,
+			job.created_at,job.started_at,job.finished_at,job.workflow_job_id,
+			job.workflow_unit_id`
 	var result ExtractionJob
 	if err := r.pool.QueryRow(ctx, query, lease.String()).Scan(extractionJobDest(&result)...); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -161,7 +164,8 @@ func extractionJobDest(item *ExtractionJob) []any {
 		&item.SourceRevision, &item.IsCurrent, &item.Status,
 		&item.TotalChunks, &item.ProcessedChunks, &item.CreatedCount, &item.ReusedCount,
 		&item.ConflictCount, &item.OpenQuestionCount, &item.RequestedBy, &item.AttemptCount,
-		&item.ErrorMessage, &item.CreatedAt, &item.StartedAt, &item.FinishedAt}
+		&item.ErrorMessage, &item.CreatedAt, &item.StartedAt, &item.FinishedAt,
+		&item.WorkflowJobID, &item.WorkflowUnitID}
 }
 
 func truncateError(err error) string {

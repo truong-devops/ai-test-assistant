@@ -61,6 +61,8 @@ type ExtractionJob struct {
 	CreatedAt         time.Time  `json:"created_at"`
 	StartedAt         *time.Time `json:"started_at,omitempty"`
 	FinishedAt        *time.Time `json:"finished_at,omitempty"`
+	WorkflowJobID     *int64     `json:"workflow_job_id,omitempty"`
+	WorkflowUnitID    *int64     `json:"workflow_unit_id,omitempty"`
 }
 
 type Requirement struct {

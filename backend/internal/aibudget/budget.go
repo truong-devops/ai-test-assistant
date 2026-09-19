@@ -23,6 +23,25 @@ type Reservation struct {
 	ReservedCost   int64
 }
 
+type workflowAttemptKey struct{}
+
+type WorkflowAttempt struct {
+	JobID   int64
+	UnitID  int64
+	Attempt int
+}
+
+// WithWorkflowAttempt ties reservations made by an LLM call to the durable
+// workflow attempt that caused it. Providers are at-least-once, so this audit
+// link is intentionally recorded before the request is sent.
+func WithWorkflowAttempt(ctx context.Context, jobID, unitID int64, attempt int) context.Context {
+	if jobID <= 0 || unitID <= 0 || attempt <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, workflowAttemptKey{}, WorkflowAttempt{
+		JobID: jobID, UnitID: unitID, Attempt: attempt})
+}
+
 type Status struct {
 	DocumentSetID         int64 `json:"document_set_id"`
 	TokenBudget           int64 `json:"token_budget"`
@@ -108,10 +127,14 @@ func (m *Manager) Reserve(ctx context.Context, setID int64, phase, subject strin
 			ErrExceeded, costBudget, usedCost, heldCost, reservedCost)
 	}
 	var id int64
+	workflowAttempt, _ := ctx.Value(workflowAttemptKey{}).(WorkflowAttempt)
 	err = tx.QueryRow(ctx, `INSERT INTO document_ai_budget_reservations
-		(document_set_id,phase,subject_key,reserved_tokens,reserved_cost_microusd,expires_at)
-		VALUES($1,$2,$3,$4,$5,NOW()+$6::interval) RETURNING id`, setID, phase, subject,
-		reservedTokens, reservedCost, m.reservationTTL.String()).Scan(&id)
+		(document_set_id,phase,subject_key,reserved_tokens,reserved_cost_microusd,expires_at,
+		 workflow_job_id,workflow_unit_id,workflow_attempt)
+		VALUES($1,$2,$3,$4,$5,NOW()+$6::interval,NULLIF($7,0),NULLIF($8,0),NULLIF($9,0))
+		RETURNING id`, setID, phase, subject, reservedTokens, reservedCost,
+		m.reservationTTL.String(), workflowAttempt.JobID, workflowAttempt.UnitID,
+		workflowAttempt.Attempt).Scan(&id)
 	if err != nil {
 		return Reservation{}, err
 	}

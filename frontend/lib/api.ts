@@ -36,6 +36,7 @@ import type {
   AnalysisTestScope,
   AutomationHistory,
 	TestRunDetail,
+  DocumentWorkflow,
 } from "@/lib/types";
 import { backendAuthHeaders } from "@/lib/backend-auth";
 
@@ -74,6 +75,7 @@ export const documentRoutes = {
   suiteReleases: (setId: string | number) =>
     `/api/document-sets/${encodeURIComponent(String(setId))}/suite-releases`,
   aiBudget: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/ai-budget`,
+  workflow: (setId: string | number) => `/api/document-sets/${encodeURIComponent(String(setId))}/workflow`,
 } as const;
 
 export class ApiError extends Error {
@@ -132,6 +134,10 @@ export async function getDocumentSet(id: string | number): Promise<DocumentSet> 
 
 export async function getAIBudget(setId: string | number): Promise<AIBudgetStatus> {
   return request<AIBudgetStatus>(documentRoutes.aiBudget(setId));
+}
+
+export async function getDocumentWorkflow(setId: string | number): Promise<DocumentWorkflow> {
+  return request<DocumentWorkflow>(documentRoutes.workflow(setId));
 }
 
 export async function getDocuments(setId: string | number): Promise<SourceDocument[]> {

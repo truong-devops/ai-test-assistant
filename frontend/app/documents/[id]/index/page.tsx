@@ -4,7 +4,7 @@ import { AppShell, EmptyState } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
 import { DocumentIndexAction } from "@/components/document-index-action";
 import { RetrievalDebug } from "@/components/index-workspace";
-import { ApiError, getDocumentChunks, getDocumentIndex, getDocumentSet } from "@/lib/api";
+import { ApiError, getDocumentChunks, getDocumentIndex, getDocumentSet, getDocumentWorkflow } from "@/lib/api";
 import { humanize } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,9 @@ export default async function DocumentIndexPage({
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const index = await getDocumentIndex(id);
+  const [index, workflow] = await Promise.all([getDocumentIndex(id), getDocumentWorkflow(id)]);
+  const indexJob = workflow.active_jobs.find((job) => job.operation === "INDEX_DOCUMENTS") ??
+    workflow.recent_jobs.find((job) => job.operation === "INDEX_DOCUMENTS");
   const requestedGeneration = Number.parseInt(query.generation ?? "", 10);
   const selectedHistory = Number.isSafeInteger(requestedGeneration)
     ? index.generations.find((item) => item.generation === requestedGeneration)
@@ -44,7 +46,10 @@ export default async function DocumentIndexPage({
       <div className="breadcrumb"><Link href="/documents">Tài liệu</Link><span>/</span><Link href={`/documents/${id}`}>{set.name}</Link><span>/</span><span>Dữ liệu tìm kiếm</span></div>
       <div className="page-heading">
         <div><p className="eyebrow">UV-01 · Document RAG</p><h1>Dữ liệu tìm kiếm theo phiên bản</h1><p className="page-description">Mỗi generation chỉ chứa chunk thuộc đúng snapshot nguồn đã chốt.</p></div>
-        <DocumentIndexAction endpoint={`/api/document-sets/${id}/index`} hasGeneration={index.generation > 0} />
+        <DocumentIndexAction setId={id} hasGeneration={index.generation > 0}
+          initialJob={indexJob} canIndex={workflow.capabilities.can_index}
+          canRetry={workflow.capabilities.can_retry_job}
+          canCancel={workflow.capabilities.can_cancel_job} />
       </div>
 
       {index.freshness === "STALE" && index.source_revision > 0 ? <div className="notice" role="status">

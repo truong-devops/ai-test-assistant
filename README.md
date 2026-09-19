@@ -39,6 +39,12 @@ LLM request until a reverse proxy returns 502. Technical repair is restricted
 to `AUTOMATION_ERROR`; database and prompt guardrails preserve expected hashes
 and semantic assertions.
 
+Indexing, requirement extraction and testcase generation now share one durable
+workflow API/read model. Commands freeze their source input, return HTTP 202,
+survive browser reloads and worker restarts, and expose progress, structured
+blockers, retry/cancel state and attempt-level AI usage. Extraction is bridged
+to its existing queue so there is only one scheduler for that work.
+
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
@@ -132,6 +138,11 @@ Document-driven endpoints:
 - `GET /api/document-sets/{id}/documents`
 - `GET /api/documents/{id}/versions/{version}`
 - `POST /api/document-versions/{id}/review`
+- `GET /api/document-sets/{id}/workflow`
+- `POST /api/document-sets/{id}/workflow-operations`
+- `GET /api/document-workflow-jobs/{id}`
+- `POST /api/document-workflow-jobs/{id}/retry`
+- `POST /api/document-workflow-jobs/{id}/cancel`
 - `POST /api/document-sets/{id}/index`
 - `GET /api/document-sets/{id}/index`
 - `GET /api/document-sets/{id}/chunks`

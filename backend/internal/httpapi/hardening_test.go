@@ -100,23 +100,32 @@ func TestLegacyDeprecationHeadersIdentifyOnlyCompatibilityRoutes(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	for _, test := range []struct {
+		method     string
 		path       string
 		deprecated bool
+		link       string
 	}{
-		{path: "/api/analyses/1/generated-tests", deprecated: true},
-		{path: "/api/generated-tests/1/accept", deprecated: true},
-		{path: "/api/evaluations", deprecated: true},
-		{path: "/api/analyses/1/test-scope", deprecated: false},
-		{path: "/api/document-sets/1/test-cases", deprecated: false},
+		{method: http.MethodGet, path: "/api/analyses/1/generated-tests", deprecated: true},
+		{method: http.MethodGet, path: "/api/generated-tests/1/accept", deprecated: true},
+		{method: http.MethodGet, path: "/api/evaluations", deprecated: true},
+		{method: http.MethodGet, path: "/api/analyses/1/test-scope", deprecated: false},
+		{method: http.MethodGet, path: "/api/document-sets/1/test-cases", deprecated: false},
+		{method: http.MethodPost, path: "/api/document-sets/42/test-cases/generate",
+			deprecated: true,
+			link:       `</api/document-sets/42/workflow-operations>; rel="successor-version"`},
 	} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		handler.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
 		got := response.Header().Get("Deprecation") == "true"
 		if got != test.deprecated {
 			t.Fatalf("path=%s deprecated=%v want=%v", test.path, got, test.deprecated)
 		}
 		if test.deprecated && response.Header().Get("Link") == "" {
 			t.Fatalf("path=%s has no successor Link header", test.path)
+		}
+		if test.link != "" && response.Header().Get("Link") != test.link {
+			t.Fatalf("path=%s link=%q want=%q", test.path,
+				response.Header().Get("Link"), test.link)
 		}
 	}
 }

@@ -137,7 +137,7 @@ export type RequirementExtractionJob = {
   source_snapshot_id?: number;
   source_revision: number;
   is_current: boolean;
-  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELED";
   total_chunks: number;
   processed_chunks: number;
   created_count: number;
@@ -148,6 +148,73 @@ export type RequirementExtractionJob = {
   attempt_count: number;
   error_message?: string;
   created_at: string;
+};
+
+export type DocumentWorkflowOperation = "INDEX_DOCUMENTS" | "EXTRACT_REQUIREMENTS" | "GENERATE_TESTCASES";
+export type DocumentWorkflowStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "PARTIAL_FAILED" | "FAILED" | "CANCELED";
+
+export type WorkflowBlockingReason = {
+  code: string;
+  message: string;
+  step: string;
+  next_action?: string;
+};
+
+export type DocumentWorkflowJob = {
+  id: number;
+  document_set_id: number;
+  operation: DocumentWorkflowOperation;
+  status: DocumentWorkflowStatus;
+  revision: number;
+  requested_by: string;
+  total_units: number;
+  completed_units: number;
+  failed_units: number;
+  attempt_count: number;
+  max_attempts: number;
+  heartbeat_at?: string;
+  cancel_requested_at?: string;
+  error_code?: string;
+  error_message?: string;
+  retryable: boolean;
+  output_refs: Record<string, unknown>;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  updated_at: string;
+  usage: {
+    reserved_tokens: number;
+    input_tokens: number;
+    output_tokens: number;
+    reserved_cost_microusd: number;
+    actual_cost_microusd: number;
+  };
+};
+
+export type DocumentWorkflow = {
+  document_set_id: number;
+  source_revision: number;
+  steps: Array<{
+    key: string;
+    state: "READY" | "BLOCKED" | "IN_PROGRESS" | "COMPLETE" | "FAILED";
+    completed_units: number;
+    total_units: number;
+    blocking_reasons: WorkflowBlockingReason[];
+  }>;
+  capabilities: {
+    can_index: boolean;
+    can_extract: boolean;
+    can_generate: boolean;
+    can_review: boolean;
+    can_publish: boolean;
+    can_retry_job: boolean;
+    can_cancel_job: boolean;
+    can_adjust_budget: boolean;
+  };
+  blocking_reasons: WorkflowBlockingReason[];
+  active_jobs: DocumentWorkflowJob[];
+  recent_jobs: DocumentWorkflowJob[];
+  next_action: string;
 };
 
 export type RequirementEvidence = {

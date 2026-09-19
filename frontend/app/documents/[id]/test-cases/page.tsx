@@ -3,10 +3,10 @@ import { notFound } from "next/navigation";
 import { AppShell, EmptyState } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
 import { TestCaseWorkspace } from "@/components/test-case-workspace";
-import { WorkflowAction } from "@/components/workflow-action";
+import { WorkflowOperationAction } from "@/components/workflow-operation-action";
 import { ExportControls } from "@/components/export-controls";
 import { SuiteReleasePublisher } from "@/components/suite-release-publisher";
-import { ApiError, getBusinessTestCases, getCoverage, getDocumentSet, getSuiteReleases, getTestExports } from "@/lib/api";
+import { ApiError, getBusinessTestCases, getCoverage, getDocumentSet, getDocumentWorkflow, getSuiteReleases, getTestExports } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +19,12 @@ export default async function TestCasesPage({ params }: { params: Promise<{ id: 
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
-  const [testCases, coverage, exports, releases] = await Promise.all([getBusinessTestCases(id), getCoverage(id), getTestExports(id), getSuiteReleases(id)]);
+  const [testCases, coverage, exports, releases, workflow] = await Promise.all([getBusinessTestCases(id), getCoverage(id), getTestExports(id), getSuiteReleases(id), getDocumentWorkflow(id)]);
+  const generation = workflow.active_jobs.find((job) => job.operation === "GENERATE_TESTCASES") ??
+    workflow.recent_jobs.find((job) => job.operation === "GENERATE_TESTCASES");
   return <AppShell active="documents">
     <div className="breadcrumb"><Link href="/documents">Documents</Link><span>/</span><Link href={`/documents/${id}`}>{set.name}</Link><span>/</span><span>Test cases</span></div>
-    <div className="page-heading"><div><p className="eyebrow">Phase 5 · Grounded test design</p><h1>Test cases and coverage</h1><p className="page-description">Generation runs per approved requirement/flow. Coverage is rebuilt from database links and keeps conflict/TBD outside the approved denominator.</p></div><WorkflowAction endpoint={`/api/document-sets/${id}/test-cases/${testCases.length ? "regenerate" : "generate"}`} label={testCases.length ? "Regenerate" : "Generate test cases"} pendingLabel="Generating…" /></div>
+    <div className="page-heading"><div><p className="eyebrow">Phase 5 · Grounded test design</p><h1>Test cases and coverage</h1><p className="page-description">Generation runs per approved requirement/flow. Coverage is rebuilt from database links and keeps conflict/TBD outside the approved denominator.</p></div><WorkflowOperationAction setId={id} operation="GENERATE_TESTCASES" label={testCases.length ? "Regenerate" : "Generate test cases"} activeLabel="Generating…" initialJob={generation} disabled={!workflow.capabilities.can_generate} canRetry={workflow.capabilities.can_retry_job} canCancel={workflow.capabilities.can_cancel_job} /></div>
     <div className="summary-grid"><article className="stat-card accent"><p>Working design coverage</p><strong>{coverage.baseline_complete ? `${coverage.coverage_percent.toFixed(1)}%` : `${coverage.covered_count}/${coverage.approved_denominator}`}</strong><small>{coverage.baseline_complete ? "Working design complete" : "Not complete while conflict/TBD/uncovered remains"}</small></article><article className="stat-card"><p>Uncovered</p><strong>{coverage.uncovered_count}</strong><small>Current approved requirements</small></article><article className="stat-card warning"><p>Outside denominator</p><strong>{coverage.conflict_count + coverage.tbd_count}</strong><small>{coverage.conflict_count} conflict · {coverage.tbd_count} TBD</small></article><article className="stat-card"><p>Duplicates suppressed</p><strong>{coverage.duplicate_count}</strong><small>Exact or semantic matches</small></article></div>
     <div className="summary-grid">{coverage.layers.map((layer) => <article className="stat-card" key={layer.key}><p>{layer.label}</p><strong>{layer.numerator}/{layer.denominator}</strong><small>{layer.denominator ? `${layer.percent.toFixed(1)}%` : "No denominator"}{layer.release_number ? ` · R${layer.release_number}` : " · working set"}{layer.source_snapshot_id ? ` · source #${layer.source_snapshot_id}` : ""}</small></article>)}</div>
 	{testCases.length ? <TestCaseWorkspace setId={set.id} testCases={testCases} /> : <EmptyState title="No business test cases" message="Approve at least one cited requirement, then generate the test baseline." />}

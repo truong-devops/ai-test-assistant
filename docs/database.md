@@ -1,6 +1,6 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–25.
+> This page documents the schema currently implemented by migrations 1–26.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
@@ -9,7 +9,9 @@
 > extraction, guarded repair, lifecycle and rollout controls. Migration 22 adds
 > physical-retention purge and document-set AI budgets. Migrations 23–25 add
 > exact document-source snapshots, stable testcase families/revisions and
-> immutable suite releases pinned by downstream consumers.
+> immutable suite releases pinned by downstream consumers. Migration 26 adds
+> the shared durable workflow queue, attempt-level usage attribution and the
+> bridge to the existing requirement-extraction scheduler.
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
 
@@ -89,6 +91,27 @@ analysis snapshots, test runs and exports carry `suite_release_id`; a new draft
 or R2 therefore cannot change an R1 analysis/run/export. Migration 25 creates a
 clearly labelled `MIGRATED_CURRENT_STATE` release for every legacy project
 binding without claiming it was historically published by a user.
+
+## Durable document workflow jobs (migration 26)
+
+`document_workflow_jobs` is the common status and command boundary for index,
+requirement extraction and testcase generation. Every job stores a canonical
+input snapshot/hash, idempotency key, optimistic revision, unit progress,
+attempt/lease/heartbeat state, structured terminal error and output references.
+A partial unique index allows only one queued/running operation of each kind per
+document set. `document_workflow_job_units` provides the atomic checkpoint used
+when an output is published.
+
+Index and testcase generation are claimed directly with `FOR UPDATE SKIP
+LOCKED`. Requirement extraction keeps its existing scheduler and is linked as a
+delegated job, so migration 26 does not create a competing consumer. Its status
+and chunk progress are reconciled into the common workflow read model.
+
+AI budget reservations now identify workflow job, unit and attempt. A worker
+restart can therefore retry safely while completed or uncertain provider usage
+remains attributable. Running cancellation is cooperative: publication checks
+the lease/cancel state, while retry and cancel commands use the job revision to
+prevent two attempts from becoming authoritative.
 
 ## Export, execution scope and automation (migration 17)
 

@@ -38,6 +38,7 @@ import (
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/storage"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/testcase"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/validation"
+	workflowjob "github.com/maccuatruong/ai-test-assistant/backend/internal/workflow"
 )
 
 func main() {
@@ -149,6 +150,8 @@ func main() {
 		cfg.LLM.Model, cfg.LLM.MaxOutputTokens).ConfigureRepair(cfg.Repair.MaxAttempts,
 		cfg.Repair.MaxCostMicroUSD).ConfigureBudget(aiBudget)
 	executionService := execution.NewService(execution.NewRepository(database.Pool()))
+	documentWorkflowService := workflowjob.NewService(workflowjob.NewRepository(database.Pool()),
+		documentIndexService, requirementService, testCaseService, cfg.Worker.MaxAttempts)
 	webhookService := gitlab.NewWebhookService(projectRepository, scopedEnqueuer)
 	gitLabWebhookHandler := gitlab.NewWebhookHandler(cfg.GitLab.WebhookSecret, webhookService)
 	gitHubWebhookService := github.NewWebhookService(projectRepository, scopedEnqueuer)
@@ -158,12 +161,12 @@ func main() {
 	webhookHandler.Handle("POST /api/webhooks/github", gitHubWebhookHandler)
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
-		Handler: httpapi.NewRouterWithDocumentDrivenServices(logger, database, projectService, analysisService,
+		Handler: httpapi.NewRouterWithUV04Services(logger, database, projectService, analysisService,
 			webhookHandler, knowledgeService, recommendationService, generationService,
 			validationService, repairService, reviewService, contextService, evaluationService,
 			provenanceService, impactService, documentService, cfg.Document.MaxUploadBytes,
 			documentIndexService, requirementService, testCaseService, reportService,
-			scopeRepository, automationService, executionService,
+			scopeRepository, automationService, executionService, documentWorkflowService,
 			httpapi.RouterOptions{RateLimitPerSecond: cfg.HTTP.RateLimitPerSecond,
 				RateLimitBurst: cfg.HTTP.RateLimitBurst, RateLimitMaxClients: cfg.HTTP.RateLimitMaxClients,
 				AuthToken: cfg.Auth.Token}),

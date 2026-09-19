@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **đang triển khai; UV-00 đến UV-03 đã nghiệm thu, UV-04 là bước kế tiếp**.
+- Trạng thái: **đang triển khai; UV-00 đến UV-04 đã nghiệm thu, UV-05 là bước kế tiếp**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -599,36 +599,36 @@ project baseline selector, testcase workspace, export controls, run workspace.
 
 Backend/database:
 
-- [ ] Triển khai workflow read model theo mục 6, gồm capabilities theo role và
+- [x] Triển khai workflow read model theo mục 6, gồm capabilities theo role và
   machine-readable blocking reasons. Mọi mutation kiểm tra lại điều kiện.
-- [ ] Thêm job index và testcase generation; nối parse/extraction queue hiện có
+- [x] Thêm job index và testcase generation; nối parse/extraction queue hiện có
   bằng parent operation/input snapshot, không phát sinh hai scheduler cạnh tranh.
-- [ ] Queue có lease, heartbeat, max attempts, timeout và recovery worker restart.
-- [ ] Unit checkpoint và output refs nguyên tử; retry chỉ phần failed/unfinished,
+- [x] Queue có lease, heartbeat, max attempts, timeout và recovery worker restart.
+- [x] Unit checkpoint và output refs nguyên tử; retry chỉ phần failed/unfinished,
   kết quả đã commit không bị ghi thêm revision hoặc làm mất review của người dùng.
-- [ ] Lưu ý định `approve-and-extract`, `generate-approved` tách khỏi GET/read UI;
+- [x] Lưu ý định `approve-and-extract`, `generate-approved` tách khỏi GET/read UI;
   queue continuation sau review thực hiện qua transaction/outbox hoặc cơ chế durable tương đương.
-- [ ] Budget reservation/finalize/release gắn unit attempt, job/report có tổng usage;
+- [x] Budget reservation/finalize/release gắn unit attempt, job/report có tổng usage;
   UI nêu lý do dừng và quyền điều chỉnh budget.
-- [ ] Cancel/retry xử lý đồng thời, tránh hai attempt cùng công bố kết quả.
-- [ ] API proxy chuyển header idempotency/preconditions và structured error cần thiết.
+- [x] Cancel/retry xử lý đồng thời, tránh hai attempt cùng công bố kết quả.
+- [x] API proxy chuyển header idempotency/preconditions và structured error cần thiết.
 
 Frontend:
 
-- [ ] Một hook polling dùng chung: backoff, retry tải trạng thái, terminal stop,
+- [x] Một hook polling dùng chung: backoff, retry tải trạng thái, terminal stop,
   visibility refresh, cleanup, chống response job cũ ghi đè job mới.
-- [ ] Nút pending ngay lúc gửi; catch network exception; lỗi persist được hiển thị
+- [x] Nút pending ngay lúc gửi; catch network exception; lỗi persist được hiển thị
   ngay cả khi người dùng vào trang lần đầu sau job failed.
-- [ ] Progress hiển thị unit counts, partial results và nút retry/cancel đúng quyền.
+- [x] Progress hiển thị unit counts, partial results và nút retry/cancel đúng quyền.
 
 Kiểm tra và Definition of Done:
 
-- [ ] Reload/đóng tab/mở lại không tạo job mới; UI tiếp tục đúng job ID.
-- [ ] LLM chậm hơn timeout HTTP thông thường không giữ request generation mở.
-- [ ] Worker crash sau gọi provider/trước commit và sau commit/trước acknowledge
+- [x] Reload/đóng tab/mở lại không tạo job mới; UI tiếp tục đúng job ID.
+- [x] LLM chậm hơn timeout HTTP thông thường không giữ request generation mở.
+- [x] Worker crash sau gọi provider/trước commit và sau commit/trước acknowledge
   được kiểm tra; không tạo testcase trùng và usage không mất dấu.
-- [ ] Retry thất bại schema/budget có giới hạn; không tự duyệt partial output.
-- [ ] Source generation mới xuất hiện không làm job cũ thay input giữa chừng.
+- [x] Retry thất bại schema/budget có giới hạn; không tự duyệt partial output.
+- [x] Source generation mới xuất hiện không làm job cũ thay input giữa chừng.
 
 File trọng tâm: worker wiring `backend/cmd/worker/main.go`, requirement worker,
 package workflow/job mới, testcase/index handlers, frontend polling hook/proxy.
@@ -996,7 +996,7 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 - [x] UV-01 — Source/index snapshot và extraction đúng phạm vi.
 - [x] UV-02 — Identity/revision backend, concurrency và migration.
 - [x] UV-03 — Suite release, pinning, coverage/run/export đúng version.
-- [ ] UV-04 — Async jobs, retry, progress và workflow API.
+- [x] UV-04 — Async jobs, retry, progress và workflow API.
 - [ ] UV-05 — Workspace hướng dẫn, upload/review nguồn và navigation.
 - [ ] UV-06 — Requirement batch review và đối chiếu nguồn.
 - [ ] UV-07 — Testcase history/diff/edit/restore/release UI.
@@ -1087,3 +1087,21 @@ dấu hết checklist code chưa thay thế bằng chứng đó.
   testcase ID, expected hash và approved artifact policy chặn artifact khác revision.
 - UV-03 đã hoàn tất; toàn bộ unit, vet, frontend production build và
   PostgreSQL integration suite đã qua trên schema 25.
+
+### Tiến độ UV-04 — 19/09/2026
+
+- Migration `000026_document_workflow_jobs` thêm job/unit chung với frozen input,
+  idempotency, optimistic revision, lease/heartbeat, bounded retry, cancel,
+  output refs và attempt-level budget attribution. Down/up round-trip đã chạy
+  trên PostgreSQL; extraction được bridge vào queue cũ thay vì có scheduler thứ hai.
+- `GET .../workflow` cung cấp capabilities theo role, blockers có mã và next
+  action. Ba mutation index/extract/generate trả HTTP 202/status URL; retry/cancel
+  dùng expected revision và worker chỉ publish khi lease/cancel guard còn hợp lệ.
+- Shared frontend hook có backoff, visibility refresh, abort/stale-response guard
+  và terminal stop. Các trang index/requirements/testcases khôi phục job đang
+  chạy hoặc lỗi từ server, hiển thị progress/error và action đúng quyền.
+- Regression tests bao phủ idempotent replay/collision, input stale, cancel đối
+  đầu commit, manual retry, lease recovery sau crash, delegated extraction,
+  usage còn dấu khi kết quả provider chưa chắc chắn và structured HTTP blocker.
+- UV-04 đã hoàn tất sau khi unit, vet, frontend production build và PostgreSQL
+  integration suite chạy đạt trên schema 26.
