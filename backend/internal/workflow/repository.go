@@ -407,7 +407,7 @@ func (r *Repository) enqueue(ctx context.Context, setID int64, operation, reques
 				return existing, false, nil
 			}
 			active, activeErr := r.activeOperation(ctx, setID, operation)
-			if activeErr == nil {
+			if activeErr == nil && active.InputHash == inputHash {
 				return active, false, nil
 			}
 			return Job{}, false, ErrOperationActive
@@ -725,6 +725,15 @@ func (r *Repository) Retry(ctx context.Context, id int64, expectedRevision int) 
 		heartbeat_at=NULL,cancel_requested_at=NULL,error_code='',error_message='',retryable=FALSE,
 		started_at=NULL,finished_at=NULL,updated_at=NOW() WHERE id=$1`, id)
 	if err != nil {
+		return Job{}, err
+	}
+	// Reopen the saved continuation as part of the same retry command. A
+	// successful retry of indexing must still continue the user's extraction.
+	if _, err = tx.Exec(ctx, `UPDATE document_source_intents intent SET
+		status=CASE WHEN extraction_job_id=$1 THEN 'EXTRACTING' ELSE 'INDEXING' END,
+		error_message='',updated_at=NOW()
+		WHERE status='FAILED' AND (index_job_id=$1 OR extraction_job_id=$1)
+		AND source_revision=(SELECT source_revision FROM document_sets WHERE id=intent.document_set_id)`, id); err != nil {
 		return Job{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

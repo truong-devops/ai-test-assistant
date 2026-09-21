@@ -1,5 +1,5 @@
 // Canonical Vietnamese copy for the UV-00 document workflow contract.
-// UV-05 will consume this module when the four-step workspace is implemented.
+// Shared by the UV-05 four-step workspace and historical navigation.
 // User-authored document, requirement, and testcase content must not be translated.
 
 export const documentWorkflowCopy = {
@@ -65,4 +65,3 @@ export const documentWorkflowCopy = {
 } as const;
 
 export type DocumentWorkflowStepKey = keyof typeof documentWorkflowCopy.steps;
-

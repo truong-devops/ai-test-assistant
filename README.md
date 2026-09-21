@@ -136,9 +136,12 @@ Document-driven endpoints:
 - `POST /api/document-sets/{id}/lifecycle`
 - `POST /api/document-sets/{id}/documents`
 - `GET /api/document-sets/{id}/documents`
+- `POST /api/document-sets/{id}/documents/{documentID}/versions`
+- `GET /api/document-sets/{id}/documents/{documentID}/versions`
 - `GET /api/documents/{id}/versions/{version}`
 - `POST /api/document-versions/{id}/review`
 - `GET /api/document-sets/{id}/workflow`
+- `POST /api/document-sets/{id}/source-review`
 - `POST /api/document-sets/{id}/workflow-operations`
 - `GET /api/document-workflow-jobs/{id}`
 - `POST /api/document-workflow-jobs/{id}/retry`

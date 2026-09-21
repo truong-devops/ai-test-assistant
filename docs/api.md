@@ -119,6 +119,12 @@ write endpoint.
   returns HTTP 202 because parsing is asynchronous.
 - `GET /api/document-sets/{id}/documents` lists logical documents with their
   latest version.
+- `POST /api/document-sets/{id}/documents/{documentID}/versions` uploads one
+  new version to that exact logical document (HTTP 202). Both IDs must belong
+  together; otherwise HTTP 404. Filename changes do not change document identity,
+  name or type.
+- `GET /api/document-sets/{id}/documents/{documentID}/versions` returns
+  `{"versions":[...]}` newest first, with the same ownership check.
 - `GET /api/documents/{id}/versions/{version}` returns document metadata,
   immutable version metadata, and ordered parsed blocks.
 
@@ -137,6 +143,9 @@ The upload body uses `multipart/form-data` with:
 
 - `file` (required): `.docx`, `.md`, or `.markdown`;
 - `document_name` (optional): defaults to the filename without its extension;
+- `new_document=true` (workspace new-file upload): reject a duplicate document
+  name with HTTP 409 instead of implicitly appending a version. Omission retains
+  legacy name-based behavior; new clients should use explicit version routes;
 - `document_type` (optional): `REQUIREMENTS`, `USER_STORY`, `SYSTEM_DESIGN`,
   `DATABASE_DESIGN`, `API_CONTRACT`, `BUG_HISTORY`, `TEST_REFERENCE`, or
   `OTHER`; defaults to `REQUIREMENTS`.
@@ -173,6 +182,50 @@ key with the same command returns the original job even if current source or
 budget state has since changed; reusing it for a different command returns a
 conflict. Legacy synchronous mutation routes remain available during migration
 and advertise deprecation/link headers pointing clients to this API.
+
+### Source review and guided workspace (UV-05)
+
+`GET /api/document-sets/{id}/workflow` also returns `source_intents` (latest 20)
+and `can_upload`/`can_manage` capabilities. The frontend maps the five technical
+steps into four business steps; reads and browser polling never start AI work.
+Every upload persists an `INDEX` intent atomically with its version. The worker
+waits for parsing and prepares the index automatically, without approving sources.
+
+`POST /api/document-sets/{id}/source-review` requires `Idempotency-Key` and returns
+HTTP 202 with `{"intent":{...}}`. Example:
+
+```json
+{
+  "command": "APPROVE_AND_EXTRACT",
+  "expected_source_revision": 7,
+  "selected": [{"version_id": 42, "sha256": "<exact SHA-256 from version>", "approval_status": "DRAFT"}],
+  "excluded_version_ids": [43],
+  "reviewer_name": "QA display name"
+}
+```
+
+- `APPROVE`/`APPROVE_AND_EXTRACT`: reviewer role, nonempty explicit selection
+  (at most 100), current latest version/hash/approval status, parsed content.
+  Approvals, audit and continuation commit together or all roll back.
+- `INDEX`/`EXTRACT`: editor role, no selected approvals. `EXTRACT` requires all
+  included latest sources to be parsed and approved. Exclusions are explicit
+  latest version IDs (at most 100), never implicit suppression of failed files.
+- Authenticated actor is stored in review audit; the display name is only
+  contextual information and cannot grant permissions.
+- Changed source revision/hash/status returns HTTP 409; unmet source conditions
+  return 422; missing permission returns 403. Same key/body replays the original
+  intent even after a later upload; different body with that key returns 409.
+- Worker persists `WAITING_PARSE → INDEXING → EXTRACTING → SUCCEEDED` (approval
+  or index only skips extraction). Failures retain approvals. A source/scope
+  change before extraction yields `SUPERSEDED`; an already queued extraction
+  keeps its frozen input. Retrying a failed child job reopens its failed intent
+  only while its source revision remains current.
+
+The workspace is `/documents/{id}?step=documents|requirements|test-cases|use-export`.
+Old index, requirements, testcase and source-version URLs remain readable and
+link back to the guided workspace. Apply migration 27 before deploying both API
+and worker; neither a frontend-only deployment nor a stopped worker can provide
+the automatic continuation.
 
 ## Document index and source review (Phase 3)
 

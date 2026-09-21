@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppShell, EmptyState } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
 import { DocumentIndexAction } from "@/components/document-index-action";
+import { DocumentWorkflowNav } from "@/components/document-workflow-nav";
 import { RetrievalDebug } from "@/components/index-workspace";
 import { ApiError, getDocumentChunks, getDocumentIndex, getDocumentSet, getDocumentWorkflow } from "@/lib/api";
 import { humanize } from "@/lib/presentation";
@@ -43,6 +44,7 @@ export default async function DocumentIndexPage({
 
   return (
     <AppShell active="documents">
+      <DocumentWorkflowNav setId={set.id} workflow={workflow} active="documents" />
       <div className="breadcrumb"><Link href="/documents">Tài liệu</Link><span>/</span><Link href={`/documents/${id}`}>{set.name}</Link><span>/</span><span>Dữ liệu tìm kiếm</span></div>
       <div className="page-heading">
         <div><p className="eyebrow">UV-01 · Document RAG</p><h1>Dữ liệu tìm kiếm theo phiên bản</h1><p className="page-description">Mỗi generation chỉ chứa chunk thuộc đúng snapshot nguồn đã chốt.</p></div>

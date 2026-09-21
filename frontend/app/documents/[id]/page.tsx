@@ -1,56 +1,76 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, EmptyState } from "@/components/shell";
-import { StatusBadge } from "@/components/status-badge";
-import { UploadDocument } from "@/components/upload-document";
+import { DocumentWorkflowNav, type WorkspaceStep } from "@/components/document-workflow-nav";
+import { DocumentSourceWorkspace } from "@/components/document-source-workspace";
 import { DocumentLifecycle } from "@/components/document-lifecycle";
-import { ApiError, documentMaxUploadBytes, getAIBudget, getDocumentSet, getDocuments } from "@/lib/api";
-import { formatDate, humanize } from "@/lib/presentation";
+import { RequirementInventory } from "@/components/requirement-inventory";
+import { TestCaseWorkspace } from "@/components/test-case-workspace";
+import { SuiteReleasePublisher } from "@/components/suite-release-publisher";
+import { ExportControls } from "@/components/export-controls";
+import { WorkflowOperationAction } from "@/components/workflow-operation-action";
+import { ApiError, documentMaxUploadBytes, getAIBudget, getDocumentSet, getDocuments,
+  getDocumentWorkflow, getRequirements, getBusinessTestCases, getSuiteReleases, getTestExports } from "@/lib/api";
+import { documentWorkflowCopy as copy } from "@/lib/document-workflow-copy";
 
 export const dynamic = "force-dynamic";
 
-export default async function DocumentSetPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function DocumentSetPage({ params, searchParams }: {
+  params: Promise<{ id: string }>; searchParams: Promise<{ step?: string }>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
+  const step: WorkspaceStep = ["requirements", "test-cases", "use-export"].includes(query.step ?? "") ? query.step as WorkspaceStep : "documents";
   let set;
-  try {
-    set = await getDocumentSet(id);
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) notFound();
-    throw error;
-  }
-  const [documents, budget] = await Promise.all([getDocuments(set.id), getAIBudget(set.id)]);
-  return (
-    <AppShell active="documents">
-      <div className="breadcrumb"><Link href="/documents">Documents</Link><span>/</span><span>{set.name}</span></div>
-      <section className="project-hero">
-        <div className="hero-identity"><span className="project-avatar" aria-hidden="true">D</span><div><p className="eyebrow">{set.product_name || `Document set #${set.id}`}</p><h1>{set.name}</h1><p>{[set.scope, set.description].filter(Boolean).join(" · ") || "No scope description has been added."}</p></div></div>
-        <div className="hero-meta"><StatusBadge status={set.status} /></div>
-      </section>
-      <section className="workflow-links" aria-label="Document-driven workflow">
-        <Link className="workflow-link" href={`/documents/${set.id}/index`}><strong>1. Semantic index</strong><span>Chunk inspector and retrieval diagnostics</span></Link>
-        <Link className="workflow-link" href={`/documents/${set.id}/requirements`}><strong>2. Requirements</strong><span>Inventory, evidence, conflicts, and review</span></Link>
-        <Link className="workflow-link" href={`/documents/${set.id}/test-cases`}><strong>3. Test cases</strong><span>Grounded cases and deterministic coverage</span></Link>
-      </section>
-      <DocumentLifecycle set={set} budget={budget} />
-      {set.status === "ACTIVE" ? <UploadDocument setId={set.id} maxBytes={documentMaxUploadBytes} /> : <p className="notice">This document set is archived. Restore it before uploading another immutable version.</p>}
-      {documents.length ? (
-        <section className="panel">
-          <div className="panel-header"><div><h2>Source documents</h2><p>The newest immutable version is shown for each logical document.</p></div><span className="section-counter">{documents.length} document{documents.length === 1 ? "" : "s"}</span></div>
-          <div className="table-wrap"><table className="data-table">
-            <thead><tr><th>Document</th><th>Type</th><th>Version</th><th>Parse</th><th>Approval</th><th>Uploaded</th></tr></thead>
-            <tbody>{documents.map((item) => {
-              const version = item.latest_version;
-              const href = version ? `/documents/${set.id}/items/${item.id}/versions/${version.version_number}` : undefined;
-              return <tr key={item.id}>
-                <td>{href ? <Link href={href}><span className="table-title">{item.name}</span><span className="table-subtitle">{version?.original_filename}</span></Link> : <span className="table-title">{item.name}</span>}</td>
-                <td>{humanize(item.document_type)}</td><td className="mono">{version ? `v${version.version_number}` : "—"}</td>
-                <td><StatusBadge status={version?.parse_status ?? "NOT_PARSED"} /></td><td><StatusBadge status={version?.approval_status ?? "DRAFT"} /></td>
-                <td>{formatDate(version?.uploaded_at)}</td>
-              </tr>;
-            })}</tbody>
-          </table></div>
-        </section>
-      ) : <EmptyState title="No documents uploaded" message="Upload a DOCX or Markdown source above. The parser preserves headings, paragraphs, lists, tables, code blocks, and source locators." />}
-    </AppShell>
-  );
+  try { set = await getDocumentSet(id); } catch (error) { if (error instanceof ApiError && error.status === 404) notFound(); throw error; }
+  const [documents, workflow] = await Promise.all([getDocuments(set.id), getDocumentWorkflow(set.id)]);
+  const budget = workflow.capabilities.can_manage ? await getAIBudget(set.id) : undefined;
+  const requirements = step === "requirements" ? await getRequirements(set.id) : [];
+  const cases = step === "test-cases" || step === "use-export" ? await getBusinessTestCases(set.id) : [];
+  const [releases, exports] = step === "use-export" ? await Promise.all([getSuiteReleases(set.id), getTestExports(set.id)]) : [[], []];
+  const generation = workflow.active_jobs.find((job) => job.operation === "GENERATE_TESTCASES") ?? workflow.recent_jobs.find((job) => job.operation === "GENERATE_TESTCASES");
+  const approvedRequirements = workflow.steps.find((s) => s.key === "REQUIREMENTS")?.completed_units ?? 0;
+  const blockerCopy: Record<string, string> = {
+    NO_DOCUMENTS: copy.blockers.noDocuments, SOURCE_PARSE_PENDING: copy.blockers.parsing,
+    INDEX_NOT_CURRENT: copy.blockers.indexStale, SOURCE_NOT_APPROVED: copy.blockers.sourceReviewRequired,
+    NO_APPROVED_REQUIREMENTS: copy.blockers.noApprovedRequirements, AI_BUDGET_EXHAUSTED: copy.blockers.budgetExceeded,
+    DOCUMENT_SET_INACTIVE: "Bộ tài liệu đã lưu trữ. Người quản lý cần khôi phục trước khi thực hiện thao tác mới.",
+  };
+  return <AppShell active="documents">
+    <div className="breadcrumb"><Link href="/documents">Tài liệu</Link><span>/</span><span>{set.name}</span></div>
+    <section className="project-hero"><div className="hero-identity"><span className="project-avatar" aria-hidden="true">D</span><div><p className="eyebrow">Bộ làm việc · {set.status === "ACTIVE" ? "Đang hoạt động" : "Đã lưu trữ"}</p><h1>{set.name}</h1><p>{[set.product_name, set.scope, set.description].filter(Boolean).join(" · ") || "Từ tài liệu nguồn đến bộ testcase được duyệt."}</p></div></div></section>
+    <DocumentWorkflowNav key={set.id} setId={set.id} workflow={workflow} active={step} />
+    <div id="workspace-content" className="workspace-content">
+      {step === "documents" ? <DocumentSourceWorkspace key={set.id} setId={set.id} documents={documents} workflow={workflow} maxBytes={documentMaxUploadBytes} /> : null}
+      {step !== "documents" && workflow.blocking_reasons.length ? <div className="notice"><strong>Điều kiện để tiếp tục</strong><ul>{workflow.blocking_reasons.map((reason) => <li key={reason.code}>{blockerCopy[reason.code] ?? reason.message}</li>)}</ul><Link href={`/documents/${set.id}?step=documents`}>Xem và xử lý nguồn</Link><p>Dữ liệu đã có vẫn xem được; các thao tác mới kiểm tra điều kiện tại server.</p></div> : null}
+      {step === "requirements" ? <>
+        <p>Yêu cầu được AI tạo dưới dạng nháp. Mở từng yêu cầu để kiểm tra evidence và duyệt; phần conflict/TBD cần được làm rõ.</p>
+        <Link className="button secondary" href={`/documents/${id}/requirements`}>Xem chi tiết conflict và câu hỏi cần làm rõ</Link>
+        {requirements.length ? <RequirementInventory setId={set.id} requirements={requirements} documents={documents} /> : <EmptyState title="Chưa có yêu cầu" message="Quay về Tài liệu để xem nguồn và bấm Trích xuất yêu cầu. Kết quả sẽ tự xuất hiện khi xử lý xong." />}
+        <Link className="button" href={`/documents/${id}?step=test-cases`}>Tiếp tục đến testcase · {approvedRequirements} yêu cầu đã duyệt</Link>
+      </> : null}
+      {step === "test-cases" ? <>
+        <p>Sinh testcase cho {approvedRequirements} yêu cầu đã duyệt. Yêu cầu chưa duyệt không được tự đưa vào phạm vi.</p>
+        <WorkflowOperationAction setId={id} operation="GENERATE_TESTCASES" label={cases.length ? "Sinh lại từ yêu cầu đã duyệt" : "Sinh testcase từ yêu cầu đã duyệt"} activeLabel="Đang sinh testcase…" initialJob={generation} disabled={!workflow.capabilities.can_generate} canRetry={workflow.capabilities.can_retry_job} canCancel={workflow.capabilities.can_cancel_job} />
+        {cases.length ? <TestCaseWorkspace setId={set.id} testCases={cases} canReview={workflow.capabilities.can_review} /> : <EmptyState title="Chưa có testcase" message="Duyệt ít nhất một yêu cầu, sau đó bấm Sinh testcase. AI không tự duyệt kết quả." />}
+        <Link className="button secondary" href={`/documents/${id}/test-cases`}>Xem ma trận coverage và lịch sử kết quả</Link>
+        <Link className="button" href={`/documents/${id}?step=use-export`}>Tiếp tục đến sử dụng / xuất</Link>
+      </> : null}
+      {step === "use-export" ? <>
+        <p>Chốt bộ testcase để cố định các revision được sử dụng. Bộ đã chốt, bản nháp và kết quả chạy được xuất riêng.</p>
+        {cases.length ? <>
+          {workflow.capabilities.can_publish ? <SuiteReleasePublisher setId={set.id} suiteId={cases[0].test_suite_id} testCases={cases} releases={releases} /> : <p className="notice">Cần testcase đã duyệt và quyền reviewer để chốt bộ.</p>}
+          {workflow.capabilities.can_review ? <ExportControls setId={set.id} suiteId={cases[0].test_suite_id} exports={exports} testCases={cases} releases={releases} /> : <p className="notice">Cần quyền reviewer để tạo bản xuất.</p>}
+          <Link className="button secondary" href="/projects">Mở project để gắn bộ đã chốt</Link>
+        </> : <EmptyState title="Chưa có testcase để sử dụng" message="Tạo và duyệt testcase ở bước 3. Testcase chưa chạy sẽ được ghi rõ là Chưa chạy." />}
+      </> : null}
+    </div>
+    <details className="panel workflow-details"><summary>Chi tiết xử lý</summary><div className="panel-body"><Link href={`/documents/${id}/index`}>Mở trình kiểm tra dữ liệu tìm kiếm</Link>
+      {workflow.recent_jobs.slice(0, 5).map((job) => <div key={job.id} className="workflow-job-detail"><p>Job #{job.id} · {job.operation} · {job.completed_units}/{job.total_units} · {job.status}</p>
+        <WorkflowOperationAction key={`${job.id}:${job.status}:${job.revision}`} setId={id} operation={job.operation} label="Thực hiện qua bước nguồn / testcase" activeLabel="Đang xử lý…" initialJob={job} disabled canRetry={workflow.capabilities.can_retry_job} canCancel={workflow.capabilities.can_cancel_job} />
+      </div>)}
+      {workflow.source_intents.slice(0, 5).map((intent) => <p key={intent.id}>Yêu cầu #{intent.id} · {intent.command} · {intent.status}{intent.error_message ? ` · ${intent.error_message}` : ""}</p>)}
+    </div></details>
+    {budget && workflow.capabilities.can_manage ? <section aria-label="Quản lý bộ tài liệu"><h2>Quản lý bộ tài liệu</h2><DocumentLifecycle set={set} budget={budget} /></section> : null}
+  </AppShell>;
 }

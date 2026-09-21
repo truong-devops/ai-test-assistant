@@ -280,6 +280,8 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		mux.HandleFunc("GET /api/document-sets/{id}/ai-budget", documents.aiBudget)
 		mux.HandleFunc("POST /api/document-sets/{id}/documents", documents.upload)
 		mux.HandleFunc("GET /api/document-sets/{id}/documents", documents.listDocuments)
+		mux.HandleFunc("POST /api/document-sets/{id}/documents/{documentID}/versions", documents.upload)
+		mux.HandleFunc("GET /api/document-sets/{id}/documents/{documentID}/versions", documents.listVersions)
 		mux.HandleFunc("GET /api/documents/{id}/versions/{version}", documents.getVersion)
 	}
 	if documentIndexService != nil {
@@ -353,6 +355,7 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 	if documentWorkflowService != nil {
 		workflows := documentWorkflowJobHandler{service: documentWorkflowService}
 		mux.HandleFunc("GET /api/document-sets/{id}/workflow", workflows.read)
+		mux.HandleFunc("POST /api/document-sets/{id}/source-review", workflows.sourceCommand)
 		mux.HandleFunc("POST /api/document-sets/{id}/workflow-operations", workflows.enqueue)
 		mux.HandleFunc("GET /api/document-workflow-jobs/{id}", workflows.get)
 		mux.HandleFunc("POST /api/document-workflow-jobs/{id}/retry", workflows.retry)

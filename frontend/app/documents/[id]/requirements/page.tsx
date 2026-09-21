@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppShell, EmptyState } from "@/components/shell";
 import { RequirementInventory } from "@/components/requirement-inventory";
 import { RequirementExtractionAction } from "@/components/requirement-extraction-action";
+import { DocumentWorkflowNav } from "@/components/document-workflow-nav";
 import { ApiError, getDocuments, getDocumentSet, getDocumentWorkflow, getOpenQuestions, getRequirement, getRequirementConflicts, getRequirements } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ export default async function RequirementsPage({ params }: { params: Promise<{ i
   const drafts = requirements.filter((item) => item.status === "DRAFT").length;
   return (
     <AppShell active="documents">
+      <DocumentWorkflowNav setId={set.id} workflow={workflow} active="requirements" />
       <div className="breadcrumb"><Link href="/documents">Documents</Link><span>/</span><Link href={`/documents/${id}`}>{set.name}</Link><span>/</span><span>Requirements</span></div>
       <div className="page-heading"><div><p className="eyebrow">Phase 4 · Human-owned baseline</p><h1>Requirement inventory</h1><p className="page-description">Requirements are extracted from semantic units, remain draft by default, and carry citations back to immutable source blocks.</p></div><RequirementExtractionAction setId={id} initialJob={extraction} canExtract={workflow.capabilities.can_extract} canRetry={workflow.capabilities.can_retry_job} canCancel={workflow.capabilities.can_cancel_job} /></div>
       <div className="summary-grid"><article className="stat-card accent"><p>Total inventory</p><strong>{requirements.length}</strong><small>Stored requirements</small></article><article className="stat-card"><p>Approved baseline</p><strong>{approved}</strong><small>Eligible for test generation</small></article><article className="stat-card"><p>Draft</p><strong>{drafts}</strong><small>Awaiting PO/BA review</small></article><article className={conflicts.length + questions.length ? "stat-card warning" : "stat-card"}><p>Needs clarification</p><strong>{conflicts.length + questions.length}</strong><small>{conflicts.length} conflicts · {questions.length} TBD</small></article></div>

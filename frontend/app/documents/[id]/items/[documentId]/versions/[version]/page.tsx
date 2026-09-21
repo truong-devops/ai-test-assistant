@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, EmptyState } from "@/components/shell";
 import { StatusBadge } from "@/components/status-badge";
-import { DocumentReview } from "@/components/document-review";
-import { ApiError, getDocumentSet, getDocumentVersion } from "@/lib/api";
+import { DocumentWorkflowNav } from "@/components/document-workflow-nav";
+import { DocumentBlockPreview } from "@/components/document-block-preview";
+import { ApiError, getDocumentSet, getDocumentVersion, getDocumentWorkflow } from "@/lib/api";
 import { formatDate, humanize } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
@@ -20,10 +21,11 @@ export default async function DocumentVersionPage({ params }: {
     throw error;
   }
   if (detail.document.document_set_id !== Number(id)) notFound();
-  const set = await getDocumentSet(id);
+  const [set, workflow] = await Promise.all([getDocumentSet(id), getDocumentWorkflow(id)]);
   const { document, version, blocks } = detail;
   return (
     <AppShell active="documents">
+      <DocumentWorkflowNav setId={set.id} workflow={workflow} active="documents" />
       <div className="breadcrumb"><Link href="/documents">Documents</Link><span>/</span><Link href={`/documents/${set.id}`}>{set.name}</Link><span>/</span><span>{document.name} v{version.version_number}</span></div>
       <section className="project-hero">
         <div className="hero-identity"><span className="project-avatar" aria-hidden="true">v{version.version_number}</span><div><p className="eyebrow">{humanize(document.document_type)}</p><h1>{document.name}</h1><p>{version.original_filename} · {version.size_bytes.toLocaleString("en-US")} bytes · SHA-256 <span className="mono">{version.sha256.slice(0, 12)}…</span></p></div></div>
@@ -37,15 +39,10 @@ export default async function DocumentVersionPage({ params }: {
         </div>
       </section>
       {version.parse_error ? <p className="notice"><strong>Parser error</strong>{version.parse_error}</p> : null}
-      <div className="document-preview-section"><DocumentReview versionId={version.id} /></div>
+      <div className="document-preview-section"><Link className="button" href={`/documents/${set.id}?step=documents`}>Quay lại danh sách để chọn và duyệt nguồn</Link></div>
       <section className="document-preview-section">
         <div className="section-heading"><div><h2>Structured preview</h2><p>Every block keeps a stable locator back to the uploaded source.</p></div><span className="section-counter">{blocks.length} blocks</span></div>
-        {blocks.length ? <div className="document-block-list">{blocks.map((block) => (
-          <article className={`document-block block-${block.block_type.toLowerCase()}`} key={block.id}>
-            <header><span>{block.ordinal}. {humanize(block.block_type)}</span><code>{block.source_locator}</code></header>
-            {block.block_type === "HEADING" ? <h3>{block.content}</h3> : <pre>{block.content}</pre>}
-          </article>
-        ))}</div> : <EmptyState title="No parsed blocks yet" message={version.parse_status === "FAILED" ? "Parsing failed. Check the error above and upload a corrected new version." : "The worker has not completed parsing this version. Refresh after a moment."} />}
+        {blocks.length ? <DocumentBlockPreview blocks={blocks} /> : <EmptyState title="Chưa có nội dung để xem" message={version.parse_status === "FAILED" ? "Không đọc được file. Quay về danh sách để tải phiên bản đã sửa." : "Worker đang đọc tài liệu; trang tự cập nhật khi có nội dung."} />}
       </section>
     </AppShell>
   );

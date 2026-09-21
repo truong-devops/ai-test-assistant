@@ -9,6 +9,7 @@ export function useWorkflowJob(initialJob?: DocumentWorkflowJob,
   onTerminal?: (job: DocumentWorkflowJob) => void) {
   const [job, setJobState] = useState(initialJob);
   const [pollError, setPollError] = useState("");
+  const [watchEpoch, setWatchEpoch] = useState(0);
   const generation = useRef(0);
   const timer = useRef<number | undefined>(undefined);
   const abort = useRef<AbortController | undefined>(undefined);
@@ -29,7 +30,13 @@ export function useWorkflowJob(initialJob?: DocumentWorkflowJob,
     setPollError("");
     stop();
     setJobState(next);
+    setWatchEpoch((value) => value + 1);
   }, [stop]);
+
+  useEffect(() => {
+    if (initialJob && (!job || initialJob.id > job.id ||
+      (initialJob.id === job.id && initialJob.revision > job.revision))) setJob(initialJob);
+  }, [initialJob?.id, initialJob?.revision, setJob]);
 
   useEffect(() => {
     if (!job || terminal.has(job.status)) return;
@@ -79,7 +86,7 @@ export function useWorkflowJob(initialJob?: DocumentWorkflowJob,
       document.removeEventListener("visibilitychange", visible);
       stop();
     };
-  }, [job?.id, job?.status, stop]);
+  }, [job?.id, job?.status, watchEpoch, stop]);
 
   return { job, setJob, pollError, active: Boolean(job && !terminal.has(job.status)) };
 }

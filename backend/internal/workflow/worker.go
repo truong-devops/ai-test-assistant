@@ -61,6 +61,11 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) runOnce(ctx context.Context) error {
+	if continuation, ok := w.processor.(interface{ AdvanceSources(context.Context) error }); ok {
+		if err := continuation.AdvanceSources(ctx); err != nil {
+			return err
+		}
+	}
 	claimed, err := w.queue.ClaimNext(ctx, w.options.LeaseDuration)
 	if errors.Is(err, ErrNotFound) {
 		return nil

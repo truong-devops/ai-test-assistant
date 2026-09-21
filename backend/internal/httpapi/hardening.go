@@ -36,6 +36,7 @@ func authorizationMiddleware(options RouterOptions, next http.Handler) http.Hand
 		if role == "" {
 			role = "viewer"
 		}
+		r.Header.Set("X-Authenticated-Role", role)
 		if !roleAllowed(role, requiredRole(r)) {
 			writeError(w, http.StatusForbidden, "insufficient role")
 			return

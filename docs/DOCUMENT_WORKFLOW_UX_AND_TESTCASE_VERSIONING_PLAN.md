@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **đang triển khai; UV-00 đến UV-04 đã nghiệm thu, UV-05 là bước kế tiếp**.
+- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 đã triển khai và qua kiểm thử kỹ thuật, còn nghiệm thu usability với người mới. Bước code kế tiếp: UV-06**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -639,40 +639,44 @@ package workflow/job mới, testcase/index handlers, frontend polling hook/proxy
 
 Frontend:
 
-- [ ] Tạo document set xong tự mở workspace mới; field phụ thu gọn.
-- [ ] Thay ba card kỹ thuật bằng stepper bốn bước có counts/status và CTA tiếp tục.
-- [ ] Multi-file upload có progress/result riêng; failed file retry riêng; chọn
+- [x] Tạo document set xong tự mở workspace mới; field phụ thu gọn.
+- [x] Thay ba card kỹ thuật bằng stepper bốn bước có counts/status và CTA tiếp tục.
+- [x] Multi-file upload có progress/result riêng; failed file retry riêng; chọn
   đúng type từng file; giữ giới hạn file hiện có.
-- [ ] Document table có `Xem & duyệt`, `Tải phiên bản mới`, `Lịch sử nguồn`;
+- [x] Document table có `Xem & duyệt`, `Tải phiên bản mới`, `Lịch sử nguồn`;
   phân biệt upload tài liệu mới với thêm version.
-- [ ] Preview có heading/table/source locator, mở cạnh danh sách; luôn hiện version
+- [x] Preview có heading/table/source locator, mở cạnh danh sách; luôn hiện version
   đang đọc và approval trạng thái. Có nút quay lại/duyệt mục tiếp theo.
-- [ ] Approval cho batch chỉ dựa trên các version đã chọn và hash còn đúng;
+- [x] Approval cho batch chỉ dựa trên các version đã chọn và hash còn đúng;
   người dùng có thể xem evidence trước, không auto-select mọi tài liệu.
-- [ ] Parse/index tự cập nhật; chỉ cho vào bước sau khi đủ điều kiện hoặc mở chế độ
+- [x] Parse/index tự cập nhật; chỉ cho vào bước sau khi đủ điều kiện hoặc mở chế độ
   xem lịch sử. Technical inspector đặt trong `Chi tiết xử lý`.
-- [ ] Source approval/extract kết hợp như mục 4; nguồn đã approved hiển thị action
+- [x] Source approval/extract kết hợp như mục 4; nguồn đã approved hiển thị action
   trích xuất phù hợp, không yêu cầu review lặp lại không cần thiết.
-- [ ] Archive/retention/budget chuyển vào phần quản lý, không chen giữa bước upload/review.
-- [ ] Lỗi có thông điệp nghiệp vụ, nút khắc phục và link chi tiết; raw provider JSON
+- [x] Archive/retention/budget chuyển vào phần quản lý, không chen giữa bước upload/review.
+- [x] Lỗi có thông điệp nghiệp vụ, nút khắc phục và link chi tiết; raw provider JSON
   không chiếm vùng hướng dẫn chính.
-- [ ] Đồng nhất empty/loading/error, focus sau chuyển bước, keyboard navigation,
+- [x] Đồng nhất empty/loading/error, focus sau chuyển bước, keyboard navigation,
   label/status không dựa vào màu, bố cục mobile/tablet có bảng scroll được.
 
 Backend hỗ trợ:
 
-- [ ] Document-version upload API nhận đúng document ID và kiểm tra ownership;
+- [x] Document-version upload API nhận đúng document ID và kiểm tra ownership;
   list version phục vụ history, không chỉ newest version.
-- [ ] UI đọc capabilities thực từ server. Reviewer display name có thể ghi nhớ
+- [x] UI đọc capabilities thực từ server. Reviewer display name có thể ghi nhớ
   trong session cục bộ, nhưng không dùng nó để nâng quyền hoặc mạo danh user đăng nhập.
 
 Kiểm tra và Definition of Done:
 
 - [ ] Một người mới tạo bộ, upload và tìm thấy nơi duyệt mà không cần hướng dẫn miệng.
-- [ ] Không cần refresh thủ công, gõ URL version hoặc mở Semantic Index để tiếp tục.
-- [ ] Một file lỗi không biến các file khác thành success giả; scope bị loại hiện rõ.
-- [ ] Direct link trang cũ vẫn hoạt động, breadcrumb/stepper dẫn về đúng set/bước.
-- [ ] Màn 390 px và desktop dùng được bằng chuột/lẫn bàn phím.
+- [x] Không cần refresh thủ công, gõ URL version hoặc mở Semantic Index để tiếp tục.
+- [x] Một file lỗi không biến các file khác thành success giả; scope bị loại hiện rõ.
+- [x] Direct link trang cũ vẫn hoạt động, breadcrumb/stepper dẫn về đúng set/bước.
+- [x] Màn 390 px và desktop dùng được bằng chuột/lẫn bàn phím (browser smoke;
+  chưa thay thế audit accessibility đầy đủ).
+
+Bằng chứng kỹ thuật và giới hạn: [UV05_WORKSPACE_VERIFICATION.md](UV05_WORKSPACE_VERIFICATION.md).
+Checkbox người mới tự sử dụng vẫn để mở cho buổi nghiệm thu thực tế.
 
 File trọng tâm: `frontend/app/documents/`, create/upload/document-review components,
 workflow component/hook mới, source version routes, shared style/status copy.
@@ -997,7 +1001,7 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 - [x] UV-02 — Identity/revision backend, concurrency và migration.
 - [x] UV-03 — Suite release, pinning, coverage/run/export đúng version.
 - [x] UV-04 — Async jobs, retry, progress và workflow API.
-- [ ] UV-05 — Workspace hướng dẫn, upload/review nguồn và navigation.
+- [ ] UV-05 — Code và kiểm thử kỹ thuật đã đạt; còn nghiệm thu người mới tự sử dụng.
 - [ ] UV-06 — Requirement batch review và đối chiếu nguồn.
 - [ ] UV-07 — Testcase history/diff/edit/restore/release UI.
 - [ ] UV-08 — Regenerate/cập nhật có kiểm soát theo scope.

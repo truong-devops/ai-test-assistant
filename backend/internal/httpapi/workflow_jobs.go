@@ -23,6 +23,30 @@ type DocumentWorkflowJobService interface {
 
 type documentWorkflowJobHandler struct{ service DocumentWorkflowJobService }
 
+func (h documentWorkflowJobHandler) sourceCommand(w http.ResponseWriter, r *http.Request) {
+	id, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	service, ok := h.service.(interface {
+		SourceCommand(context.Context, int64, workflowjob.SourceCommand, string, string, string) (workflowjob.SourceIntent, error)
+	})
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "source workflow unavailable")
+		return
+	}
+	var input workflowjob.SourceCommand
+	if !decodeWorkflowJSON(w, r, &input) {
+		return
+	}
+	result, err := service.SourceCommand(r.Context(), id, input, r.Header.Get("Idempotency-Key"), authenticatedRole(r), workflowActor(r))
+	if err != nil {
+		writeWorkflowJobError(w, r, err, "could not review source scope")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"intent": result})
+}
+
 func (h documentWorkflowJobHandler) read(w http.ResponseWriter, r *http.Request) {
 	setID, ok := positiveInt64Path(w, r, "id", "document set")
 	if !ok {

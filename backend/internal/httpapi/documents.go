@@ -209,6 +209,14 @@ func (h documentHandler) upload(w http.ResponseWriter, r *http.Request) {
 		ApprovalStatus: r.FormValue("approval_status"),
 		Filename:       header.Filename,
 	}
+	input.NewDocument = r.FormValue("new_document") == "true"
+	if r.PathValue("documentID") != "" {
+		var valid bool
+		input.DocumentID, valid = positiveInt64Path(w, r, "documentID", "document")
+		if !valid {
+			return
+		}
+	}
 	item, version, err := h.service.Upload(r.Context(), setID, input, file)
 	if err != nil {
 		writeDocumentError(w, err, "could not upload document")
@@ -228,6 +236,30 @@ func (h documentHandler) listDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"documents": results})
+}
+
+func (h documentHandler) listVersions(w http.ResponseWriter, r *http.Request) {
+	setID, ok := positiveInt64Path(w, r, "id", "document set")
+	if !ok {
+		return
+	}
+	documentID, ok := positiveInt64Path(w, r, "documentID", "document")
+	if !ok {
+		return
+	}
+	service, ok := h.service.(interface {
+		ListVersions(context.Context, int64, int64) ([]document.Version, error)
+	})
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "version history unavailable")
+		return
+	}
+	versions, err := service.ListVersions(r.Context(), setID, documentID)
+	if err != nil {
+		writeDocumentError(w, err, "could not list versions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"versions": versions})
 }
 
 func (h documentHandler) getVersion(w http.ResponseWriter, r *http.Request) {

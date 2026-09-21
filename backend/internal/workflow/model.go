@@ -113,6 +113,8 @@ type BlockingReason struct {
 }
 
 type Capabilities struct {
+	CanUpload       bool `json:"can_upload"`
+	CanManage       bool `json:"can_manage"`
 	CanIndex        bool `json:"can_index"`
 	CanExtract      bool `json:"can_extract"`
 	CanGenerate     bool `json:"can_generate"`
@@ -132,6 +134,7 @@ type Step struct {
 }
 
 type ReadModel struct {
+	SourceIntents   []SourceIntent   `json:"source_intents"`
 	DocumentSetID   int64            `json:"document_set_id"`
 	SourceRevision  int64            `json:"source_revision"`
 	Steps           []Step           `json:"steps"`

@@ -1,6 +1,6 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–26.
+> This page documents the schema currently implemented by migrations 1–27.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
@@ -11,7 +11,25 @@
 > exact document-source snapshots, stable testcase families/revisions and
 > immutable suite releases pinned by downstream consumers. Migration 26 adds
 > the shared durable workflow queue, attempt-level usage attribution and the
-> bridge to the existing requirement-extraction scheduler.
+> bridge to the existing requirement-extraction scheduler. Migration 27 adds
+> durable source-review/index/extraction continuations for the guided workspace.
+
+## Source workflow intents (migration 27)
+
+`document_source_intents` persists the user's source command, exact reviewed
+version hashes/states, explicit exclusions, source revision, trusted actor and
+per-set idempotency key. Upload creates an index intent in the version transaction;
+batch review creates audit decisions and its intent in one transaction.
+Index/extraction job IDs refer to migration 26's queue. Worker-only advancement
+uses row locking and stable child enqueue keys, so leaving the browser does not
+lose the continuation or authorize new source versions. Revision/scope changes
+before extraction supersede the intent; explicit job retry reopens only current
+failed continuations. Set deletion cascades intents.
+
+Rollback drops this table and therefore loses pending source continuations.
+Stop new writes and workers and take a backup before any operational rollback;
+do not use `down` as a routine application restart. Existing source versions,
+review audit and workflow jobs remain in their original tables.
 
 PostgreSQL stores metadata and the `pgvector` knowledge index.
 
