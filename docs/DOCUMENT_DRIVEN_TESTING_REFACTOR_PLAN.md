@@ -23,7 +23,10 @@ còn nghiệm thu usability với người mới. Xem
 [bằng chứng UV-05](UV05_WORKSPACE_VERIFICATION.md). UV-06 đã hoàn thành batch review,
 làm rõ conflict/TBD và đối chiếu nguồn với migration 28; kiểm thử backend và browser
 đạt, xem [bằng chứng UV-06](UV06_REQUIREMENT_REVIEW_VERIFICATION.md).
-Bước code tiếp theo là UV-07 (UI version testcase). Tiến độ này không tự đóng
+UV-07 đã có workspace identity/history/diff/edit/restore, preview release và
+kiểm thử browser cả xung đột hai tab; còn nghiệm thu người dùng/screen reader.
+Xem [bằng chứng UV-07](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+Bước code tiếp theo là UV-08 (regenerate có đối chiếu/phạm vi). Tiến độ này không tự đóng
 Definition of Done E2E trên hạ tầng demo thật của kế hoạch hiện tại.
 
 Quy ước checklist:

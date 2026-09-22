@@ -322,9 +322,32 @@ func (r *Repository) ReviewExact(ctx context.Context, id int64, input ReviewInpu
 	if err != nil {
 		return Detail{}, err
 	}
+	family, err := r.lockFamily(ctx, tx, current.FamilyID)
+	if err != nil {
+		return Detail{}, err
+	}
+	if family.Archived {
+		return Detail{}, ErrFamilyArchived
+	}
+	if err = tx.QueryRow(ctx, `SELECT status FROM test_cases WHERE id=$1 FOR UPDATE`, id).Scan(&current.Status); err != nil {
+		return Detail{}, err
+	}
+	if input.Decision == StatusApproved {
+		var blocked bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM test_case_requirement_links WHERE test_case_id=$1 AND cardinality(requirement_review_blockers(requirement_id))>0)`, id).Scan(&blocked); err != nil {
+			return Detail{}, err
+		}
+		if blocked {
+			return Detail{}, ErrReviewBlocked
+		}
+	}
 	if current.ContentHash != input.ExpectedContentHash {
 		return Detail{}, &RevisionConflictError{CurrentRevisionID: current.ID,
 			CurrentHeadToken: current.ContentHash}
+	}
+	if current.Status == input.Decision {
+		_ = tx.Rollback(ctx)
+		return r.Get(ctx, id)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE test_cases SET status=$2,updated_at=NOW() WHERE id=$1`,
 		id, input.Decision); err != nil {
@@ -456,7 +479,17 @@ func (r *Repository) createRevision(ctx context.Context, familyID int64, input C
 		} else {
 			content = applyRevisionPatch(baseContent, *input.Patch)
 		}
+		if err := validateRevisionSize(content); err != nil {
+			return RevisionResult{}, err
+		}
 		content, err = r.validateRevisionContent(ctx, tx, family.DocumentSetID, content, true)
+		if err == nil && content.ExpectedResult != source.ExpectedResult {
+			var grounded bool
+			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM requirements r WHERE r.id=ANY($1) AND r.status='APPROVED' AND (btrim(r.statement)=$2 OR EXISTS(SELECT 1 FROM requirement_flow_steps s WHERE s.requirement_id=r.id AND btrim(s.expected_result)=$2)))`, content.RequirementRevisionIDs, content.ExpectedResult).Scan(&grounded)
+			if err == nil && !grounded {
+				return RevisionResult{}, &ValidationError{Field: "expected_result", Message: "Kết quả mong đợi mới phải có trong requirement/flow đã duyệt. Hãy làm rõ và duyệt requirement trước."}
+			}
+		}
 		if err == nil && source.ID == head.ID && revisionContentsEqual(baseContent, content) {
 			if _, err = tx.Exec(ctx, `INSERT INTO test_case_revision_commands
 				(family_id,operation,idempotency_key,request_hash,result_revision_id)
@@ -504,6 +537,9 @@ func (r *Repository) insertRevision(ctx context.Context, tx pgx.Tx, family Famil
 	assumptions, _ := json.Marshal(content.Assumptions)
 	provenanceJSON, _ := json.Marshal(provenance)
 	expectedHash := hash(content.ExpectedResult)
+	if parentID != nil && template.AutomationStatus == "AUTOMATED" {
+		template.AutomationStatus = "AUTOMATABLE"
+	}
 	var result TestCase
 	err := tx.QueryRow(ctx, `INSERT INTO test_cases
 		(test_suite_id,document_set_id,test_case_key,version_number,title,test_type,risk,

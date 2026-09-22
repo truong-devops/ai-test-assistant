@@ -33,6 +33,24 @@ type canonicalRevisionPayload struct {
 	SourceSnapshotID       *int64                 `json:"source_snapshot_id"`
 }
 
+// Limit new editor payloads without making historical revisions unreadable.
+func validateRevisionSize(input RevisionContent) error {
+	if len(input.Steps) > 200 || len(input.RequirementRevisionIDs) > 200 || len(input.EvidenceRefs) > 500 || len(input.Assumptions) > 100 {
+		return &ValidationError{Field: "steps", Message: "Tối đa 200 bước/requirements, 500 citations và 100 assumptions."}
+	}
+	for field, value := range map[string]string{"title": input.Title, "actor": input.Actor, "precondition": input.Precondition, "test_data": input.TestData, "expected_result": input.ExpectedResult, "postcondition": input.Postcondition} {
+		if len(value) > 16000 {
+			return &ValidationError{Field: field, Message: "Nội dung mỗi trường tối đa 16000 bytes."}
+		}
+	}
+	for _, step := range input.Steps {
+		if len(step.Action) > 16000 || len(step.ExpectedResult) > 16000 {
+			return &ValidationError{Field: "steps", Message: "Nội dung mỗi bước tối đa 16000 bytes."}
+		}
+	}
+	return nil
+}
+
 func normalizeRevisionContent(input RevisionContent) (RevisionContent, error) {
 	input.Title = canonicalText(input.Title)
 	input.TestType = strings.ToUpper(strings.TrimSpace(input.TestType))

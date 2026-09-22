@@ -106,6 +106,19 @@ func (r *Repository) Get(ctx context.Context, id int64) (Detail, error) {
 	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM test_case_requirement_links WHERE test_case_id=$1 AND NOT requirement_is_current(requirement_id))`, id).Scan(&detail.TestCase.NeedsSourceReview); err != nil {
 		return Detail{}, err
 	}
+	var execution ExecutionState
+	err := r.pool.QueryRow(ctx, `SELECT run.id,item.status,item.actual_result,
+		COALESCE(run.finished_at,run.started_at,run.requested_at)
+		FROM test_run_items item JOIN test_runs run ON run.id=item.test_run_id
+		WHERE item.test_case_id=$1
+		ORDER BY COALESCE(run.finished_at,run.started_at,run.requested_at) DESC,
+		item.attempt_number DESC,item.id DESC LIMIT 1`, id).
+		Scan(&execution.TestRunID, &execution.Status, &execution.ActualResult, &execution.RunAt)
+	if err == nil {
+		detail.TestCase.LatestExecution = &execution
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return Detail{}, fmt.Errorf("get revision execution: %w", err)
+	}
 	stepRows, err := r.pool.Query(ctx, `SELECT id,test_case_id,ordinal,action,expected_result,
 		created_at FROM test_case_steps WHERE test_case_id=$1 ORDER BY ordinal`, id)
 	if err != nil {

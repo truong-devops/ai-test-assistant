@@ -37,6 +37,17 @@ const releaseTestCaseColumnList = `t.id,t.test_suite_id,t.document_set_id,t.test
 func (r *Repository) PublishRelease(ctx context.Context, setID int64, input PublishReleaseInput,
 	idempotencyKey, actor string,
 ) (SuiteRelease, bool, error) {
+	return r.prepareRelease(ctx, setID, input, idempotencyKey, actor, false)
+}
+
+func (s *Service) PreviewRelease(ctx context.Context, setID int64, input PublishReleaseInput, actor string) (SuiteRelease, error) {
+	result, _, err := s.repository.prepareRelease(ctx, setID, input, "preview", actor, true)
+	return result, err
+}
+
+func (r *Repository) prepareRelease(ctx context.Context, setID int64, input PublishReleaseInput,
+	idempotencyKey, actor string, preview bool,
+) (SuiteRelease, bool, error) {
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	input.PublishedBy = strings.TrimSpace(input.PublishedBy)
 	input.ScopeDecision = strings.TrimSpace(input.ScopeDecision)
@@ -145,7 +156,7 @@ func (r *Repository) PublishRelease(ctx context.Context, setID int64, input Publ
 	err = tx.QueryRow(ctx, `SELECT id,request_hash FROM test_suite_releases
 		WHERE test_suite_id=$1 AND idempotency_key=$2`, input.TestSuiteID, idempotencyKey).
 		Scan(&existingID, &existingRequestHash)
-	if err == nil {
+	if err == nil && !preview {
 		if existingRequestHash != requestHash {
 			return SuiteRelease{}, false, ErrIdempotencyConflict
 		}
@@ -155,18 +166,18 @@ func (r *Repository) PublishRelease(ctx context.Context, setID int64, input Publ
 		release, err := r.GetRelease(ctx, existingID)
 		return release, false, err
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return SuiteRelease{}, false, err
 	}
 	if err := tx.QueryRow(ctx, `SELECT id FROM test_suite_releases
 		WHERE test_suite_id=$1 AND manifest_hash=$2`, input.TestSuiteID, manifestHash).
-		Scan(&existingID); err == nil {
+		Scan(&existingID); err == nil && !preview {
 		if err := tx.Commit(ctx); err != nil {
 			return SuiteRelease{}, false, err
 		}
 		release, loadErr := r.GetRelease(ctx, existingID)
 		return release, false, loadErr
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return SuiteRelease{}, false, err
 	}
 
@@ -203,9 +214,29 @@ func (r *Repository) PublishRelease(ctx context.Context, setID int64, input Publ
 	scopeStatus := ReleaseScopeComplete
 	if len(uncoveredIDs) > 0 {
 		scopeStatus = ReleaseScopePartial
-		if input.ScopeDecision == "" {
+		if input.ScopeDecision == "" && !preview {
 			return SuiteRelease{}, false, ErrReleaseScope
 		}
+	}
+	var sourceRevision int64
+	if err := tx.QueryRow(ctx, `SELECT source_revision FROM document_sets WHERE id=$1`, setID).Scan(&sourceRevision); err != nil {
+		return SuiteRelease{}, false, err
+	}
+	previewBytes, _ := json.Marshal(struct {
+		Manifest           string
+		SourceRevision     int64
+		Covered, Uncovered []int64
+	}{manifestHash, sourceRevision, coveredIDs, uncoveredIDs})
+	previewHash := hash(string(previewBytes))
+	if preview {
+		items := make([]ReleaseItem, 0, len(revisions))
+		for i, item := range revisions {
+			items = append(items, ReleaseItem{FamilyID: item.FamilyID, TestCaseID: item.ID, Ordinal: i + 1, PublicKey: item.TestCaseKey, RevisionNumber: item.VersionNumber, ContentHash: item.ContentHash, ExpectedResultHash: item.ExpectedResultHash, Revision: item})
+		}
+		return SuiteRelease{PreviewHash: previewHash, TestSuiteID: input.TestSuiteID, DocumentSetID: setID, SourceSnapshotID: &sourceSnapshotID, ManifestHash: manifestHash, ScopeStatus: scopeStatus, ApprovedRequirementCount: approvedCount, CoveredRequirementCount: len(coveredIDs), UncoveredRequirementIDs: uncoveredIDs, Items: items}, false, nil
+	}
+	if input.ExpectedPreviewHash != "" && input.ExpectedPreviewHash != previewHash {
+		return SuiteRelease{}, false, ErrPreviewChanged
 	}
 	var releaseNumber int
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(max(release_number),0)+1

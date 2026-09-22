@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import type { BusinessTestCase, SuiteRelease, TestExport } from "@/lib/types";
 import { formatDate } from "@/lib/presentation";
 
@@ -12,7 +12,19 @@ type Props = {
   releases: SuiteRelease[];
 };
 
-export function ExportControls({ setId, suiteId, exports, testCases, releases }: Props) {
+export function ExportControls({ setId, suiteId, exports, testCases, releases: initialReleases }: Props) {
+  const [releases, setReleases] = useState(initialReleases);
+  useEffect(() => {
+    const abort = new AbortController();
+    const reload = async () => {
+      try {
+        const response = await fetch(`/api/backend/api/document-sets/${setId}/suite-releases`, {signal:abort.signal, cache:"no-store"});
+        if (response.ok) setReleases((await response.json()).releases);
+      } catch { /* Keep prior release choices; retry after next publication. */ }
+    };
+    window.addEventListener("document-workspace-updated", reload);
+    return () => { abort.abort(); window.removeEventListener("document-workspace-updated", reload); };
+  }, [setId]);
   const [format, setFormat] = useState<"XLSX" | "MARKDOWN">("XLSX");
   const [generatedBy, setGeneratedBy] = useState("");
   const [error, setError] = useState("");

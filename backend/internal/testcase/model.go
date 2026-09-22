@@ -33,6 +33,7 @@ var (
 	ErrFamilyArchived      = errors.New("test case family is archived")
 	ErrEvidenceInvalid     = errors.New("test case evidence is invalid or outside the family scope")
 	ErrReleaseScope        = errors.New("suite release scope is incomplete or inconsistent")
+	ErrPreviewChanged      = errors.New("release preview changed; preview the selected scope again")
 )
 
 type Suite struct {
@@ -51,6 +52,7 @@ const (
 )
 
 type SuiteRelease struct {
+	PreviewHash              string        `json:"preview_hash,omitempty"`
 	ID                       int64         `json:"id"`
 	TestSuiteID              int64         `json:"test_suite_id"`
 	DocumentSetID            int64         `json:"document_set_id"`
@@ -83,11 +85,12 @@ type ReleaseItem struct {
 }
 
 type PublishReleaseInput struct {
-	TestSuiteID      int64   `json:"test_suite_id"`
-	SourceSnapshotID *int64  `json:"source_snapshot_id,omitempty"`
-	RevisionIDs      []int64 `json:"revision_ids"`
-	PublishedBy      string  `json:"published_by"`
-	ScopeDecision    string  `json:"scope_decision,omitempty"`
+	ExpectedPreviewHash string  `json:"expected_preview_hash,omitempty"`
+	TestSuiteID         int64   `json:"test_suite_id"`
+	SourceSnapshotID    *int64  `json:"source_snapshot_id,omitempty"`
+	RevisionIDs         []int64 `json:"revision_ids"`
+	PublishedBy         string  `json:"published_by"`
+	ScopeDecision       string  `json:"scope_decision,omitempty"`
 }
 
 type TestCase struct {
