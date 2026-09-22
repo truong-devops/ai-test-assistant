@@ -71,9 +71,15 @@ func (r *Repository) SaveGenerated(ctx context.Context, suite Suite, proposal Pr
 		TestType: content.TestType, Risk: content.Risk,
 		AutomationStatus: defaultString(proposal.AutomationStatus, "MANUAL"),
 		Confidence:       proposal.Confidence, GeneratedBy: defaultString(proposal.GeneratedBy, "RULE_ENGINE")}
+	provenance := map[string]any{"operation": "GENERATE", "requirement_revision_ids": content.RequirementRevisionIDs}
+	if proposal.Generation != nil {
+		provenance["generation"] = proposal.Generation
+		// Keep the UV-07 timeline's model field readable without changing old revisions.
+		provenance["model"] = proposal.Generation.Model
+	}
 	result, err := r.insertRevision(ctx, tx, family, content, template, 1, nil, nil,
 		template.GeneratedBy, "Generated from approved requirement revisions", contentHash,
-		map[string]any{"operation": "GENERATE", "requirement_revision_ids": content.RequirementRevisionIDs})
+		provenance)
 	if err != nil {
 		return TestCase{}, false, err
 	}

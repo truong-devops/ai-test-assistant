@@ -177,21 +177,42 @@ type Detail struct {
 }
 
 type Proposal struct {
-	Title            string   `json:"title"`
-	TestType         string   `json:"test_type"`
-	Risk             string   `json:"risk"`
-	Actor            string   `json:"actor"`
-	Precondition     string   `json:"precondition"`
-	TestData         string   `json:"test_data"`
-	ExpectedResult   string   `json:"expected_result"`
-	Postcondition    string   `json:"postcondition"`
-	AutomationStatus string   `json:"automation_status"`
-	Confidence       float64  `json:"confidence"`
-	GeneratedBy      string   `json:"-"`
-	Assumptions      []string `json:"assumptions"`
-	Steps            []Step   `json:"steps"`
-	RequirementIDs   []int64  `json:"-"`
-	RequirementKeys  []string `json:"-"`
+	Generation       *GenerationProvenance `json:"-"`
+	Title            string                `json:"title"`
+	TestType         string                `json:"test_type"`
+	Risk             string                `json:"risk"`
+	Actor            string                `json:"actor"`
+	Precondition     string                `json:"precondition"`
+	TestData         string                `json:"test_data"`
+	ExpectedResult   string                `json:"expected_result"`
+	Postcondition    string                `json:"postcondition"`
+	AutomationStatus string                `json:"automation_status"`
+	Confidence       float64               `json:"confidence"`
+	GeneratedBy      string                `json:"-"`
+	Assumptions      []string              `json:"assumptions"`
+	Steps            []Step                `json:"steps"`
+	RequirementIDs   []int64               `json:"-"`
+	RequirementKeys  []string              `json:"-"`
+}
+
+// GenerationBaseline is supplied by the durable workflow, never by model output.
+type GenerationBaseline struct {
+	RequirementIDs []int64
+	WorkflowJobID  int64
+	InputHash      string
+	SourceRevision int64
+}
+
+type GenerationProvenance struct {
+	Provider              string `json:"provider"`
+	Model                 string `json:"model"`
+	PromptVersion         string `json:"prompt_version"`
+	PromptHash            string `json:"prompt_hash"`
+	ResponseHash          string `json:"response_hash,omitempty"`
+	RequirementReviewHash string `json:"requirement_review_hash,omitempty"`
+	WorkflowJobID         int64  `json:"workflow_job_id,omitempty"`
+	WorkflowInputHash     string `json:"workflow_input_hash,omitempty"`
+	SourceRevision        int64  `json:"source_revision,omitempty"`
 }
 
 type GenerateSummary struct {

@@ -87,7 +87,7 @@ extraction worker -> retrieve per semantic unit -> strict schema/rule extractor
 
 approved requirements -> generator per requirement/flow
                       -> grounded expected result + steps + source links
-                      -> exact/semantic dedupe -> QA review/versioning
+                      -> exact scenario/source dedupe -> QA review/versioning
                       -> database-derived coverage matrix
 
 approved testcase revisions -> immutable suite release manifest

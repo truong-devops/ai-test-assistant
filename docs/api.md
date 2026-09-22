@@ -183,6 +183,35 @@ budget state has since changed; reusing it for a different command returns a
 conflict. Legacy synchronous mutation routes remain available during migration
 and advertise deprecation/link headers pointing clients to this API.
 
+### Selected generation input (UV-08 foundation)
+
+`POST /api/document-sets/{id}/workflow-operations` accepts an optional
+`requirement_ids` field for `GENERATE_TESTCASES` only:
+
+```json
+{"operation":"GENERATE_TESTCASES","requirement_ids":[42,43]}
+```
+
+Send `Idempotency-Key` as usual. A nonempty selection must contain 1–100 unique
+positive IDs, all owned by this document set, current, approved and unblocked;
+the server never silently drops invalid selections. Invalid IDs/duplicates or
+more than 100 return 400; unavailable/foreign/unapproved items return
+`422 GENERATION_SELECTION_BLOCKED`. Reordered identical selections replay the
+same job; changing the selection or switching to all-baseline with the same key
+returns 409. Omitted/empty selection retains the legacy all-approved-current scope.
+
+The snapshot stores the explicit selection, exact revision/source metadata and
+input hash. The worker validates this snapshot and then loads only its recorded
+IDs, not a new live inventory. It preloads all requirements before calling a
+provider. A requirement approved outside an explicit selection does not expand
+the job. New drafts include server-built generation provider/model/prompt-version,
+prompt/response hashes and workflow input provenance; the existing AI-call log
+retains the actual prompt/schema/response. Model output cannot set this provenance.
+
+This is a foundation, not the full regeneration proposal API: generation still
+saves drafts through the existing service. Affected-case scope, classifications,
+review/apply endpoints and the scope UI are pending. No new migration is required.
+
 ### Source review and guided workspace (UV-05)
 
 `GET /api/document-sets/{id}/workflow` also returns `source_intents` (latest 20)

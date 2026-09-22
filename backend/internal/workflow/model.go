@@ -97,6 +97,7 @@ type Usage struct {
 
 type OperationInput struct {
 	Operation          string  `json:"operation"`
+	RequirementIDs     []int64 `json:"requirement_ids,omitempty"`
 	RequestedBy        string  `json:"requested_by,omitempty"`
 	ExcludedVersionIDs []int64 `json:"excluded_version_ids,omitempty"`
 }

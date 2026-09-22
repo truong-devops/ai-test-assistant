@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật. UV-07 đã triển khai và qua kiểm thử kỹ thuật ngày 22/09/2026, còn nghiệm thu người dùng/screen reader. Bước code kế tiếp: UV-08**.
+- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật. UV-07 đã qua kiểm thử kỹ thuật, còn nghiệm thu người dùng/screen reader. UV-08 đang triển khai: đã có nền generation pin exact requirements và bỏ semantic auto-merge; proposal/apply/UI chưa hoàn thành**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -775,6 +775,14 @@ export controls, API types; không tạo revision bằng logic riêng trên fron
 **Mục tiêu:** tài liệu thay đổi tạo đề xuất có kiểm soát, không tích lũy case trùng
 hoặc âm thầm thay bản đang dùng.
 
+Tiến độ chặng nền (22/09/2026): worker đã dùng exact IDs trong job thay vì list lại
+baseline live; API nhận optional `requirement_ids` (1–100), kiểm tra ownership/
+approval/current và idempotency theo scope. Dedupe trong generation không còn gộp
+theo title/expected gần giống hoặc tự merge nguồn. Revision mới lưu generation
+provenance. Chưa có proposal persistence/classification/apply hoặc UI chọn scope;
+không đánh dấu các mục gộp dưới đây hoàn tất chỉ vì đã có một phần nền.
+Xem [UV08_GENERATION_FOUNDATION_VERIFICATION.md](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
+
 Backend:
 
 - [ ] Generation job pin requirement/source snapshot; lưu input/version/prompt/output
@@ -1015,7 +1023,7 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 - [ ] UV-05 — Code và kiểm thử kỹ thuật đã đạt; còn nghiệm thu người mới tự sử dụng.
 - [x] UV-06 — Requirement batch review và đối chiếu nguồn; kiểm thử kỹ thuật đạt 22/09/2026.
 - [ ] UV-07 — Code và kiểm thử kỹ thuật đạt; còn nghiệm thu phân biệt version với người dùng và screen reader.
-- [ ] UV-08 — Regenerate/cập nhật có kiểm soát theo scope.
+- [ ] UV-08 — Đã có nền pinned generation/selected requirements/safe dedupe; còn proposal classification/apply và UI theo scope.
 - [ ] UV-09 — Browser E2E, usability, migration drill và rollout.
 
 Mỗi lần hoàn thành phase, điền bên dưới hoặc tạo subsection theo phase:
@@ -1132,3 +1140,15 @@ dấu hết checklist code chưa thay thế bằng chứng đó.
   Chi tiết fixture/script/ảnh: [UV07_TESTCASE_VERSIONING_VERIFICATION.md](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
 - Chưa đóng phase: còn nghiệm thu screen reader và người mới phân biệt các loại
   version; không tự đóng UV-05 usability hay E2E provider/SCM/sandbox thật.
+
+### Tiến độ UV-08 — chặng nền, 22/09/2026
+
+- Worker dùng exact requirement IDs đã pin; API hỗ trợ optional selected IDs và
+  idempotency theo scope. Nguồn thêm trong lúc AI chạy không mở rộng input.
+- Bỏ semantic auto-merge trước persist: khác data/steps/source vẫn giữ độc lập.
+  Revision mới ghi generation provenance; replay không thay head do QA sửa.
+- Unit/vet/typecheck và PostgreSQL integration đã chạy; chi tiết tại
+  [UV08_GENERATION_FOUNDATION_VERIFICATION.md](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
+- Chưa commit, chưa migration mới, chưa UI scope/proposal hoặc apply CAS. UV-08
+  còn mở; bước tiếp theo là persist/classify proposals và apply trên expected head,
+  sau đó mới nối bảng đối chiếu/phạm vi và retry từng unit vào UI.
