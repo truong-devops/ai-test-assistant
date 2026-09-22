@@ -14,7 +14,8 @@ const genericMaxBodyBytes = 2 * 1024 * 1024;
 class ProxyBodyTooLarge extends Error {}
 
 function isDocumentUpload(path: string[]): boolean {
-  return path.length === 4 && path[0] === "api" && path[1] === "document-sets" && path[3] === "documents";
+  return path[0] === "api" && path[1] === "document-sets" && path[3] === "documents" &&
+    (path.length === 4 || (path.length === 6 && path[5] === "versions"));
 }
 
 async function boundedRequestBody(request: NextRequest, maxBytes: number): Promise<ArrayBuffer | undefined> {

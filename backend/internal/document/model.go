@@ -175,6 +175,8 @@ type CreateSetInput struct {
 }
 
 type UploadInput struct {
+	DocumentID     int64
+	NewDocument    bool
 	DocumentName   string
 	DocumentType   string
 	ApprovalStatus string

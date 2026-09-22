@@ -337,16 +337,33 @@ func (r *PostgresRepository) CreateVersion(ctx context.Context, setID int64, inp
 	}
 
 	var item Document
-	err = tx.QueryRow(ctx, `INSERT INTO documents (document_set_id, name, document_type)
+	if input.DocumentID > 0 {
+		err = tx.QueryRow(ctx, `SELECT id,document_set_id,name,document_type,created_at,updated_at
+			FROM documents WHERE id=$1 AND document_set_id=$2 FOR UPDATE`, input.DocumentID, setID).
+			Scan(&item.ID, &item.DocumentSetID, &item.Name, &item.DocumentType, &item.CreatedAt, &item.UpdatedAt)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Document{}, Version{}, ErrNotFound
+		}
+	} else if input.NewDocument {
+		err = tx.QueryRow(ctx, `INSERT INTO documents(document_set_id,name,document_type)
+			VALUES($1,$2,$3) RETURNING id,document_set_id,name,document_type,created_at,updated_at`,
+			setID, input.DocumentName, input.DocumentType).
+			Scan(&item.ID, &item.DocumentSetID, &item.Name, &item.DocumentType, &item.CreatedAt, &item.UpdatedAt)
+		if uniqueViolation(err) {
+			return Document{}, Version{}, ErrAlreadyExists
+		}
+	} else {
+		err = tx.QueryRow(ctx, `INSERT INTO documents (document_set_id, name, document_type)
 		VALUES ($1,$2,$3)
 		ON CONFLICT (document_set_id, name) DO UPDATE SET updated_at=NOW()
 		RETURNING id, document_set_id, name, document_type, created_at, updated_at`,
-		setID, input.DocumentName, input.DocumentType).Scan(&item.ID, &item.DocumentSetID,
-		&item.Name, &item.DocumentType, &item.CreatedAt, &item.UpdatedAt)
+			setID, input.DocumentName, input.DocumentType).Scan(&item.ID, &item.DocumentSetID,
+			&item.Name, &item.DocumentType, &item.CreatedAt, &item.UpdatedAt)
+	}
 	if err != nil {
 		return Document{}, Version{}, fmt.Errorf("create or load document: %w", err)
 	}
-	if item.DocumentType != input.DocumentType {
+	if input.DocumentID == 0 && item.DocumentType != input.DocumentType {
 		return Document{}, Version{}, fmt.Errorf("%w: document name already uses type %s",
 			ErrInvalidInput, item.DocumentType)
 	}
@@ -373,6 +390,13 @@ func (r *PostgresRepository) CreateVersion(ctx context.Context, setID int64, inp
 			return Document{}, Version{}, ErrAlreadyExists
 		}
 		return Document{}, Version{}, fmt.Errorf("create document version: %w", err)
+	}
+	// The continuation is committed with the upload; opening a page never schedules work.
+	if _, err := tx.Exec(ctx, `INSERT INTO document_source_intents
+		(document_set_id,source_revision,command,request,idempotency_key,requested_by)
+		SELECT id,source_revision,'INDEX','{}'::jsonb,'upload:'||$2::bigint::text,'UPLOAD'
+		FROM document_sets WHERE id=$1`, setID, version.ID); err != nil {
+		return Document{}, Version{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Document{}, Version{}, fmt.Errorf("commit document upload: %w", err)

@@ -61,6 +61,7 @@ export function WorkflowOperationAction({ setId, operation, label, activeLabel,
         throw new Error(result.message ?? result.error ?? `Request failed (${response.status})`);
       }
       setJob(result.job);
+      command.current = undefined;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not reach the workflow API.");
     } finally {
@@ -106,6 +107,7 @@ export function WorkflowOperationAction({ setId, operation, label, activeLabel,
       Hoàn tất · {job.completed_units}/{job.total_units} units
     </small> : null}
     {error || pollError || (job?.status === "FAILED" ? job.error_message : "") ?
-      <small className="form-error" role="alert">{error || pollError || job?.error_message}</small> : null}
+      <div><p className="form-error" role="alert">{pollError ? "Chưa cập nhật được tiến độ. Kiểm tra kết nối; tác vụ trên server vẫn được giữ." : "Chưa hoàn tất thao tác. Kiểm tra điều kiện nguồn/quyền và ngân sách; dùng Thử lại bước lỗi khi có."}</p>
+        <details><summary>Chi tiết lỗi xử lý</summary><pre className="source-text">{error || pollError || job?.error_message}</pre></details></div> : null}
   </div>;
 }

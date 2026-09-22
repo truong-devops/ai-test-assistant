@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **đang triển khai; UV-00 đến UV-04 đã nghiệm thu, UV-05 là bước kế tiếp**.
+- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 đã triển khai và qua kiểm thử kỹ thuật, còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật ngày 22/09/2026. Bước code kế tiếp: UV-07**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -639,40 +639,44 @@ package workflow/job mới, testcase/index handlers, frontend polling hook/proxy
 
 Frontend:
 
-- [ ] Tạo document set xong tự mở workspace mới; field phụ thu gọn.
-- [ ] Thay ba card kỹ thuật bằng stepper bốn bước có counts/status và CTA tiếp tục.
-- [ ] Multi-file upload có progress/result riêng; failed file retry riêng; chọn
+- [x] Tạo document set xong tự mở workspace mới; field phụ thu gọn.
+- [x] Thay ba card kỹ thuật bằng stepper bốn bước có counts/status và CTA tiếp tục.
+- [x] Multi-file upload có progress/result riêng; failed file retry riêng; chọn
   đúng type từng file; giữ giới hạn file hiện có.
-- [ ] Document table có `Xem & duyệt`, `Tải phiên bản mới`, `Lịch sử nguồn`;
+- [x] Document table có `Xem & duyệt`, `Tải phiên bản mới`, `Lịch sử nguồn`;
   phân biệt upload tài liệu mới với thêm version.
-- [ ] Preview có heading/table/source locator, mở cạnh danh sách; luôn hiện version
+- [x] Preview có heading/table/source locator, mở cạnh danh sách; luôn hiện version
   đang đọc và approval trạng thái. Có nút quay lại/duyệt mục tiếp theo.
-- [ ] Approval cho batch chỉ dựa trên các version đã chọn và hash còn đúng;
+- [x] Approval cho batch chỉ dựa trên các version đã chọn và hash còn đúng;
   người dùng có thể xem evidence trước, không auto-select mọi tài liệu.
-- [ ] Parse/index tự cập nhật; chỉ cho vào bước sau khi đủ điều kiện hoặc mở chế độ
+- [x] Parse/index tự cập nhật; chỉ cho vào bước sau khi đủ điều kiện hoặc mở chế độ
   xem lịch sử. Technical inspector đặt trong `Chi tiết xử lý`.
-- [ ] Source approval/extract kết hợp như mục 4; nguồn đã approved hiển thị action
+- [x] Source approval/extract kết hợp như mục 4; nguồn đã approved hiển thị action
   trích xuất phù hợp, không yêu cầu review lặp lại không cần thiết.
-- [ ] Archive/retention/budget chuyển vào phần quản lý, không chen giữa bước upload/review.
-- [ ] Lỗi có thông điệp nghiệp vụ, nút khắc phục và link chi tiết; raw provider JSON
+- [x] Archive/retention/budget chuyển vào phần quản lý, không chen giữa bước upload/review.
+- [x] Lỗi có thông điệp nghiệp vụ, nút khắc phục và link chi tiết; raw provider JSON
   không chiếm vùng hướng dẫn chính.
-- [ ] Đồng nhất empty/loading/error, focus sau chuyển bước, keyboard navigation,
+- [x] Đồng nhất empty/loading/error, focus sau chuyển bước, keyboard navigation,
   label/status không dựa vào màu, bố cục mobile/tablet có bảng scroll được.
 
 Backend hỗ trợ:
 
-- [ ] Document-version upload API nhận đúng document ID và kiểm tra ownership;
+- [x] Document-version upload API nhận đúng document ID và kiểm tra ownership;
   list version phục vụ history, không chỉ newest version.
-- [ ] UI đọc capabilities thực từ server. Reviewer display name có thể ghi nhớ
+- [x] UI đọc capabilities thực từ server. Reviewer display name có thể ghi nhớ
   trong session cục bộ, nhưng không dùng nó để nâng quyền hoặc mạo danh user đăng nhập.
 
 Kiểm tra và Definition of Done:
 
 - [ ] Một người mới tạo bộ, upload và tìm thấy nơi duyệt mà không cần hướng dẫn miệng.
-- [ ] Không cần refresh thủ công, gõ URL version hoặc mở Semantic Index để tiếp tục.
-- [ ] Một file lỗi không biến các file khác thành success giả; scope bị loại hiện rõ.
-- [ ] Direct link trang cũ vẫn hoạt động, breadcrumb/stepper dẫn về đúng set/bước.
-- [ ] Màn 390 px và desktop dùng được bằng chuột/lẫn bàn phím.
+- [x] Không cần refresh thủ công, gõ URL version hoặc mở Semantic Index để tiếp tục.
+- [x] Một file lỗi không biến các file khác thành success giả; scope bị loại hiện rõ.
+- [x] Direct link trang cũ vẫn hoạt động, breadcrumb/stepper dẫn về đúng set/bước.
+- [x] Màn 390 px và desktop dùng được bằng chuột/lẫn bàn phím (browser smoke;
+  chưa thay thế audit accessibility đầy đủ).
+
+Bằng chứng kỹ thuật và giới hạn: [UV05_WORKSPACE_VERIFICATION.md](UV05_WORKSPACE_VERIFICATION.md).
+Checkbox người mới tự sử dụng vẫn để mở cho buổi nghiệm thu thực tế.
 
 File trọng tâm: `frontend/app/documents/`, create/upload/document-review components,
 workflow component/hook mới, source version routes, shared style/status copy.
@@ -683,36 +687,40 @@ workflow component/hook mới, source version routes, shared style/status copy.
 
 Backend:
 
-- [ ] Bulk-review theo exact revision IDs/hash; giới hạn batch, trả kết quả từng
+- [x] Bulk-review theo exact revision IDs/hash; giới hạn batch, trả kết quả từng
   item rõ ràng. Partial success phải audit được, retry bỏ qua decision đã áp dụng.
-- [ ] Điều kiện approval có ít nhất đúng evidence hợp lệ theo policy; conflict/TBD
+- [x] Điều kiện approval có ít nhất đúng evidence hợp lệ theo policy; conflict/TBD
   cần resolution/answer cụ thể, không được lách bằng sửa mỗi title hoặc risk.
-- [ ] Xử lý conflict/open question cập nhật records liên quan và derived counts;
+- [x] Xử lý conflict/open question cập nhật records liên quan và derived counts;
   không để badge “cần làm rõ” còn nguyên sau khi đã giải quyết.
-- [ ] Requirement revision/source links bất biến khi review/publish. Extraction
+- [x] Requirement revision/source links bất biến khi review/publish. Extraction
   lại cùng nội dung với nguồn mới không append citation vào proof đã duyệt.
-- [ ] Đối chiếu requirement cũ/mới theo stable identifier + source + review mapping;
+- [x] Đối chiếu requirement cũ/mới theo stable identifier + source + review mapping;
   lưu added/changed/removed/unchanged/ambiguous và reason.
-- [ ] Requirement bị loại/removed không làm mất history; đánh dấu dependent case
+- [x] Requirement bị loại/removed không làm mất history; đánh dấu dependent case
   cần xem lại trước khi công bố cho nguồn mới.
 
 Frontend:
 
-- [ ] Danh sách có checkbox, selection count, evidence drawer, review inline và
+- [x] Danh sách có checkbox, selection count, evidence drawer, review inline và
   `Duyệt & xem tiếp`; giữ filter/scroll khi quay lại.
-- [ ] Selected set phân biệt “trang hiện tại”/“toàn bộ kết quả lọc”; chưa hỗ trợ chọn
+- [x] Selected set phân biệt “trang hiện tại”/“toàn bộ kết quả lọc”; chưa hỗ trợ chọn
   tất cả xuyên trang thì ghi rõ, không chọn âm thầm item người dùng chưa thấy.
-- [ ] Bulk confirmation tóm tắt N mục và mục bị chặn; không lặp tên reviewer từng dòng.
-- [ ] Tab `Cần làm rõ` có source cụ thể, form giải quyết và history quyết định.
-- [ ] Sau review có CTA `Sinh testcase cho N yêu cầu`, nêu số unresolved/ngoài scope.
+- [x] Bulk confirmation tóm tắt N mục và mục bị chặn; không lặp tên reviewer từng dòng.
+- [x] Tab `Cần làm rõ` có source cụ thể, form giải quyết và history quyết định.
+- [x] Sau review có CTA `Sinh testcase cho N yêu cầu`, nêu số unresolved/ngoài scope.
 
 Kiểm tra và Definition of Done:
 
-- [ ] 20 draft requirement hợp lệ có thể xem evidence và duyệt theo nhóm trong một màn.
-- [ ] Batch có TBD/foreign-set/stale revision không approve sai; kết quả từng item rõ.
-- [ ] UI counts và trạng thái conflict/question khớp DB sau giải quyết/reload.
-- [ ] Sửa requirement tạo revision mới và chuyển trang đúng ID; testcase ảnh hưởng
+- [x] 20 draft requirement hợp lệ có thể xem evidence và duyệt theo nhóm trong một màn.
+- [x] Batch có TBD/foreign-set/stale revision không approve sai; kết quả từng item rõ.
+- [x] UI counts và trạng thái conflict/question khớp DB sau giải quyết/reload.
+- [x] Sửa requirement tạo revision mới và chuyển trang đúng ID; testcase ảnh hưởng
   được đánh dấu nhưng case/run cũ vẫn đọc được.
+
+Bằng chứng và giới hạn: [UV06_REQUIREMENT_REVIEW_VERIFICATION.md](UV06_REQUIREMENT_REVIEW_VERIFICATION.md).
+Review mapping dùng revision cuối của chuỗi edit; AMBIGUOUS chỉ hỗ trợ đọc đối chiếu,
+không tự ghép hay chuyển approval. Migration 28 cần triển khai cùng API/worker/frontend.
 
 File trọng tâm: `backend/internal/requirement/`, workflow handlers, requirement
 inventory/review/detail UI; dùng lại state/polling của UV-04/05.
@@ -997,8 +1005,8 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 - [x] UV-02 — Identity/revision backend, concurrency và migration.
 - [x] UV-03 — Suite release, pinning, coverage/run/export đúng version.
 - [x] UV-04 — Async jobs, retry, progress và workflow API.
-- [ ] UV-05 — Workspace hướng dẫn, upload/review nguồn và navigation.
-- [ ] UV-06 — Requirement batch review và đối chiếu nguồn.
+- [ ] UV-05 — Code và kiểm thử kỹ thuật đã đạt; còn nghiệm thu người mới tự sử dụng.
+- [x] UV-06 — Requirement batch review và đối chiếu nguồn; kiểm thử kỹ thuật đạt 22/09/2026.
 - [ ] UV-07 — Testcase history/diff/edit/restore/release UI.
 - [ ] UV-08 — Regenerate/cập nhật có kiểm soát theo scope.
 - [ ] UV-09 — Browser E2E, usability, migration drill và rollout.

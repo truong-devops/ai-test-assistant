@@ -171,6 +171,13 @@ func (r *Repository) PublishRelease(ctx context.Context, setID int64, input Publ
 	}
 
 	var approvedCount int
+	var stale bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM test_case_requirement_links WHERE test_case_id=ANY($1) AND cardinality(requirement_review_blockers(requirement_id))>0)`, revisionIDs).Scan(&stale); err != nil {
+		return SuiteRelease{}, false, err
+	}
+	if stale {
+		return SuiteRelease{}, false, fmt.Errorf("%w: requirement source changed; review dependent testcase revisions", ErrReviewBlocked)
+	}
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM requirements requirement
 		WHERE requirement.document_set_id=$1 AND requirement.source_snapshot_id=$2
 		AND requirement.status='APPROVED' AND NOT EXISTS(

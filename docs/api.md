@@ -119,6 +119,12 @@ write endpoint.
   returns HTTP 202 because parsing is asynchronous.
 - `GET /api/document-sets/{id}/documents` lists logical documents with their
   latest version.
+- `POST /api/document-sets/{id}/documents/{documentID}/versions` uploads one
+  new version to that exact logical document (HTTP 202). Both IDs must belong
+  together; otherwise HTTP 404. Filename changes do not change document identity,
+  name or type.
+- `GET /api/document-sets/{id}/documents/{documentID}/versions` returns
+  `{"versions":[...]}` newest first, with the same ownership check.
 - `GET /api/documents/{id}/versions/{version}` returns document metadata,
   immutable version metadata, and ordered parsed blocks.
 
@@ -137,6 +143,9 @@ The upload body uses `multipart/form-data` with:
 
 - `file` (required): `.docx`, `.md`, or `.markdown`;
 - `document_name` (optional): defaults to the filename without its extension;
+- `new_document=true` (workspace new-file upload): reject a duplicate document
+  name with HTTP 409 instead of implicitly appending a version. Omission retains
+  legacy name-based behavior; new clients should use explicit version routes;
 - `document_type` (optional): `REQUIREMENTS`, `USER_STORY`, `SYSTEM_DESIGN`,
   `DATABASE_DESIGN`, `API_CONTRACT`, `BUG_HISTORY`, `TEST_REFERENCE`, or
   `OTHER`; defaults to `REQUIREMENTS`.
@@ -173,6 +182,50 @@ key with the same command returns the original job even if current source or
 budget state has since changed; reusing it for a different command returns a
 conflict. Legacy synchronous mutation routes remain available during migration
 and advertise deprecation/link headers pointing clients to this API.
+
+### Source review and guided workspace (UV-05)
+
+`GET /api/document-sets/{id}/workflow` also returns `source_intents` (latest 20)
+and `can_upload`/`can_manage` capabilities. The frontend maps the five technical
+steps into four business steps; reads and browser polling never start AI work.
+Every upload persists an `INDEX` intent atomically with its version. The worker
+waits for parsing and prepares the index automatically, without approving sources.
+
+`POST /api/document-sets/{id}/source-review` requires `Idempotency-Key` and returns
+HTTP 202 with `{"intent":{...}}`. Example:
+
+```json
+{
+  "command": "APPROVE_AND_EXTRACT",
+  "expected_source_revision": 7,
+  "selected": [{"version_id": 42, "sha256": "<exact SHA-256 from version>", "approval_status": "DRAFT"}],
+  "excluded_version_ids": [43],
+  "reviewer_name": "QA display name"
+}
+```
+
+- `APPROVE`/`APPROVE_AND_EXTRACT`: reviewer role, nonempty explicit selection
+  (at most 100), current latest version/hash/approval status, parsed content.
+  Approvals, audit and continuation commit together or all roll back.
+- `INDEX`/`EXTRACT`: editor role, no selected approvals. `EXTRACT` requires all
+  included latest sources to be parsed and approved. Exclusions are explicit
+  latest version IDs (at most 100), never implicit suppression of failed files.
+- Authenticated actor is stored in review audit; the display name is only
+  contextual information and cannot grant permissions.
+- Changed source revision/hash/status returns HTTP 409; unmet source conditions
+  return 422; missing permission returns 403. Same key/body replays the original
+  intent even after a later upload; different body with that key returns 409.
+- Worker persists `WAITING_PARSE → INDEXING → EXTRACTING → SUCCEEDED` (approval
+  or index only skips extraction). Failures retain approvals. A source/scope
+  change before extraction yields `SUPERSEDED`; an already queued extraction
+  keeps its frozen input. Retrying a failed child job reopens its failed intent
+  only while its source revision remains current.
+
+The workspace is `/documents/{id}?step=documents|requirements|test-cases|use-export`.
+Old index, requirements, testcase and source-version URLs remain readable and
+link back to the guided workspace. Apply migration 27 before deploying both API
+and worker; neither a frontend-only deployment nor a stopped worker can provide
+the automatic continuation.
 
 ## Document index and source review (Phase 3)
 
@@ -219,8 +272,67 @@ source cannot be revoked while an approved requirement depends on its evidence.
 Extraction requires a ready index. Every saved requirement is linked by the
 service to the actual retrieved block/version; model-supplied citation IDs are
 never trusted. Approval returns HTTP 409 if evidence is missing, its source
-version is not approved, or a conflict/TBD item is accepted without an explicit
-edit. Retry is idempotent by source and extraction fingerprint.
+version is not approved, or a conflict/TBD item has not been explicitly resolved.
+Editing title/risk or rejecting with an edit cannot bypass clarification.
+Retry is idempotent by source snapshot/version and extraction fingerprint.
+
+### Grouped requirement review and source comparison (UV-06)
+
+Inventory returns only current, unsuperseded revisions; each includes
+`review_hash`, `review_blockers` and `source_state`. Direct detail URLs still
+read historical revisions. `status=APPROVED` selects only eligible, unblocked
+requirements. New extraction output becomes current only after the complete
+extraction reconciles against the still-current index/source revision.
+
+`POST /api/document-sets/{id}/requirement-review/bulk-review` requires reviewer
+role and `Idempotency-Key` (1–160 bytes), with this body:
+
+```json
+{
+  "items": [{"id": 123, "expected_hash": "<64-character review_hash>"}],
+  "decision": "APPROVED",
+  "reviewer_name": "QA display name",
+  "comment": "Reviewed against source"
+}
+```
+
+Accepts 1–100 unique positive IDs, decision `APPROVED`/`REJECTED`, display name
+up to 160 bytes and comment up to 4000 bytes. Audit identity comes from the
+authenticated server actor, never the display name. HTTP 200 returns
+`{"results":[{"id":123,"requirement_id":123,"status":"APPLIED"}]}`; blocked
+items have `status: BLOCKED`, `code` (`NOT_FOUND`, `STALE_REVISION` or
+`REVIEW_BLOCKED`) and `message`. Foreign-set IDs do not reveal their details.
+Each successful decision and its receipt commit atomically. Retry the identical
+body/key after transport errors: prior successes replay without extra audits,
+remaining items are checked again. Reusing a key with another body/actor gives
+409; invalid envelope gives 400. A partial batch is not rolled back as a whole.
+
+`POST /api/document-sets/{id}/requirement-review/clarification` accepts
+`{"kind":"QUESTION","id":456,"resolution":"Concrete answer here"}`;
+kind is `QUESTION` or `CONFLICT`, trimmed resolution 10–8000 bytes. Requires
+reviewer and ownership. The same answer can be replayed; a different answer to
+an already closed issue gives 409. Stores trusted-actor audit and updates linked
+CONFLICT/TBD revisions to DRAFT only when no open issues remain; never auto-approves.
+The reviewer remains responsible for the answer's business correctness.
+
+Viewer-readable GETs under `/api/document-sets/{id}/requirement-review/`:
+
+- `clarification-history` returns `history` with kind, subject ID, actor,
+  resolution and timestamp.
+- `source-comparisons` returns the latest ten `comparisons`, with old/new source
+  snapshot IDs and items containing `classification`, `before_ids`, `after_ids`,
+  `reason`, `affected_test_case_ids`. Classifications: ADDED, CHANGED, REMOVED,
+  UNCHANGED, AMBIGUOUS. No automatic approval transfer, including UNCHANGED.
+
+Legacy single review also accepts `expected_hash` and optional `Idempotency-Key`.
+For compatibility it does not require a hash, but always checks current revision,
+evidence and clarification guards. Current UI supplies both. Edits return the
+new `requirement.id`; clients must navigate to it. Reviewed requirement content,
+steps and evidence cannot be overwritten or extended in place.
+
+Testcase list/detail exposes `needs_source_review` when a linked requirement is
+superseded or outside the current source scope. Publishing a new release rejects
+blocked requirement links. Existing release replay and run snapshots remain intact.
 
 With `LLM_PROVIDER=disabled`, the worker uses a conservative deterministic draft
 extractor suitable for local development. `openai` or `gemini` enables the

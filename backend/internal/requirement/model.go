@@ -30,15 +30,17 @@ const (
 )
 
 var (
-	ErrNotFound          = errors.New("requirement not found")
-	ErrInvalidInput      = errors.New("invalid requirement input")
-	ErrNoIndex           = errors.New("document index must be ready before requirement extraction")
-	ErrMissingEvidence   = errors.New("requirement evidence is required")
-	ErrReviewBlocked     = errors.New("requirement cannot be approved")
-	ErrExtractionBusy    = errors.New("requirement extraction is already running")
-	ErrLeaseLost         = errors.New("requirement extraction lease lost")
-	ErrStaleIndex        = errors.New("document index changed after extraction was queued")
-	ErrSourceNotApproved = errors.New("all included document versions must be approved before requirement extraction")
+	ErrNotFound            = errors.New("requirement not found")
+	ErrInvalidInput        = errors.New("invalid requirement input")
+	ErrNoIndex             = errors.New("document index must be ready before requirement extraction")
+	ErrMissingEvidence     = errors.New("requirement evidence is required")
+	ErrReviewBlocked       = errors.New("requirement cannot be approved")
+	ErrRevisionConflict    = errors.New("requirement revision or review hash changed")
+	ErrIdempotencyConflict = errors.New("requirement review idempotency key reused")
+	ErrExtractionBusy      = errors.New("requirement extraction is already running")
+	ErrLeaseLost           = errors.New("requirement extraction lease lost")
+	ErrStaleIndex          = errors.New("document index changed after extraction was queued")
+	ErrSourceNotApproved   = errors.New("all included document versions must be approved before requirement extraction")
 )
 
 type ExtractionJob struct {
@@ -66,6 +68,9 @@ type ExtractionJob struct {
 }
 
 type Requirement struct {
+	ReviewHash        string          `json:"review_hash"`
+	ReviewBlockers    []string        `json:"review_blockers"`
+	SourceState       string          `json:"source_state"`
 	ID                int64           `json:"id"`
 	DocumentSetID     int64           `json:"document_set_id"`
 	RequirementKey    string          `json:"requirement_key"`
@@ -168,6 +173,9 @@ type Filter struct {
 }
 
 type ReviewInput struct {
+	ExpectedHash  string `json:"expected_hash,omitempty"`
+	CommandKey    string `json:"-"`
+	DocumentSetID int64  `json:"-"`
 	ReviewerName  string `json:"reviewer_name"`
 	Decision      string `json:"decision"`
 	Comment       string `json:"comment"`

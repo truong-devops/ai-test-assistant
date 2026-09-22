@@ -59,7 +59,8 @@ func (r *Repository) List(ctx context.Context, setID int64) ([]TestCase, error) 
 			FROM test_run_items item JOIN test_runs run ON run.id=item.test_run_id
 			WHERE item.test_case_id=test_cases.id
 			ORDER BY COALESCE(run.finished_at,run.started_at,run.requested_at) DESC,
-				item.attempt_number DESC,item.id DESC LIMIT 1),'null'::jsonb)
+				item.attempt_number DESC,item.id DESC LIMIT 1),'null'::jsonb),
+		EXISTS(SELECT 1 FROM test_case_requirement_links l WHERE l.test_case_id=test_cases.id AND NOT requirement_is_current(l.requirement_id))
 		FROM test_cases
 		WHERE id IN (SELECT head_revision_id FROM test_case_families
 			WHERE document_set_id=$1 AND archived=FALSE)
@@ -73,7 +74,7 @@ func (r *Repository) List(ctx context.Context, setID int64) ([]TestCase, error) 
 	for rows.Next() {
 		var item TestCase
 		var executionJSON []byte
-		if err := rows.Scan(append(testCaseDestinations(&item), &executionJSON)...); err != nil {
+		if err := rows.Scan(append(testCaseDestinations(&item), &executionJSON, &item.NeedsSourceReview)...); err != nil {
 			return nil, fmt.Errorf("scan test case: %w", err)
 		}
 		if string(executionJSON) != "null" {
@@ -101,6 +102,9 @@ func (r *Repository) Get(ctx context.Context, id int64) (Detail, error) {
 			return Detail{}, ErrNotFound
 		}
 		return Detail{}, fmt.Errorf("get test case: %w", err)
+	}
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM test_case_requirement_links WHERE test_case_id=$1 AND NOT requirement_is_current(requirement_id))`, id).Scan(&detail.TestCase.NeedsSourceReview); err != nil {
+		return Detail{}, err
 	}
 	stepRows, err := r.pool.Query(ctx, `SELECT id,test_case_id,ordinal,action,expected_result,
 		created_at FROM test_case_steps WHERE test_case_id=$1 ORDER BY ordinal`, id)
@@ -193,7 +197,7 @@ func (r *Repository) Coverage(ctx context.Context, setID int64) (CoverageReport,
 			SELECT 1 FROM test_case_families f
 			WHERE f.id=t.family_id AND f.head_revision_id=t.id AND f.archived=FALSE)
 		WHERE r.document_set_id=$1
-		AND NOT EXISTS(SELECT 1 FROM requirements newer WHERE newer.supersedes_requirement_id=r.id)
+		AND requirement_is_current(r.id)
 		GROUP BY r.id ORDER BY r.requirement_key,r.id`, setID)
 	if err != nil {
 		return report, fmt.Errorf("calculate requirement coverage: %w", err)
@@ -251,8 +255,7 @@ func (r *Repository) Coverage(ctx context.Context, setID int64) (CoverageReport,
 	if err := r.pool.QueryRow(ctx, `SELECT CASE WHEN count(DISTINCT source_snapshot_id)
 		FILTER (WHERE source_snapshot_id IS NOT NULL)=1 THEN min(source_snapshot_id) ELSE NULL END
 		FROM requirements WHERE document_set_id=$1 AND status='APPROVED'
-		AND NOT EXISTS(SELECT 1 FROM requirements newer
-			WHERE newer.supersedes_requirement_id=requirements.id)`, setID).Scan(&workingSnapshotID); err != nil {
+		AND requirement_is_current(requirements.id)`, setID).Scan(&workingSnapshotID); err != nil {
 		return report, fmt.Errorf("load working coverage source: %w", err)
 	}
 	report.Layers = append(report.Layers, coverageLayer("DESIGNED", "Có thiết kế",

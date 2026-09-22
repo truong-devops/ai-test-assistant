@@ -56,6 +56,22 @@ func TestRateLimiterDoesNotTrustForwardedAddress(t *testing.T) {
 
 func testTime() time.Time { return time.Unix(100, 0) }
 
+func TestAuthorizationDefaultRoleReachesWorkflowCapabilities(t *testing.T) {
+	handler := authorizationMiddleware(RouterOptions{AuthToken: "secret-token"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := authenticatedRole(r); got != "viewer" {
+			t.Errorf("default authenticated role=%q, want viewer", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequest(http.MethodGet, "/api/document-sets/1/workflow", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d", response.Code)
+	}
+}
+
 func TestAuthorizationMiddlewareEnforcesTokenAndRole(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	handler := authorizationMiddleware(RouterOptions{AuthToken: "secret-token"}, next)

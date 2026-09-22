@@ -7,7 +7,7 @@ import type { BusinessTestCase } from "@/lib/types";
 import { StatusBadge } from "@/components/status-badge";
 import { humanize } from "@/lib/presentation";
 
-export function TestCaseWorkspace({ setId, testCases }: { setId: number; testCases: BusinessTestCase[] }) {
+export function TestCaseWorkspace({ setId, testCases, canReview = false }: { setId: number; testCases: BusinessTestCase[]; canReview?: boolean }) {
   const router = useRouter();
   const [selected, setSelected] = useState<number[]>([]);
   const [reviewer, setReviewer] = useState("");
@@ -21,6 +21,7 @@ export function TestCaseWorkspace({ setId, testCases }: { setId: number; testCas
   const toggle = (id: number) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 	const visible = useMemo(() => testCases.filter((item) => (!query || `${item.test_case_key} ${item.title} ${item.expected_result}`.toLowerCase().includes(query.toLowerCase())) && (status === "ALL" || item.status === status) && (risk === "ALL" || item.risk === risk)).sort((left, right) => sort === "RISK" ? right.risk.localeCompare(left.risk) : sort === "TITLE" ? left.title.localeCompare(right.title) : left.test_case_key.localeCompare(right.test_case_key)), [testCases, query, status, risk, sort]);
   const review = (decision: "APPROVED" | "REJECTED") => {
+    if (!canReview) return;
     setError("");
     if (!reviewer.trim() || selected.length === 0) {
       setError("Select at least one test case and enter the reviewer name.");
@@ -42,13 +43,14 @@ export function TestCaseWorkspace({ setId, testCases }: { setId: number; testCas
   };
   return (
     <section className="panel">
+      {testCases.some((item)=>item.needs_source_review)?<p className="notice">Nguồn requirement đã thay đổi. Các testcase cần xem lại trước khi chốt bộ mới: {testCases.filter((item)=>item.needs_source_review).map((item)=><Link key={item.id} href={`/documents/${setId}/test-cases/${item.id}`}>{item.test_case_key} </Link>)}. Case và run lịch sử vẫn được giữ nguyên.</p>:null}
       <div className="panel-header"><div><h2>Business test cases</h2><p>Expected results come from approved requirement evidence, not implementation code.</p></div><span className="section-counter">{testCases.length}</span></div>
 	  <div className="bulk-review-bar"><label><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ID, title, expected…" /></label><label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option>ALL</option><option>DRAFT</option><option>APPROVED</option><option>REJECTED</option></select></label><label><span>Risk</span><select value={risk} onChange={(event) => setRisk(event.target.value)}><option>ALL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select></label><label><span>Sort</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="KEY">Case ID</option><option value="TITLE">Title</option><option value="RISK">Risk</option></select></label></div>
-      <div className="bulk-review-bar"><label><span>Reviewer</span><input value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label><label><span>Comment</span><input value={comment} onChange={(event) => setComment(event.target.value)} /></label><button className="button secondary" disabled={pending} onClick={() => review("REJECTED")}>Reject selected</button><button className="button" disabled={pending} onClick={() => review("APPROVED")}>Approve selected</button></div>
+      {canReview ? <div className="bulk-review-bar"><label><span>Reviewer</span><input value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label><label><span>Comment</span><input value={comment} onChange={(event) => setComment(event.target.value)} /></label><button className="button secondary" disabled={pending} onClick={() => review("REJECTED")}>Reject selected</button><button className="button" disabled={pending} onClick={() => review("APPROVED")}>Approve selected</button></div> : <p className="panel-message">Chế độ xem. Cần quyền reviewer để duyệt testcase.</p>}
       {error ? <p className="form-error panel-message">{error}</p> : null}
 	  <p className="table-subtitle">Showing {visible.length} of {testCases.length}. Filters affect this workspace view; export always records the complete immutable suite snapshot.</p>
       <div className="table-wrap"><table className="data-table"><thead><tr><th><span className="sr-only">Select</span></th><th>Case</th><th>Type</th><th>Risk</th><th>Expected</th><th>Actual</th><th>Execution</th><th>Source / automation</th><th>Review</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id}>
-        <td><input type="checkbox" aria-label={`Select ${item.test_case_key}`} checked={selected.includes(item.id)} onChange={() => toggle(item.id)} /></td>
+        <td><input type="checkbox" disabled={!canReview || pending} aria-label={`Select ${item.test_case_key}`} checked={selected.includes(item.id)} onChange={() => toggle(item.id)} /></td>
         <td><Link href={`/documents/${setId}/test-cases/${item.id}`}><span className="table-title">{item.test_case_key} · {item.title}</span><span className="table-subtitle chunk-copy">{item.expected_result}</span></Link></td>
 		<td><StatusBadge status={item.test_type} /></td><td><StatusBadge status={item.risk} /></td><td>{item.expected_result}</td><td>{item.latest_execution && item.latest_execution.status !== "NOT_RUN" ? item.latest_execution.actual_result || "—" : "Chưa chạy"}</td><td>{item.latest_execution ? <><StatusBadge status={item.latest_execution.status} /><span className="table-subtitle">Run #{item.latest_execution.test_run_id} · revision v{item.version_number}</span></> : <><StatusBadge status="NOT_RUN" /><span className="table-subtitle">Chưa có run cho revision v{item.version_number}</span></>}</td><td>{humanize(item.generated_by)}<span className="table-subtitle"><StatusBadge status={item.automation_status} /></span></td><td><StatusBadge status={item.status} /><span className="table-subtitle">{Math.round(item.confidence * 100)}% confidence</span></td>
       </tr>)}</tbody></table></div>

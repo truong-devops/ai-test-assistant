@@ -219,6 +219,10 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 	result := ReadModel{DocumentSetID: setID, SourceRevision: facts.SourceRevision,
 		Steps: []Step{}, BlockingReasons: []BlockingReason{}, ActiveJobs: []Job{},
 		RecentJobs: jobs}
+	result.SourceIntents, err = s.repository.SourceIntents(ctx, setID)
+	if err != nil {
+		return ReadModel{}, err
+	}
 	for _, item := range jobs {
 		if !Terminal(item.Status) {
 			result.ActiveJobs = append(result.ActiveJobs, item)
@@ -228,6 +232,7 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 	reviewer := roleAtLeast(role, "reviewer") && facts.SetStatus == "ACTIVE"
 	budgetOK := budgetAvailable(facts)
 	result.Capabilities = Capabilities{
+		CanUpload: editable, CanManage: roleAtLeast(role, "reviewer"),
 		CanIndex:    editable && facts.DocumentCount > 0,
 		CanExtract:  editable && facts.ExtractionReady && budgetOK,
 		CanGenerate: editable && facts.ApprovedRequirements > 0 && budgetOK,
@@ -244,7 +249,7 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 		result.BlockingReasons = append(result.BlockingReasons, BlockingReason{
 			Code: "NO_DOCUMENTS", Message: "upload at least one source document",
 			Step: "SOURCE", NextAction: "UPLOAD_DOCUMENT"})
-	} else if facts.ParsedCount < facts.DocumentCount {
+	} else if facts.ParsedCount < facts.DocumentCount && !facts.ExtractionReady {
 		result.BlockingReasons = append(result.BlockingReasons, BlockingReason{
 			Code: "SOURCE_PARSE_PENDING", Message: "one or more latest document versions are not parsed",
 			Step: "SOURCE", NextAction: "WAIT_FOR_PARSE"})
@@ -284,7 +289,7 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 	}
 	result.Steps = append(result.Steps,
 		workflowStep("SOURCE", facts.ParsedCount, facts.DocumentCount,
-			facts.DocumentCount > 0 && facts.ParsedCount == facts.DocumentCount,
+			facts.ExtractionReady,
 			stepReasons(result.BlockingReasons, "SOURCE"), Job{}),
 		workflowStep("INDEX", boolInt(indexCurrent), 1, indexCurrent,
 			stepReasons(result.BlockingReasons, "INDEX"),
@@ -299,10 +304,16 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 			[]BlockingReason{}, Job{}),
 	)
 	switch {
+	case facts.DocumentCount == 0:
+		result.NextAction = "UPLOAD_DOCUMENT"
 	case len(result.ActiveJobs) > 0:
 		result.NextAction = "WAIT_FOR_ACTIVE_JOB"
+	case facts.ParsedCount < facts.DocumentCount && !indexCurrent:
+		result.NextAction = "WAIT_FOR_PARSE"
 	case result.Capabilities.CanIndex && !indexCurrent:
 		result.NextAction = OperationIndex
+	case !facts.ExtractionReady:
+		result.NextAction = "REVIEW_SOURCE"
 	case result.Capabilities.CanExtract && facts.RequirementCount == 0:
 		result.NextAction = OperationExtract
 	case facts.ApprovedRequirements == 0:

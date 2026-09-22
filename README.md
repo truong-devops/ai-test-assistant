@@ -45,6 +45,13 @@ survive browser reloads and worker restarts, and expose progress, structured
 blockers, retry/cancel state and attempt-level AI usage. Extraction is bridged
 to its existing queue so there is only one scheduler for that work.
 
+Requirements support exact-revision batch review, evidence preview and explicit
+conflict/TBD resolution. New source extraction records added/changed/removed/
+unchanged/ambiguous comparisons without transferring approval or modifying old
+proof; affected testcase revisions are flagged before a new release. Deployment
+requires migrations through **28** and matching API, worker and frontend.
+See [UV-06 verification](docs/UV06_REQUIREMENT_REVIEW_VERIFICATION.md).
+
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
@@ -136,9 +143,12 @@ Document-driven endpoints:
 - `POST /api/document-sets/{id}/lifecycle`
 - `POST /api/document-sets/{id}/documents`
 - `GET /api/document-sets/{id}/documents`
+- `POST /api/document-sets/{id}/documents/{documentID}/versions`
+- `GET /api/document-sets/{id}/documents/{documentID}/versions`
 - `GET /api/documents/{id}/versions/{version}`
 - `POST /api/document-versions/{id}/review`
 - `GET /api/document-sets/{id}/workflow`
+- `POST /api/document-sets/{id}/source-review`
 - `POST /api/document-sets/{id}/workflow-operations`
 - `GET /api/document-workflow-jobs/{id}`
 - `POST /api/document-workflow-jobs/{id}/retry`
@@ -154,6 +164,10 @@ Document-driven endpoints:
 - `GET /api/document-sets/{id}/open-questions`
 - `GET /api/requirements/{id}`
 - `POST /api/requirements/{id}/review`
+- `POST /api/document-sets/{id}/requirement-review/bulk-review`
+- `POST /api/document-sets/{id}/requirement-review/clarification`
+- `GET /api/document-sets/{id}/requirement-review/clarification-history`
+- `GET /api/document-sets/{id}/requirement-review/source-comparisons`
 - `POST /api/document-sets/{id}/test-cases/generate`
 - `POST /api/document-sets/{id}/test-cases/regenerate`
 - `GET /api/document-sets/{id}/test-cases`

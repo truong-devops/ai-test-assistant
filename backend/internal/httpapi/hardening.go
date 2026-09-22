@@ -36,6 +36,7 @@ func authorizationMiddleware(options RouterOptions, next http.Handler) http.Hand
 		if role == "" {
 			role = "viewer"
 		}
+		r.Header.Set("X-Authenticated-Role", role)
 		if !roleAllowed(role, requiredRole(r)) {
 			writeError(w, http.StatusForbidden, "insufficient role")
 			return
@@ -90,7 +91,7 @@ func requiredRole(r *http.Request) string {
 		return "viewer"
 	}
 	path := r.URL.Path
-	for _, marker := range []string{"/review", "/classification", "/execute", "/exports", "/repair", "/lifecycle", "/archive", "/pipeline-mode", "/document-baseline", "/test-scope", "/suite-releases"} {
+	for _, marker := range []string{"/review", "/requirement-review", "/classification", "/execute", "/exports", "/repair", "/lifecycle", "/archive", "/pipeline-mode", "/document-baseline", "/test-scope", "/suite-releases"} {
 		if strings.Contains(path, marker) {
 			return "reviewer"
 		}

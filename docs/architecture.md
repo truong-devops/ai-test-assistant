@@ -1,13 +1,30 @@
 # Architecture
 
-> **Architecture status – 2026-09-19:** this document records the architecture
+> **Architecture status – 2026-09-21:** this document records the architecture
 > implemented by document-driven Phases 0–10, Phase 11 rollout controls,
-> workflow/versioning UV-00–UV-04, and the still-running code-first
+> workflow/versioning UV-00–UV-06 (UV-05 human usability acceptance pending), and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
 > target architecture and its ordered backend/frontend work are defined in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 
 ## Target authority model
+
+The UV-05 document workspace presents four business steps over the shared
+workflow read model. Upload transactionally schedules source preparation;
+explicit source review transactionally records exact version/hash approvals
+and a durable continuation. The worker, not a page GET or browser timer,
+advances index and requested extraction. Role-derived capabilities shape UI
+actions; authenticated server identity remains authoritative. See
+[UV-05 verification](UV05_WORKSPACE_VERIFICATION.md) for coverage and limits.
+
+UV-06 adds exact revision/hash requirement batch review with per-item transaction
+receipts and explicit clarification audit. Completed extraction compares stable
+identifier + logical source + flow against the latest reviewed revision chain;
+only the current generation activates its new inventory. Ambiguous mappings do
+not transfer decisions. Reviewed content/evidence stay immutable, old IDs remain
+readable, and affected testcase revisions must be reviewed before a new release.
+Existing release/run snapshots are unchanged. See
+[UV-06 verification](UV06_REQUIREMENT_REVIEW_VERIFICATION.md).
 
 The refactor does not remove SCM automation or sandbox execution. It separates
 business truth from technical execution:

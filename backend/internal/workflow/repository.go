@@ -86,10 +86,9 @@ func (r *Repository) readFacts(ctx context.Context, setID int64) (readFacts, err
 		}
 		result.ExtractionReady = included > 0 && included == approved
 	}
-	if err := r.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE status='APPROVED')
+	if err := r.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE status='APPROVED' AND cardinality(requirement_review_blockers(requirement.id))=0)
 		FROM requirements requirement WHERE document_set_id=$1
-		AND NOT EXISTS(SELECT 1 FROM requirements newer
-			WHERE newer.supersedes_requirement_id=requirement.id)`, setID).Scan(
+		AND requirement_is_current(requirement.id)`, setID).Scan(
 		&result.RequirementCount, &result.ApprovedRequirements); err != nil {
 		return result, err
 	}
@@ -274,8 +273,8 @@ func (r *Repository) BuildGenerateSnapshot(ctx context.Context, setID int64) (
 		to_char(requirement.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
 		FROM requirements requirement
 		WHERE requirement.document_set_id=$1 AND requirement.status='APPROVED'
-		AND NOT EXISTS(SELECT 1 FROM requirements newer
-			WHERE newer.supersedes_requirement_id=requirement.id)
+		AND cardinality(requirement_review_blockers(requirement.id))=0
+		AND requirement_is_current(requirement.id)
 		ORDER BY requirement.id`, setID)
 	if err != nil {
 		return nil, "", err
@@ -407,7 +406,7 @@ func (r *Repository) enqueue(ctx context.Context, setID int64, operation, reques
 				return existing, false, nil
 			}
 			active, activeErr := r.activeOperation(ctx, setID, operation)
-			if activeErr == nil {
+			if activeErr == nil && active.InputHash == inputHash {
 				return active, false, nil
 			}
 			return Job{}, false, ErrOperationActive
@@ -725,6 +724,15 @@ func (r *Repository) Retry(ctx context.Context, id int64, expectedRevision int) 
 		heartbeat_at=NULL,cancel_requested_at=NULL,error_code='',error_message='',retryable=FALSE,
 		started_at=NULL,finished_at=NULL,updated_at=NOW() WHERE id=$1`, id)
 	if err != nil {
+		return Job{}, err
+	}
+	// Reopen the saved continuation as part of the same retry command. A
+	// successful retry of indexing must still continue the user's extraction.
+	if _, err = tx.Exec(ctx, `UPDATE document_source_intents intent SET
+		status=CASE WHEN extraction_job_id=$1 THEN 'EXTRACTING' ELSE 'INDEXING' END,
+		error_message='',updated_at=NOW()
+		WHERE status='FAILED' AND (index_job_id=$1 OR extraction_job_id=$1)
+		AND source_revision=(SELECT source_revision FROM document_sets WHERE id=intent.document_set_id)`, id); err != nil {
 		return Job{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

@@ -110,6 +110,9 @@ export type DocumentVersionDetail = {
 // 4–9; keeping them separate from legacy generated tests prevents the UI from
 // treating automation source as a business test case.
 export type Requirement = {
+  review_hash: string;
+  review_blockers: string[];
+  source_state: "CURRENT" | "HISTORICAL" | "REMOVED";
   id: number;
   document_set_id: number;
   requirement_key: string;
@@ -192,6 +195,7 @@ export type DocumentWorkflowJob = {
 };
 
 export type DocumentWorkflow = {
+  source_intents: SourceIntent[];
   document_set_id: number;
   source_revision: number;
   steps: Array<{
@@ -202,6 +206,8 @@ export type DocumentWorkflow = {
     blocking_reasons: WorkflowBlockingReason[];
   }>;
   capabilities: {
+    can_upload: boolean;
+    can_manage: boolean;
     can_index: boolean;
     can_extract: boolean;
     can_generate: boolean;
@@ -215,6 +221,14 @@ export type DocumentWorkflow = {
   active_jobs: DocumentWorkflowJob[];
   recent_jobs: DocumentWorkflowJob[];
   next_action: string;
+};
+
+export type SourceIntent = {
+  id: number; document_set_id: number; source_revision: number;
+  command: "INDEX" | "APPROVE" | "APPROVE_AND_EXTRACT" | "EXTRACT";
+  status: "WAITING_PARSE" | "INDEXING" | "EXTRACTING" | "SUCCEEDED" | "FAILED" | "SUPERSEDED";
+  request: { excluded_version_ids?: number[] };
+  index_job_id?: number; extraction_job_id?: number; error_message?: string;
 };
 
 export type RequirementEvidence = {
@@ -267,6 +281,7 @@ export type OpenQuestion = {
 };
 
 export type BusinessTestCase = {
+  needs_source_review: boolean;
   id: number;
   test_suite_id: number;
   document_set_id: number;

@@ -1,7 +1,7 @@
 # Kế hoạch chuyển đổi sang Document-Driven Testing
 
 - **Ngày chốt định hướng:** 10/09/2026
-- **Cập nhật triển khai:** 17/09/2026
+- **Cập nhật triển khai:** 22/09/2026
 - **Trạng thái:** Phase 0–11 đã triển khai; Definition of Done E2E chờ chạy
   verifier trên hạ tầng demo thật
 - **Phạm vi:** Backend Go, Frontend Next.js, PostgreSQL/pgvector, LLM,
@@ -15,6 +15,16 @@ code-first sang:
 ```text
 Document-driven test design + code execution
 ```
+
+Đợt cải thiện tiếp theo được theo dõi riêng tại
+[kế hoạch UX và testcase versioning](DOCUMENT_WORKFLOW_UX_AND_TESTCASE_VERSIONING_PLAN.md).
+UV-00–UV-04 đã nghiệm thu; UV-05 đã có workspace bốn bước và kiểm thử kỹ thuật,
+còn nghiệm thu usability với người mới. Xem
+[bằng chứng UV-05](UV05_WORKSPACE_VERIFICATION.md). UV-06 đã hoàn thành batch review,
+làm rõ conflict/TBD và đối chiếu nguồn với migration 28; kiểm thử backend và browser
+đạt, xem [bằng chứng UV-06](UV06_REQUIREMENT_REVIEW_VERIFICATION.md).
+Bước code tiếp theo là UV-07 (UI version testcase). Tiến độ này không tự đóng
+Definition of Done E2E trên hạ tầng demo thật của kế hoạch hiện tại.
 
 Quy ước checklist:
 
