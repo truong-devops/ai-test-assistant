@@ -48,9 +48,9 @@ export function DocumentWorkflowNav({ setId, workflow: initialWorkflow, active =
         if (controller.signal.aborted) return;
         setWorkflow(state);
         const nextFingerprint = JSON.stringify(state);
-        // The source workspace updates its JSON data directly. Refresh other
+        // Source and requirement workspaces update their JSON data directly. Refresh other
         // server-rendered inventories only when workflow facts actually change.
-        if (active !== "documents" && !refreshPending && nextFingerprint !== fingerprint.current) startRefresh(() => router.refresh());
+        if (active !== "documents" && active !== "requirements" && !refreshPending && nextFingerprint !== fingerprint.current) startRefresh(() => router.refresh());
         fingerprint.current = nextFingerprint;
       } catch { /* Keep last known status; the next poll retries. */ }
       finally { busy = false; }

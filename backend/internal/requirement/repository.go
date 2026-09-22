@@ -189,7 +189,13 @@ func (r *Repository) SaveProposal(ctx context.Context, setID int64, chunk docume
 		return Requirement{}, false, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	key := requirementKey(proposal, chunk)
-	extractionKey := hashText(strings.ToUpper(proposal.Identifier) + "\x00" + proposal.FlowType + "\x00" + normalizeForDedupe(proposal.Statement))
+	legacyKey := hashText(strings.ToUpper(proposal.Identifier) + "\x00" + proposal.FlowType + "\x00" + normalizeForDedupe(proposal.Statement))
+	snapshotID := int64(0)
+	if sourceSnapshotID != nil {
+		snapshotID = *sourceSnapshotID
+	}
+	key += fmt.Sprintf("-S%d", snapshotID)
+	extractionKey := hashText(fmt.Sprintf("%d:%d:%s", snapshotID, chunk.DocumentVersionID, legacyKey))
 	if proposal.Assumptions == nil {
 		proposal.Assumptions = []string{}
 	}
@@ -200,6 +206,17 @@ func (r *Repository) SaveProposal(ctx context.Context, setID int64, chunk docume
 		return Requirement{}, false, fmt.Errorf("begin save requirement: %w", err)
 	}
 	defer tx.Rollback(ctx)
+	// Serialize extraction with review/reconciliation for this ownership scope.
+	if _, err = tx.Exec(ctx, `SELECT id FROM document_sets WHERE id=$1 FOR UPDATE`, setID); err != nil {
+		return Requirement{}, false, err
+	}
+	var legacyExists bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM requirements WHERE document_set_id=$1 AND extraction_key=$2 AND source_snapshot_id IS NOT DISTINCT FROM $3::bigint)`, setID, legacyKey, sourceSnapshotID).Scan(&legacyExists); err != nil {
+		return Requirement{}, false, err
+	}
+	if legacyExists {
+		extractionKey = legacyKey
+	}
 	const insert = `INSERT INTO requirements
 		(document_set_id,requirement_key,version_number,title,statement,requirement_type,
 		 flow_type,actor,precondition,postcondition,priority,risk,status,confidence,
@@ -228,6 +245,24 @@ func (r *Repository) SaveProposal(ctx context.Context, setID int64, chunk docume
 	}
 	if err != nil {
 		return Requirement{}, false, fmt.Errorf("save extracted requirement: %w", err)
+	}
+	if !created {
+		var sealed bool
+		if err = tx.QueryRow(ctx, `SELECT status='APPROVED' OR EXISTS(SELECT 1 FROM requirement_reviews WHERE requirement_id=$1)
+		 OR EXISTS(SELECT 1 FROM test_case_requirement_links WHERE requirement_id=$1) FROM requirements WHERE id=$1`, result.ID).Scan(&sealed); err != nil {
+			return Requirement{}, false, err
+		}
+		if sealed {
+			return result, false, tx.Commit(ctx)
+		}
+	}
+	if _, err = tx.Exec(ctx, `UPDATE requirements SET stable_identifier=$2 WHERE id=$1`, result.ID, strings.ToUpper(strings.TrimSpace(proposal.Identifier))); err != nil {
+		return Requirement{}, false, err
+	}
+	if created && sourceSnapshotID != nil {
+		if _, err = tx.Exec(ctx, `UPDATE requirements SET source_state='HISTORICAL' WHERE id=$1`, result.ID); err != nil {
+			return Requirement{}, false, err
+		}
 	}
 	excerptHash := hashText(chunk.RawContent)
 	_, err = tx.Exec(ctx, `INSERT INTO requirement_evidence
@@ -295,9 +330,11 @@ func (r *Repository) MarkConflict(ctx context.Context, setID, leftID, rightID in
 	if err != nil {
 		return false, fmt.Errorf("save requirement conflict: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE requirements SET status='CONFLICT',updated_at=NOW()
+	if result.RowsAffected() == 1 {
+		if _, err := tx.Exec(ctx, `UPDATE requirements SET status='CONFLICT',updated_at=NOW()
 		WHERE id=ANY($1) AND status IN ('DRAFT','TBD')`, []int64{leftID, rightID}); err != nil {
-		return false, fmt.Errorf("mark conflicting requirements: %w", err)
+			return false, fmt.Errorf("mark conflicting requirements: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit requirement conflict: %w", err)
@@ -310,18 +347,20 @@ func (r *Repository) List(ctx context.Context, filter Filter) ([]Requirement, er
 		r.statement,r.requirement_type,r.flow_type,r.actor,r.precondition,r.postcondition,
 		r.priority,r.risk,r.status,r.confidence,r.supersedes_requirement_id,r.assumptions,
 		r.extraction_key,r.source_fingerprint,r.source_snapshot_id,r.created_at,r.updated_at,
+		requirement_review_hash(r.id),requirement_review_blockers(r.id),r.source_state,
 		COALESCE((SELECT array_agg(DISTINCT v.document_id ORDER BY v.document_id)
 			FROM requirement_evidence e JOIN document_versions v ON v.id=e.document_version_id
 			WHERE e.requirement_id=r.id),'{}')
 		FROM requirements r
 		WHERE r.document_set_id=$1
 		AND ($2='' OR r.requirement_type=$2) AND ($3='' OR r.status=$3)
+		AND ($3<>'APPROVED' OR cardinality(requirement_review_blockers(r.id))=0)
 		AND ($4='' OR r.risk=$4) AND ($5='' OR lower(r.actor)=lower($5))
 		AND ($6='' OR r.flow_type=$6)
 		AND ($7=0 OR EXISTS(SELECT 1 FROM requirement_evidence e
 			JOIN document_versions v ON v.id=e.document_version_id
 			WHERE e.requirement_id=r.id AND v.document_id=$7))
-		AND NOT EXISTS(SELECT 1 FROM requirements newer WHERE newer.supersedes_requirement_id=r.id)
+		AND requirement_is_current(r.id)
 		ORDER BY r.requirement_key,r.version_number DESC,r.id`
 	rows, err := r.pool.Query(ctx, query, filter.DocumentSetID, strings.ToUpper(filter.RequirementType),
 		strings.ToUpper(filter.Status), strings.ToUpper(filter.Risk), strings.TrimSpace(filter.Actor),
@@ -333,7 +372,7 @@ func (r *Repository) List(ctx context.Context, filter Filter) ([]Requirement, er
 	results := make([]Requirement, 0)
 	for rows.Next() {
 		var item Requirement
-		destinations := append(requirementDestinations(&item), &item.DocumentIDs)
+		destinations := append(requirementDestinations(&item), &item.ReviewHash, &item.ReviewBlockers, &item.SourceState, &item.DocumentIDs)
 		if err := rows.Scan(destinations...); err != nil {
 			return nil, fmt.Errorf("scan requirement: %w", err)
 		}
@@ -357,6 +396,9 @@ func (r *Repository) Get(ctx context.Context, id int64) (Detail, error) {
 			return Detail{}, ErrNotFound
 		}
 		return Detail{}, fmt.Errorf("get requirement: %w", err)
+	}
+	if err := r.pool.QueryRow(ctx, `SELECT requirement_review_hash(id),requirement_review_blockers(id),source_state FROM requirements WHERE id=$1`, id).Scan(&detail.Requirement.ReviewHash, &detail.Requirement.ReviewBlockers, &detail.Requirement.SourceState); err != nil {
+		return Detail{}, err
 	}
 	evidenceRows, err := r.pool.Query(ctx, `SELECT e.id,e.requirement_id,e.document_set_id,
 		e.document_version_id,e.document_block_id,d.name,v.version_number,v.approval_status,
@@ -424,6 +466,37 @@ func (r *Repository) Review(ctx context.Context, id int64, input ReviewInput) (D
 		return Detail{}, fmt.Errorf("begin requirement review: %w", err)
 	}
 	defer tx.Rollback(ctx)
+	var setID int64
+	if err = tx.QueryRow(ctx, `SELECT document_set_id FROM requirements WHERE id=$1`, id).Scan(&setID); errors.Is(err, pgx.ErrNoRows) {
+		return Detail{}, ErrNotFound
+	} else if err != nil {
+		return Detail{}, err
+	}
+	if input.DocumentSetID != 0 && input.DocumentSetID != setID {
+		return Detail{}, ErrNotFound
+	}
+	if _, err = tx.Exec(ctx, `SELECT id FROM document_sets WHERE id=$1 FOR UPDATE`, setID); err != nil {
+		return Detail{}, err
+	}
+	request, _ := json.Marshal(struct {
+		ID    int64
+		Input ReviewInput
+	}{id, input})
+	if input.CommandKey != "" {
+		var priorID int64
+		var same bool
+		err = tx.QueryRow(ctx, `SELECT (result->>'requirement_id')::bigint,request=$3::jsonb FROM requirement_review_commands WHERE document_set_id=$1 AND idempotency_key=$2`, setID, input.CommandKey, request).Scan(&priorID, &same)
+		if err == nil {
+			if !same {
+				return Detail{}, ErrIdempotencyConflict
+			}
+			_ = tx.Rollback(ctx)
+			return r.Get(ctx, priorID)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return Detail{}, err
+		}
+	}
 	var current Requirement
 	const selectForUpdate = `SELECT id,document_set_id,requirement_key,version_number,title,
 		statement,requirement_type,flow_type,actor,precondition,postcondition,priority,risk,
@@ -435,9 +508,34 @@ func (r *Repository) Review(ctx context.Context, id int64, input ReviewInput) (D
 		}
 		return Detail{}, fmt.Errorf("lock requirement: %w", err)
 	}
+	var actualHash string
+	var blockers []string
+	if err = tx.QueryRow(ctx, `SELECT requirement_review_hash($1),requirement_review_blockers($1)`, id).Scan(&actualHash, &blockers); err != nil {
+		return Detail{}, err
+	}
+	if input.ExpectedHash != "" && input.ExpectedHash != actualHash {
+		return Detail{}, ErrRevisionConflict
+	}
+	for _, code := range blockers {
+		if code == "STALE_REVISION" || code == "SET_INACTIVE" || input.Decision == DecisionApproved {
+			return Detail{}, fmt.Errorf("%w: %s", ErrReviewBlocked, code)
+		}
+	}
 	edited := hasRequirementEdits(current, input)
+	var previouslyReviewed bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM requirement_reviews WHERE requirement_id=$1)`, id).Scan(&previouslyReviewed); err != nil {
+		return Detail{}, err
+	}
+	// A changed decision on a reviewed revision is also a new revision. Existing
+	// testcase/release proofs retain the decision they were actually reviewed on.
+	edited = edited || (previouslyReviewed && current.Status != input.Decision)
+	for _, code := range blockers {
+		if edited && code == "CLARIFICATION_REQUIRED" {
+			return Detail{}, ErrReviewBlocked
+		}
+	}
 	if (current.Status == StatusConflict || current.Status == StatusTBD) &&
-		input.Decision == DecisionApproved && !edited {
+		input.Decision == DecisionApproved {
 		return Detail{}, fmt.Errorf("%w: resolve conflict or TBD first", ErrReviewBlocked)
 	}
 	targetID := current.ID
@@ -451,11 +549,14 @@ func (r *Repository) Review(ctx context.Context, id int64, input ReviewInput) (D
 				VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'DRAFT',$13,$14,$15,$16,'{}',$17) RETURNING id`,
 			current.DocumentSetID, current.RequirementKey, current.VersionNumber+1,
 			title, statement, current.RequirementType,
-			current.FlowType, strings.TrimSpace(input.Actor), strings.TrimSpace(input.Precondition),
-			strings.TrimSpace(input.Postcondition), defaultValue(strings.ToUpper(input.Priority), current.Priority),
+			current.FlowType, defaultValue(strings.TrimSpace(input.Actor), current.Actor), defaultValue(strings.TrimSpace(input.Precondition), current.Precondition),
+			defaultValue(strings.TrimSpace(input.Postcondition), current.Postcondition), defaultValue(strings.ToUpper(input.Priority), current.Priority),
 			defaultValue(strings.ToUpper(input.Risk), current.Risk), current.Confidence, current.ID,
 			current.Assumptions, current.SourceFingerprint, current.SourceSnapshotID).Scan(&targetID); err != nil {
 			return Detail{}, fmt.Errorf("version edited requirement: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE requirements SET stable_identifier=(SELECT stable_identifier FROM requirements WHERE id=$2) WHERE id=$1`, targetID, current.ID); err != nil {
+			return Detail{}, err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO requirement_evidence
 			(requirement_id,document_set_id,document_version_id,document_block_id,source_locator,excerpt_hash)
@@ -474,10 +575,17 @@ func (r *Repository) Review(ctx context.Context, id int64, input ReviewInput) (D
 		targetID, input.Decision); err != nil {
 		return Detail{}, fmt.Errorf("apply requirement decision: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO requirement_reviews
+	if current.Status != input.Decision || edited {
+		if _, err := tx.Exec(ctx, `INSERT INTO requirement_reviews
 		(requirement_id,reviewer_name,decision,comment) VALUES($1,$2,$3,$4)`,
-		targetID, input.ReviewerName, input.Decision, input.Comment); err != nil {
-		return Detail{}, fmt.Errorf("save requirement review: %w", err)
+			targetID, input.ReviewerName, input.Decision, input.Comment); err != nil {
+			return Detail{}, fmt.Errorf("save requirement review: %w", err)
+		}
+	}
+	if input.CommandKey != "" {
+		if _, err = tx.Exec(ctx, `INSERT INTO requirement_review_commands(document_set_id,idempotency_key,request,result,actor) VALUES($1,$2,$3,jsonb_build_object('requirement_id',$4::bigint),$5)`, setID, input.CommandKey, request, targetID, input.ReviewerName); err != nil {
+			return Detail{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Detail{}, fmt.Errorf("commit requirement review: %w", err)
@@ -488,7 +596,7 @@ func (r *Repository) Review(ctx context.Context, id int64, input ReviewInput) (D
 func (r *Repository) ListConflicts(ctx context.Context, setID int64) ([]Conflict, error) {
 	rows, err := r.pool.Query(ctx, `SELECT id,document_set_id,left_requirement_id,
 		right_requirement_id,reason,status,resolution,created_at,resolved_at
-		FROM requirement_conflicts WHERE document_set_id=$1 ORDER BY status,id`, setID)
+		FROM requirement_conflicts WHERE document_set_id=$1 AND (requirement_is_current(left_requirement_id) OR requirement_is_current(right_requirement_id)) ORDER BY status,id`, setID)
 	if err != nil {
 		return nil, fmt.Errorf("list requirement conflicts: %w", err)
 	}
@@ -509,7 +617,7 @@ func (r *Repository) ListConflicts(ctx context.Context, setID int64) ([]Conflict
 func (r *Repository) ListOpenQuestions(ctx context.Context, setID int64) ([]OpenQuestion, error) {
 	rows, err := r.pool.Query(ctx, `SELECT id,document_set_id,requirement_id,question,
 		owner_role,status,answer,created_at,answered_at FROM open_questions
-		WHERE document_set_id=$1 ORDER BY status,id`, setID)
+		WHERE document_set_id=$1 AND (requirement_id IS NULL OR requirement_is_current(requirement_id)) ORDER BY status,id`, setID)
 	if err != nil {
 		return nil, fmt.Errorf("list requirement open questions: %w", err)
 	}

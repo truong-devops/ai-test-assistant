@@ -4,7 +4,7 @@ import { AppShell, EmptyState } from "@/components/shell";
 import { DocumentWorkflowNav, type WorkspaceStep } from "@/components/document-workflow-nav";
 import { DocumentSourceWorkspace } from "@/components/document-source-workspace";
 import { DocumentLifecycle } from "@/components/document-lifecycle";
-import { RequirementInventory } from "@/components/requirement-inventory";
+import { RequirementReviewWorkspace } from "@/components/requirement-review-workspace";
 import { TestCaseWorkspace } from "@/components/test-case-workspace";
 import { SuiteReleasePublisher } from "@/components/suite-release-publisher";
 import { ExportControls } from "@/components/export-controls";
@@ -44,10 +44,7 @@ export default async function DocumentSetPage({ params, searchParams }: {
       {step === "documents" ? <DocumentSourceWorkspace key={set.id} setId={set.id} documents={documents} workflow={workflow} maxBytes={documentMaxUploadBytes} /> : null}
       {step !== "documents" && workflow.blocking_reasons.length ? <div className="notice"><strong>Điều kiện để tiếp tục</strong><ul>{workflow.blocking_reasons.map((reason) => <li key={reason.code}>{blockerCopy[reason.code] ?? reason.message}</li>)}</ul><Link href={`/documents/${set.id}?step=documents`}>Xem và xử lý nguồn</Link><p>Dữ liệu đã có vẫn xem được; các thao tác mới kiểm tra điều kiện tại server.</p></div> : null}
       {step === "requirements" ? <>
-        <p>Yêu cầu được AI tạo dưới dạng nháp. Mở từng yêu cầu để kiểm tra evidence và duyệt; phần conflict/TBD cần được làm rõ.</p>
-        <Link className="button secondary" href={`/documents/${id}/requirements`}>Xem chi tiết conflict và câu hỏi cần làm rõ</Link>
-        {requirements.length ? <RequirementInventory setId={set.id} requirements={requirements} documents={documents} /> : <EmptyState title="Chưa có yêu cầu" message="Quay về Tài liệu để xem nguồn và bấm Trích xuất yêu cầu. Kết quả sẽ tự xuất hiện khi xử lý xong." />}
-        <Link className="button" href={`/documents/${id}?step=test-cases`}>Tiếp tục đến testcase · {approvedRequirements} yêu cầu đã duyệt</Link>
+        <RequirementReviewWorkspace key={set.id} setId={set.id} requirements={requirements} documents={documents} canReview={workflow.capabilities.can_review} />
       </> : null}
       {step === "test-cases" ? <>
         <p>Sinh testcase cho {approvedRequirements} yêu cầu đã duyệt. Yêu cầu chưa duyệt không được tự đưa vào phạm vi.</p>

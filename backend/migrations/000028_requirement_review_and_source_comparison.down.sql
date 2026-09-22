@@ -1,0 +1,13 @@
+DROP TRIGGER requirements_clarification_approval ON requirements;
+DROP FUNCTION guard_requirement_clarification_approval();
+DROP TRIGGER requirement_steps_reviewed_proof ON requirement_flow_steps;
+DROP TRIGGER requirement_evidence_reviewed_proof ON requirement_evidence;
+DROP TRIGGER requirements_reviewed_proof ON requirements;
+DROP FUNCTION protect_reviewed_requirement_proof();
+DROP FUNCTION requirement_review_hash(BIGINT);
+DROP FUNCTION requirement_review_blockers(BIGINT);
+DROP FUNCTION requirement_is_current(BIGINT);
+DROP TABLE requirement_source_comparisons;
+DROP TABLE requirement_clarification_audit;
+DROP TABLE requirement_review_commands;
+ALTER TABLE requirements DROP COLUMN source_state, DROP COLUMN stable_identifier;

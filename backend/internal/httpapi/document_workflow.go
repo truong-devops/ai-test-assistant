@@ -215,6 +215,11 @@ func (h requirementWorkflowHandler) review(w http.ResponseWriter, r *http.Reques
 	if !decodeWorkflowJSON(w, r, &input) {
 		return
 	}
+	input.Comment += "\nDisplay name: " + input.ReviewerName
+	input.ReviewerName = workflowActor(r)
+	if key := r.Header.Get("Idempotency-Key"); key != "" {
+		input.CommandKey = "single:" + key
+	}
 	result, err := h.service.Review(r.Context(), id, input)
 	if err != nil {
 		writeWorkflowError(w, err, "could not review requirement")
@@ -549,6 +554,10 @@ func decodeWorkflowJSON(w http.ResponseWriter, r *http.Request, target any) bool
 func writeWorkflowError(w http.ResponseWriter, err error, fallback string) {
 	var revisionConflict *testcase.RevisionConflictError
 	switch {
+	case errors.Is(err, requirement.ErrRevisionConflict):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "REQUIREMENT_REVISION_CONFLICT"})
+	case errors.Is(err, requirement.ErrIdempotencyConflict):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "IDEMPOTENCY_KEY_REUSED"})
 	case errors.As(err, &revisionConflict):
 		writeJSON(w, http.StatusConflict, map[string]any{"error": revisionConflict.Error(),
 			"code":                "TESTCASE_HEAD_CONFLICT",

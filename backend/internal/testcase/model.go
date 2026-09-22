@@ -124,6 +124,7 @@ type TestCase struct {
 	CreatedAt          time.Time       `json:"created_at"`
 	UpdatedAt          time.Time       `json:"updated_at"`
 	LatestExecution    *ExecutionState `json:"latest_execution,omitempty"`
+	NeedsSourceReview  bool            `json:"needs_source_review"`
 }
 
 type ExecutionState struct {

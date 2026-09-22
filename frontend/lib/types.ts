@@ -110,6 +110,9 @@ export type DocumentVersionDetail = {
 // 4–9; keeping them separate from legacy generated tests prevents the UI from
 // treating automation source as a business test case.
 export type Requirement = {
+  review_hash: string;
+  review_blockers: string[];
+  source_state: "CURRENT" | "HISTORICAL" | "REMOVED";
   id: number;
   document_set_id: number;
   requirement_key: string;
@@ -278,6 +281,7 @@ export type OpenQuestion = {
 };
 
 export type BusinessTestCase = {
+  needs_source_review: boolean;
   id: number;
   test_suite_id: number;
   document_set_id: number;

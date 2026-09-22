@@ -168,6 +168,11 @@ func (s *Service) extract(ctx context.Context, setID, expectedGeneration int64,
 			}
 		}
 	}
+	if generation.SourceSnapshotID != nil {
+		if err = s.repository.ReconcileSources(ctx, setID, *generation.SourceSnapshotID, generation.Generation); err != nil {
+			return summary, err
+		}
+	}
 	return summary, nil
 }
 

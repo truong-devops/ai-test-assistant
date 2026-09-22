@@ -86,10 +86,9 @@ func (r *Repository) readFacts(ctx context.Context, setID int64) (readFacts, err
 		}
 		result.ExtractionReady = included > 0 && included == approved
 	}
-	if err := r.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE status='APPROVED')
+	if err := r.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE status='APPROVED' AND cardinality(requirement_review_blockers(requirement.id))=0)
 		FROM requirements requirement WHERE document_set_id=$1
-		AND NOT EXISTS(SELECT 1 FROM requirements newer
-			WHERE newer.supersedes_requirement_id=requirement.id)`, setID).Scan(
+		AND requirement_is_current(requirement.id)`, setID).Scan(
 		&result.RequirementCount, &result.ApprovedRequirements); err != nil {
 		return result, err
 	}
@@ -274,8 +273,8 @@ func (r *Repository) BuildGenerateSnapshot(ctx context.Context, setID int64) (
 		to_char(requirement.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
 		FROM requirements requirement
 		WHERE requirement.document_set_id=$1 AND requirement.status='APPROVED'
-		AND NOT EXISTS(SELECT 1 FROM requirements newer
-			WHERE newer.supersedes_requirement_id=requirement.id)
+		AND cardinality(requirement_review_blockers(requirement.id))=0
+		AND requirement_is_current(requirement.id)
 		ORDER BY requirement.id`, setID)
 	if err != nil {
 		return nil, "", err

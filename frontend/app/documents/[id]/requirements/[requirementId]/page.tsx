@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { RequirementReview } from "@/components/requirement-review";
 import { StatusBadge } from "@/components/status-badge";
-import { ApiError, getDocumentSet, getRequirement } from "@/lib/api";
+import { ApiError, getDocumentSet, getRequirement, getDocumentWorkflow } from "@/lib/api";
 import { humanize } from "@/lib/presentation";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ export default async function RequirementDetailPage({ params }: { params: Promis
   }
   if (detail.requirement.document_set_id !== Number(id)) notFound();
   const set = await getDocumentSet(id);
+  const workflow=await getDocumentWorkflow(id);
   const req = detail.requirement;
   return (
     <AppShell active="documents">
@@ -27,7 +28,9 @@ export default async function RequirementDetailPage({ params }: { params: Promis
       <section className="panel"><div className="detail-grid"><div className="detail-cell"><span>Identifier</span><strong className="mono">{req.requirement_key}</strong></div><div className="detail-cell"><span>Version</span><strong>v{req.version_number}</strong></div><div className="detail-cell"><span>Actor</span><strong>{req.actor || "—"}</strong></div></div></section>
       <section className="document-preview-section panel"><div className="panel-header"><div><h2>Evidence citations</h2><p>Approval requires at least one citation from an approved source version.</p></div><span className="section-counter">{detail.evidence.length}</span></div><div className="evidence-drawer">{detail.evidence.map((item) => <article id={`evidence-${item.id}`} key={item.id}><header><strong>{item.document_name} v{item.version_number}</strong><StatusBadge status={item.approval_status} /><code>{item.source_locator}</code></header><pre>{item.excerpt}</pre></article>)}</div></section>
       {detail.flow_steps.length ? <section className="document-preview-section panel"><div className="panel-header"><h2>Structured flow</h2></div><ol className="step-list">{detail.flow_steps.map((step) => <li key={step.id}><strong>{step.action}</strong>{step.expected_result ? <p>Expected: {step.expected_result}</p> : null}</li>)}</ol></section> : null}
-      <div className="document-preview-section"><RequirementReview requirement={req} /></div>
+      <Link className="button secondary" href={`/documents/${id}?step=requirements`}>Quay lại danh sách duyệt nhóm</Link>
+      <div className="document-preview-section"><RequirementReview key={req.id} requirement={req} canReview={workflow.capabilities.can_review} /></div>
+      <section className="panel panel-body"><h2>Lịch sử quyết định</h2>{detail.reviews.map((review)=><p key={review.id}>{review.reviewer_name} · {review.decision} · {review.comment}</p>)}{req.supersedes_requirement_id?<Link href={`/documents/${id}/requirements/${req.supersedes_requirement_id}`}>Xem revision trước #{req.supersedes_requirement_id}</Link>:null}</section>
     </AppShell>
   );
 }

@@ -1,6 +1,6 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–27.
+> This page documents the schema currently implemented by migrations 1–28.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
@@ -13,6 +13,39 @@
 > the shared durable workflow queue, attempt-level usage attribution and the
 > bridge to the existing requirement-extraction scheduler. Migration 27 adds
 > durable source-review/index/extraction continuations for the guided workspace.
+> Migration 28 adds exact requirement review receipts, clarification audit,
+> source comparison and reviewed-proof guards.
+
+## Requirement review and source comparison (migration 28)
+
+`requirements.stable_identifier` is backfilled from extraction payload and copied
+across review edits. `source_state` distinguishes CURRENT/HISTORICAL/REMOVED;
+`requirement_is_current` also excludes superseded revisions. Newly extracted rows
+with a snapshot stay HISTORICAL until successful reconciliation activates them.
+
+`requirement_review_commands` reserves each per-set batch key and request/actor;
+per-item receipts store successful results in the same transaction as the audit.
+The batch reservation's result stays empty: resuming a partially completed request
+uses item receipts, not an assumed all-or-nothing batch result.
+`requirement_clarification_audit` stores explicit answers/resolutions and trusted
+identity. `requirement_source_comparisons` stores classifications/reasons and
+affected testcase IDs per target snapshot; repeated extraction may update this
+derived comparison report. It is not an immutable published baseline.
+
+`requirement_review_hash` includes business revision, ordered steps, evidence
+identity/hash/approval and current blockers. `requirement_review_blockers` checks
+current revision, active set, valid parsed/approved evidence and unresolved issues.
+Triggers protect reviewed or testcase-linked requirement business fields, steps
+and evidence, including append/delete/reparent attempts. Status/source-state can
+change without rewriting historical content. Clarification approval guard blocks
+direct CONFLICT/TBD acceptance. Review edits create new revisions instead.
+
+Rollback 28 drops these three tables, helper functions/triggers and two columns,
+losing review retry receipts, clarification audit and comparison/source-state
+metadata. Existing requirement/evidence/testcase/release/run tables remain.
+Stop writes/workers and back up before operational rollback; deploy compatible
+application versions together. Down/up was tested only on an empty isolated
+database, not as a populated production rollback drill.
 
 ## Source workflow intents (migration 27)
 

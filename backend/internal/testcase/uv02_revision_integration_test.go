@@ -158,26 +158,36 @@ func TestUV02RevisionLifecycle(t *testing.T) {
 		Scan(&block2ID); err != nil {
 		t.Fatal(err)
 	}
+	// UV-06 seals requirement proof once a testcase references it. A changed
+	// citation therefore belongs to a new requirement revision, not the old row.
+	var requirement2ID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO requirements
+		(document_set_id,requirement_key,version_number,title,statement,requirement_type,flow_type,status,source_snapshot_id,supersedes_requirement_id)
+		SELECT document_set_id,requirement_key,2,title,statement,requirement_type,flow_type,'APPROVED',source_snapshot_id,id
+		FROM requirements WHERE id=$1 RETURNING id`, f.requirementID).Scan(&requirement2ID); err != nil {
+		t.Fatal(err)
+	}
 	if err := pool.QueryRow(ctx, `INSERT INTO requirement_evidence
 		(requirement_id,document_set_id,document_version_id,document_block_id,source_locator,excerpt_hash)
-		VALUES($1,$2,$3,$4,'line:2',$5) RETURNING id`, f.requirementID, f.setID,
+		VALUES($1,$2,$3,$4,'line:2',$5) RETURNING id`, requirement2ID, f.setID,
 		version2ID, block2ID, strings.Repeat("5", 64)).Scan(&evidence2ID); err != nil {
 		t.Fatal(err)
 	}
 	family, _ = repository.GetFamily(ctx, first.FamilyID)
-	evidence := []EvidenceRef{{RequirementRevisionID: f.requirementID,
+	evidence := []EvidenceRef{{RequirementRevisionID: requirement2ID,
 		RequirementEvidenceID: evidence2ID, DocumentVersionID: version2ID,
 		DocumentBlockID: block2ID, SourceLocator: "line:2", ExcerptHash: strings.Repeat("5", 64)}}
+	requirementIDs := []int64{requirement2ID}
 	v3Result, err := repository.CreateRevision(ctx, first.FamilyID, CreateRevisionInput{
 		BaseRevisionID: v2Result.Revision.ID, ExpectedHeadRevisionID: v2Result.Revision.ID,
-		ExpectedHeadToken: family.HeadToken, Patch: &RevisionPatch{EvidenceRefs: &evidence},
+		ExpectedHeadToken: family.HeadToken, Patch: &RevisionPatch{EvidenceRefs: &evidence, RequirementRevisionIDs: &requirementIDs},
 		Reason: "Update exact evidence citation",
 	}, "uv02-v3-evidence", "qa-a")
 	if err != nil || !v3Result.Created || v3Result.Revision.ContentHash == v2Result.Revision.ContentHash {
 		t.Fatalf("citation revision: result=%+v err=%v", v3Result, err)
 	}
 	diff, err := repository.Diff(ctx, first.FamilyID, v2Result.Revision.ID, v3Result.Revision.ID)
-	if err != nil || len(diff.Changes) != 1 || diff.Changes[0].Field != "evidence_refs" {
+	if err != nil || len(diff.Changes) != 2 {
 		t.Fatalf("citation diff: %+v err=%v", diff, err)
 	}
 

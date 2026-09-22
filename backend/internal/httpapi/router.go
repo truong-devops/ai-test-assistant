@@ -301,6 +301,8 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		mux.HandleFunc("GET /api/document-sets/{id}/open-questions", requirements.questions)
 		mux.HandleFunc("GET /api/requirements/{id}", requirements.get)
 		mux.HandleFunc("POST /api/requirements/{id}/review", requirements.review)
+		mux.HandleFunc("POST /api/document-sets/{id}/requirement-review/{action}", requirements.reviewScope)
+		mux.HandleFunc("GET /api/document-sets/{id}/requirement-review/{action}", requirements.reviewScope)
 	}
 	if testCaseService != nil {
 		testCases := testCaseWorkflowHandler{service: testCaseService}

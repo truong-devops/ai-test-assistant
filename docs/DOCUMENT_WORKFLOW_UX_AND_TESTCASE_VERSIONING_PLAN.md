@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 đã triển khai và qua kiểm thử kỹ thuật, còn nghiệm thu usability với người mới. Bước code kế tiếp: UV-06**.
+- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 đã triển khai và qua kiểm thử kỹ thuật, còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật ngày 22/09/2026. Bước code kế tiếp: UV-07**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -687,36 +687,40 @@ workflow component/hook mới, source version routes, shared style/status copy.
 
 Backend:
 
-- [ ] Bulk-review theo exact revision IDs/hash; giới hạn batch, trả kết quả từng
+- [x] Bulk-review theo exact revision IDs/hash; giới hạn batch, trả kết quả từng
   item rõ ràng. Partial success phải audit được, retry bỏ qua decision đã áp dụng.
-- [ ] Điều kiện approval có ít nhất đúng evidence hợp lệ theo policy; conflict/TBD
+- [x] Điều kiện approval có ít nhất đúng evidence hợp lệ theo policy; conflict/TBD
   cần resolution/answer cụ thể, không được lách bằng sửa mỗi title hoặc risk.
-- [ ] Xử lý conflict/open question cập nhật records liên quan và derived counts;
+- [x] Xử lý conflict/open question cập nhật records liên quan và derived counts;
   không để badge “cần làm rõ” còn nguyên sau khi đã giải quyết.
-- [ ] Requirement revision/source links bất biến khi review/publish. Extraction
+- [x] Requirement revision/source links bất biến khi review/publish. Extraction
   lại cùng nội dung với nguồn mới không append citation vào proof đã duyệt.
-- [ ] Đối chiếu requirement cũ/mới theo stable identifier + source + review mapping;
+- [x] Đối chiếu requirement cũ/mới theo stable identifier + source + review mapping;
   lưu added/changed/removed/unchanged/ambiguous và reason.
-- [ ] Requirement bị loại/removed không làm mất history; đánh dấu dependent case
+- [x] Requirement bị loại/removed không làm mất history; đánh dấu dependent case
   cần xem lại trước khi công bố cho nguồn mới.
 
 Frontend:
 
-- [ ] Danh sách có checkbox, selection count, evidence drawer, review inline và
+- [x] Danh sách có checkbox, selection count, evidence drawer, review inline và
   `Duyệt & xem tiếp`; giữ filter/scroll khi quay lại.
-- [ ] Selected set phân biệt “trang hiện tại”/“toàn bộ kết quả lọc”; chưa hỗ trợ chọn
+- [x] Selected set phân biệt “trang hiện tại”/“toàn bộ kết quả lọc”; chưa hỗ trợ chọn
   tất cả xuyên trang thì ghi rõ, không chọn âm thầm item người dùng chưa thấy.
-- [ ] Bulk confirmation tóm tắt N mục và mục bị chặn; không lặp tên reviewer từng dòng.
-- [ ] Tab `Cần làm rõ` có source cụ thể, form giải quyết và history quyết định.
-- [ ] Sau review có CTA `Sinh testcase cho N yêu cầu`, nêu số unresolved/ngoài scope.
+- [x] Bulk confirmation tóm tắt N mục và mục bị chặn; không lặp tên reviewer từng dòng.
+- [x] Tab `Cần làm rõ` có source cụ thể, form giải quyết và history quyết định.
+- [x] Sau review có CTA `Sinh testcase cho N yêu cầu`, nêu số unresolved/ngoài scope.
 
 Kiểm tra và Definition of Done:
 
-- [ ] 20 draft requirement hợp lệ có thể xem evidence và duyệt theo nhóm trong một màn.
-- [ ] Batch có TBD/foreign-set/stale revision không approve sai; kết quả từng item rõ.
-- [ ] UI counts và trạng thái conflict/question khớp DB sau giải quyết/reload.
-- [ ] Sửa requirement tạo revision mới và chuyển trang đúng ID; testcase ảnh hưởng
+- [x] 20 draft requirement hợp lệ có thể xem evidence và duyệt theo nhóm trong một màn.
+- [x] Batch có TBD/foreign-set/stale revision không approve sai; kết quả từng item rõ.
+- [x] UI counts và trạng thái conflict/question khớp DB sau giải quyết/reload.
+- [x] Sửa requirement tạo revision mới và chuyển trang đúng ID; testcase ảnh hưởng
   được đánh dấu nhưng case/run cũ vẫn đọc được.
+
+Bằng chứng và giới hạn: [UV06_REQUIREMENT_REVIEW_VERIFICATION.md](UV06_REQUIREMENT_REVIEW_VERIFICATION.md).
+Review mapping dùng revision cuối của chuỗi edit; AMBIGUOUS chỉ hỗ trợ đọc đối chiếu,
+không tự ghép hay chuyển approval. Migration 28 cần triển khai cùng API/worker/frontend.
 
 File trọng tâm: `backend/internal/requirement/`, workflow handlers, requirement
 inventory/review/detail UI; dùng lại state/polling của UV-04/05.
@@ -1002,7 +1006,7 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 - [x] UV-03 — Suite release, pinning, coverage/run/export đúng version.
 - [x] UV-04 — Async jobs, retry, progress và workflow API.
 - [ ] UV-05 — Code và kiểm thử kỹ thuật đã đạt; còn nghiệm thu người mới tự sử dụng.
-- [ ] UV-06 — Requirement batch review và đối chiếu nguồn.
+- [x] UV-06 — Requirement batch review và đối chiếu nguồn; kiểm thử kỹ thuật đạt 22/09/2026.
 - [ ] UV-07 — Testcase history/diff/edit/restore/release UI.
 - [ ] UV-08 — Regenerate/cập nhật có kiểm soát theo scope.
 - [ ] UV-09 — Browser E2E, usability, migration drill và rollout.
