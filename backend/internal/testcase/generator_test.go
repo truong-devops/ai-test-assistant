@@ -49,7 +49,7 @@ func TestGeneratorDoesNotTreatEveryPreconditionAsStateCoverage(t *testing.T) {
 	}
 }
 
-func TestDuplicateDetectionSuppressesEquivalentReferenceCases(t *testing.T) {
+func TestDuplicateDetectionDoesNotInferSemanticIdentity(t *testing.T) {
 	kept := []generatedCase{{Case: TestCase{ID: 1}, Proposal: Proposal{Title: "TC-001 - Đặt hàng hợp lệ",
 		TestType: TypeHappy, ExpectedResult: "Đơn hàng được tạo với trạng thái chờ thanh toán và hệ thống cấp mã đơn cho Buyer theo dõi"}}}
 	exact := kept[0].Proposal
@@ -59,7 +59,7 @@ func TestDuplicateDetectionSuppressesEquivalentReferenceCases(t *testing.T) {
 	}
 	near := Proposal{Title: "TC-019 - Đặt hàng hợp lệ", TestType: TypeHappy,
 		ExpectedResult: "Đơn hàng được tạo với trạng thái chờ thanh toán và hệ thống cấp mã đơn cho Buyer theo dõi"}
-	if index, matchType := findDuplicate(kept, near); index != 0 || matchType != "SEMANTIC" {
-		t.Fatalf("near duplicate index=%d type=%s", index, matchType)
+	if index, matchType := findDuplicate(kept, near); index != -1 || matchType != "" {
+		t.Fatalf("semantic similarity must not suppress a scenario: index=%d type=%s", index, matchType)
 	}
 }

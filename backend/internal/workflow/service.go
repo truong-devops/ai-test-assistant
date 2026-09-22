@@ -22,7 +22,7 @@ type ExtractionService interface {
 }
 
 type TestCaseService interface {
-	Generate(context.Context, int64) (testcase.GenerateSummary, error)
+	GeneratePinned(context.Context, int64, testcase.GenerationBaseline) (testcase.GenerateSummary, error)
 }
 
 type Service struct {
@@ -55,6 +55,14 @@ func (s *Service) Enqueue(ctx context.Context, setID int64, input OperationInput
 	if setID <= 0 || !validOperation(input.Operation) || idempotencyKey == "" {
 		return Job{}, false, ErrInvalidInput
 	}
+	if input.Operation != OperationGenerate && len(input.RequirementIDs) > 0 {
+		return Job{}, false, ErrInvalidInput
+	}
+	selection, err := generationSelection(input.RequirementIDs)
+	if err != nil {
+		return Job{}, false, err
+	}
+	input.RequirementIDs = selection
 	if !roleAtLeast(role, "editor") {
 		return Job{}, false, ErrForbidden
 	}
@@ -85,7 +93,7 @@ func (s *Service) Enqueue(ctx context.Context, setID int64, input OperationInput
 		snapshot, inputHash, err = s.repository.BuildIndexSnapshot(ctx, setID,
 			input.ExcludedVersionIDs)
 	case OperationGenerate:
-		snapshot, inputHash, err = s.repository.BuildGenerateSnapshot(ctx, setID)
+		snapshot, inputHash, err = s.repository.BuildGenerateSnapshotForRequirements(ctx, setID, input.RequirementIDs)
 	case OperationExtract:
 		if s.index == nil || s.extraction == nil {
 			return Job{}, false, ErrInvalidInput
@@ -130,6 +138,18 @@ func sameIdempotentCommand(existing Job, input OperationInput) bool {
 	if existing.Operation != input.Operation {
 		return false
 	}
+	if input.Operation == OperationGenerate {
+		var snapshot generateInputSnapshot
+		if json.Unmarshal(existing.InputSnapshot, &snapshot) != nil {
+			return false
+		}
+		wanted, err := generationSelection(input.RequirementIDs)
+		if err != nil {
+			return false
+		}
+		stored, err := generationSelection(snapshot.SelectedRequirementIDs)
+		return err == nil && slices.Equal(wanted, stored)
+	}
 	if input.Operation != OperationIndex {
 		return true
 	}
@@ -144,6 +164,20 @@ func sameIdempotentCommand(existing Job, input OperationInput) bool {
 	wanted = slices.Compact(wanted)
 	stored = slices.Compact(stored)
 	return slices.Equal(wanted, stored)
+}
+
+func generationSelection(ids []int64) ([]int64, error) {
+	if len(ids) > 100 {
+		return nil, ErrInvalidInput
+	}
+	selected := append([]int64{}, ids...)
+	slices.Sort(selected)
+	for index, id := range selected {
+		if id <= 0 || index > 0 && selected[index-1] == id {
+			return nil, ErrInvalidInput
+		}
+	}
+	return selected, nil
 }
 
 func (s *Service) Get(ctx context.Context, id int64) (Job, error) {
@@ -195,7 +229,17 @@ func (s *Service) Process(ctx context.Context, job Job) (any, error) {
 		if s.testcases == nil {
 			return nil, ErrInvalidInput
 		}
-		result, err := s.testcases.Generate(ctx, job.DocumentSetID)
+		var snapshot generateInputSnapshot
+		if err := json.Unmarshal(job.InputSnapshot, &snapshot); err != nil || len(snapshot.Requirements) == 0 {
+			return nil, ErrInvalidInput
+		}
+		ids := make([]int64, 0, len(snapshot.Requirements))
+		for _, item := range snapshot.Requirements {
+			ids = append(ids, item.ID)
+		}
+		result, err := s.testcases.GeneratePinned(ctx, job.DocumentSetID, testcase.GenerationBaseline{
+			RequirementIDs: ids, WorkflowJobID: job.ID, InputHash: job.InputHash,
+			SourceRevision: snapshot.SourceRevision})
 		if err != nil {
 			return nil, err
 		}

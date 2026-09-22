@@ -14,17 +14,19 @@ repository chỉ được dùng sau khi test case đã duyệt để tạo và c
 ## Luồng trình diễn
 
 1. Vào **Documents**, tạo set `Đặt hàng thành công`, product và scope `UC-B08`.
-2. Upload DOCX/Markdown, mở version, kiểm tra structured blocks/source locator,
-   nhập reviewer rồi chọn **Approve source**.
-3. Mở **Semantic index**, chọn **Re-index** và chờ `Ready`.
-4. Mở **Requirements**, chọn **Extract requirements**. API trả job `202`; UI
-   hiện số chunk đã xử lý và tự tải lại khi job `COMPLETED`, nên request trình
-   duyệt không còn phải chờ Gemini hàng phút và không bị proxy trả 502.
-5. Mở từng requirement để kiểm tra evidence, conflict/TBD và duyệt baseline.
+2. Upload DOCX/Markdown trong bước **Tài liệu**; worker tự parse/chuẩn bị nguồn.
+   Kiểm tra preview/locator và chọn rõ các phiên bản nguồn cần duyệt.
+3. Chọn **Duyệt & trích xuất**, nhập reviewer và xác nhận phạm vi. Đây là intent
+   bền vững; không cần vào Semantic index để Re-index thủ công ở luồng bình thường.
+4. Chờ tiến độ nguồn/trích xuất trên workspace. API trả `202`; worker xử lý nền,
+   UI polling trạng thái nên không giữ HTTP request chờ LLM nhiều phút.
+5. Mở **Yêu cầu**, xem evidence và giải quyết conflict/TBD; chọn exact revisions
+   để duyệt theo nhóm rồi sinh testcase cho phạm vi đã approved.
 6. Mở **Test cases**, sinh draft, kiểm tra ma trận main/alternate/exception flow,
    rồi duyệt test case. Xuất XLSX trước khi chạy để minh họa trạng thái `NY`.
-7. Vào **Projects**, chọn document suite làm baseline và đặt pipeline mode là
-   `DOCUMENT_DRIVEN` với actor/reason audit.
+7. Sang **Sử dụng & xuất**, chọn exact approved revisions, xem preview coverage
+   rồi chốt release R1. Vào **Projects**, bind release đó làm baseline và đặt
+   pipeline mode `DOCUMENT_DRIVEN` với actor/reason audit.
 8. Gửi Pull Request/Merge Request webhook. Mở **Change runs**, kiểm tra source
    SHA, technical scope và các test case được chọn từ baseline đã duyệt.
 9. Sinh và duyệt Go automation artifact, sau đó chạy test run trong sandbox.
@@ -36,6 +38,28 @@ repository chỉ được dùng sau khi test case đã duyệt để tạo và c
 12. Ghi lại `DOCUMENT_SET_ID`, `PROJECT_ID`, `ANALYSIS_ID`, `TEST_RUN_ID` rồi chạy
     `make prod-document-e2e-verify DOCUMENT_SET_ID=... PROJECT_ID=... ANALYSIS_ID=... TEST_RUN_ID=...`.
     Chỉ kết quả JSON `"passed": true` mới là bằng chứng DoD E2E.
+
+## Quản lý version testcase (UV-07)
+
+1. Ở bước testcase, mở v1 đã approved. Thay title/actor hoặc bước thao tác, nhập
+   lý do rồi **Lưu bản nháp mới**. UI mở v2 draft; quyết định approve là nút riêng.
+2. Mở **Lịch sử & so sánh**, đọc field/steps/citation thay đổi và nguồn. Nếu đổi
+   expected bị chặn vì thiếu nguồn, làm rõ/duyệt requirement trước; không sửa
+   expected theo kết quả code để biến FAIL thành PASS.
+3. Duyệt v2, sang bước sử dụng/xuất, chọn đúng v2, xem coverage preview rồi chốt
+   R2. R1 và project còn bind R1 không tự thay đổi.
+4. Trong history v2 chọn **Đối chiếu / phục hồi v1**, xem diff, nhập lý do và
+   **Phục hồi thành bản nháp mới**. Kết quả là v3 draft, không quay ngược ID/version
+   và không đổi manifest R2.
+5. Mở **Run & automation** của v3: chưa chạy không được hiển thị PASS từ v1.
+   Chỉ chọn phạm vi cả identity khi muốn xem các run của revision khác. Xuất v3
+   hoặc release R2 là hai lựa chọn có provenance khác nhau.
+6. Thử hai tab cùng revision: lưu một tab trước; tab còn lại gặp 409 sẽ giữ form,
+   cho so sánh head mới với nội dung đang nhập. Chỉ chọn dùng head mới sau khi
+   đối chiếu; thao tác này không tự merge các field.
+
+Xem [bằng chứng và giới hạn UV-07](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+Kiểm thử local này không thay thế demo provider/SCM/sandbox thật bên trên.
 
 ## Bằng chứng nên mở cho giảng viên
 

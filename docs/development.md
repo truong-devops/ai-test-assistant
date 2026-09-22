@@ -51,6 +51,10 @@
 
 - Keep API and worker entry points limited to dependency assembly.
 - HTTP handlers must call services rather than querying PostgreSQL directly.
+- UV-07 testcase browser checks and isolated schema-28 setup are documented in
+  [UV07_TESTCASE_VERSIONING_VERIFICATION.md](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+  The script retains fixtures; never run it against production. Playwright/Chromium
+  must be installed separately until the UV-09 browser CI lane is established.
 - External systems must be represented by interfaces.
 - Pass `context.Context` through I/O boundaries.
 - Wrap errors with useful operation context and never log secrets.

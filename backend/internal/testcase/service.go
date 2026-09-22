@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"unicode"
 
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/requirement"
 )
@@ -62,6 +61,20 @@ func (s *Service) Generate(ctx context.Context, setID int64) (GenerateSummary, e
 	if len(baseline) == 0 {
 		return GenerateSummary{}, ErrNoApprovedSource
 	}
+	ids := make([]int64, 0, len(baseline))
+	for _, item := range baseline {
+		ids = append(ids, item.ID)
+	}
+	return s.GeneratePinned(ctx, setID, GenerationBaseline{RequirementIDs: ids})
+}
+
+// GeneratePinned consumes only the exact IDs chosen when the job was enqueued.
+// Load and validate every input before invoking a provider or writing testcases.
+func (s *Service) GeneratePinned(ctx context.Context, setID int64, input GenerationBaseline) (GenerateSummary, error) {
+	baseline, err := s.loadGenerationBaseline(ctx, setID, input.RequirementIDs)
+	if err != nil {
+		return GenerateSummary{}, err
+	}
 	suite, err := s.repository.EnsureSuite(ctx, setID)
 	if err != nil {
 		return GenerateSummary{}, err
@@ -70,12 +83,12 @@ func (s *Service) Generate(ctx context.Context, setID int64) (GenerateSummary, e
 		RequirementCount: len(baseline)}
 	kept := make([]generatedCase, 0)
 	suppressed := make([]suppressedCase, 0)
-	for _, item := range baseline {
-		detail, err := s.requirements.Get(ctx, item.ID)
-		if err != nil {
-			return summary, err
-		}
+	for _, detail := range baseline {
 		proposals := s.generator.Generate(detail)
+		generation := GenerationProvenance{Provider: "disabled", Model: "deterministic",
+			PromptVersion: "business-test-rules-v1", PromptHash: hash(renderGenerationPrompt(detail)),
+			RequirementReviewHash: detail.Requirement.ReviewHash, WorkflowJobID: input.WorkflowJobID,
+			WorkflowInputHash: input.InputHash, SourceRevision: input.SourceRevision}
 		if s.llmGenerator != nil {
 			var call requirement.AICall
 			proposals, call, err = s.llmGenerator.Generate(ctx, detail)
@@ -85,13 +98,17 @@ func (s *Service) Generate(ctx context.Context, setID int64) (GenerateSummary, e
 				}
 			}
 			if err != nil {
-				return summary, fmt.Errorf("generate test cases for %s: %w", item.RequirementKey, err)
+				return summary, fmt.Errorf("generate test cases for %s: %w", detail.Requirement.RequirementKey, err)
 			}
+			generation.Provider, generation.Model = call.Provider, call.ModelName
+			generation.PromptVersion = call.PromptVersion
+			generation.PromptHash = hash(call.Instructions + "\x00" + call.PromptText + "\x00" + string(call.RequestSchema))
+			generation.ResponseHash = hash(call.ResponseText)
 		}
 		for _, proposal := range proposals {
+			proposal.Generation = &generation
 			duplicateIndex, matchType := findDuplicate(kept, proposal)
 			if duplicateIndex >= 0 {
-				mergeProposalSources(&kept[duplicateIndex].Proposal, proposal)
 				suppressed = append(suppressed, suppressedCase{KeptIndex: duplicateIndex,
 					SuppressedKey: hash(proposalIdentity(proposal) + fmt.Sprint(proposal.RequirementIDs)),
 					MatchType:     matchType})
@@ -115,7 +132,7 @@ func (s *Service) Generate(ctx context.Context, setID int64) (GenerateSummary, e
 	for _, item := range suppressed {
 		created, err := s.repository.RecordDedupe(ctx, suite, kept[item.KeptIndex].Case.ID,
 			item.SuppressedKey, item.MatchType,
-			"Test case có cùng mục tiêu và expected result; requirement source được gộp trước khi tạo revision")
+			"Trùng toàn bộ nội dung, ordered steps và exact requirement revisions; không ghép semantic hoặc chuyển lineage")
 		if err != nil {
 			return summary, err
 		}
@@ -124,6 +141,35 @@ func (s *Service) Generate(ctx context.Context, setID int64) (GenerateSummary, e
 		}
 	}
 	return summary, nil
+}
+
+func (s *Service) loadGenerationBaseline(ctx context.Context, setID int64, ids []int64) ([]requirement.Detail, error) {
+	if setID <= 0 || len(ids) == 0 {
+		return nil, ErrInvalidInput
+	}
+	seen := make(map[int64]bool, len(ids))
+	baseline := make([]requirement.Detail, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			return nil, ErrInvalidInput
+		}
+		seen[id] = true
+		detail, err := s.requirements.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if detail.Requirement.ID != id || detail.Requirement.DocumentSetID != setID {
+			return nil, ErrEvidenceInvalid
+		}
+		if detail.Requirement.Status != requirement.StatusApproved || len(detail.Requirement.ReviewBlockers) > 0 {
+			return nil, ErrNoApprovedSource
+		}
+		if len(detail.Evidence) == 0 {
+			return nil, ErrEvidenceInvalid
+		}
+		baseline = append(baseline, detail)
+	}
+	return baseline, nil
 }
 
 func (s *Service) Regenerate(ctx context.Context, setID int64) (GenerateSummary, error) {
@@ -289,46 +335,5 @@ func findDuplicate(items []generatedCase, candidate Proposal) (int, string) {
 			return index, "EXACT"
 		}
 	}
-	for index, item := range items {
-		if item.Proposal.TestType == candidate.TestType &&
-			jaccard(item.Proposal.Title+" "+item.Proposal.ExpectedResult,
-				candidate.Title+" "+candidate.ExpectedResult) >= 0.88 {
-			return index, "SEMANTIC"
-		}
-	}
 	return -1, ""
-}
-
-func jaccard(left, right string) float64 {
-	leftSet, rightSet := words(left), words(right)
-	if len(leftSet) == 0 || len(rightSet) == 0 {
-		return 0
-	}
-	intersection := 0
-	for word := range leftSet {
-		if _, ok := rightSet[word]; ok {
-			intersection++
-		}
-	}
-	return float64(intersection) / float64(len(leftSet)+len(rightSet)-intersection)
-}
-
-func words(value string) map[string]struct{} {
-	result := make(map[string]struct{})
-	var current []rune
-	flush := func() {
-		if len(current) > 1 {
-			result[strings.ToLower(string(current))] = struct{}{}
-		}
-		current = current[:0]
-	}
-	for _, character := range value {
-		if unicode.IsLetter(character) || unicode.IsDigit(character) {
-			current = append(current, character)
-		} else {
-			flush()
-		}
-	}
-	flush()
-	return result
 }

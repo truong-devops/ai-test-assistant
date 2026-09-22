@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 đã triển khai và qua kiểm thử kỹ thuật, còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật ngày 22/09/2026. Bước code kế tiếp: UV-07**.
+- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật. UV-07 đã qua kiểm thử kỹ thuật, còn nghiệm thu người dùng/screen reader. UV-08 đang triển khai: đã có nền generation pin exact requirements và bỏ semantic auto-merge; proposal/apply/UI chưa hoàn thành**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -731,34 +731,41 @@ inventory/review/detail UI; dùng lại state/polling của UV-04/05.
 
 Frontend:
 
-- [ ] Danh sách theo identity có latest/approved/pinned version, stale source,
+- [x] Danh sách theo identity có latest/approved/pinned version, stale source,
   readiness; filter/search/sort/pagination giữ context khi mở chi tiết.
-- [ ] Timeline version có creator/reason/source/model khi biết, approval và release refs.
-- [ ] So sánh hai revision cùng identity: field diff, ordered-step diff, citation
+- [x] Timeline version có creator/reason/source/model khi biết, approval và release refs.
+- [x] So sánh hai revision cùng identity: field diff, ordered-step diff, citation
   diff; không dùng hash làm nội dung chính cho người dùng.
-- [ ] Form đầy đủ title/actor/precondition/steps/data/expected/postcondition/risk;
+- [x] Form đầy đủ title/actor/precondition/steps/data/expected/postcondition/risk;
   CTA riêng `Lưu bản nháp mới`, `Duyệt phiên bản`, `Từ chối`.
-- [ ] Sau lưu mở revision mới; unsaved-change prompt khi cần; 409 mở so sánh current
+- [x] Sau lưu mở revision mới; unsaved-change prompt khi cần; 409 mở so sánh current
   head và form đang sửa, không tự bỏ dữ liệu nhập.
-- [ ] `Phục hồi thành bản nháp mới` có nguồn bản phục hồi, lý do và diff preview.
-- [ ] Bulk approve hiển thị đúng revision IDs; archive không làm biến mất history.
-- [ ] Chọn revision approved để chốt release; hiển thị coverage/scope rồi publish.
-- [ ] Tab run/automation theo revision đang xem; xem cả identity là lựa chọn riêng.
-- [ ] Export version/release có thông tin version rõ; share URL revision cũ vẫn đúng.
+- [x] `Phục hồi thành bản nháp mới` có nguồn bản phục hồi, lý do và diff preview.
+- [x] Bulk approve hiển thị đúng revision IDs; archive không làm biến mất history.
+- [x] Chọn revision approved để chốt release; hiển thị coverage/scope rồi publish.
+- [x] Tab run/automation theo revision đang xem; xem cả identity là lựa chọn riêng.
+- [x] Export version/release có thông tin version rõ; share URL revision cũ vẫn đúng.
 
 Backend hỗ trợ:
 
-- [ ] History/diff pagination giới hạn payload lớn; stable ordering và cross-family guards.
-- [ ] Release preview và publish kiểm tra lại cùng manifest/hash để tránh race.
-- [ ] Structured field validation hướng người dùng về requirement khi expected thiếu nguồn.
+- [x] History/diff pagination giới hạn payload lớn; stable ordering và cross-family guards.
+- [x] Release preview và publish kiểm tra lại cùng manifest/hash để tránh race.
+- [x] Structured field validation hướng người dùng về requirement khi expected thiếu nguồn.
 
 Kiểm tra và Definition of Done:
 
-- [ ] QA làm được v1 approved → v2 draft → diff → approve → R2 mà không dùng DB/API tay.
-- [ ] Restore v1 tạo v3 draft và không đổi R2 đang dùng.
-- [ ] Copy expected cũ không tự mang PASS/automation approved sang revision mới.
+- [x] QA làm được v1 approved → v2 draft → diff → approve → R2 mà không dùng DB/API tay.
+- [x] Restore v1 tạo v3 draft và không đổi R2 đang dùng.
+- [x] Copy expected cũ không tự mang PASS/automation approved sang revision mới.
 - [ ] Người dùng phân biệt được version testcase với version automation và release bộ.
 - [ ] Keyboard/screen reader đọc được diff, timeline, selection và nút review.
+
+Bằng chứng: [UV07_TESTCASE_VERSIONING_VERIFICATION.md](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+Các thao tác version/review/release/restore và conflict hai tab đã qua Chromium;
+nhãn phân biệt ba loại version và kiểm tra keyboard cơ bản đã có, nhưng chưa
+nghiệm thu mức độ hiểu của người mới hoặc chạy screen reader thật. Không có
+migration mới: tiếp tục schema 28. Phân trang history/diff giới hạn số mục trả về,
+không tuyên bố mọi payload lịch sử hoặc inventory identity đã được phân trang server.
 
 File trọng tâm: testcase workspace/review/detail, components history/diff/editor mới,
 export controls, API types; không tạo revision bằng logic riêng trên frontend.
@@ -767,6 +774,14 @@ export controls, API types; không tạo revision bằng logic riêng trên fron
 
 **Mục tiêu:** tài liệu thay đổi tạo đề xuất có kiểm soát, không tích lũy case trùng
 hoặc âm thầm thay bản đang dùng.
+
+Tiến độ chặng nền (22/09/2026): worker đã dùng exact IDs trong job thay vì list lại
+baseline live; API nhận optional `requirement_ids` (1–100), kiểm tra ownership/
+approval/current và idempotency theo scope. Dedupe trong generation không còn gộp
+theo title/expected gần giống hoặc tự merge nguồn. Revision mới lưu generation
+provenance. Chưa có proposal persistence/classification/apply hoặc UI chọn scope;
+không đánh dấu các mục gộp dưới đây hoàn tất chỉ vì đã có một phần nền.
+Xem [UV08_GENERATION_FOUNDATION_VERIFICATION.md](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
 
 Backend:
 
@@ -1007,8 +1022,8 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 - [x] UV-04 — Async jobs, retry, progress và workflow API.
 - [ ] UV-05 — Code và kiểm thử kỹ thuật đã đạt; còn nghiệm thu người mới tự sử dụng.
 - [x] UV-06 — Requirement batch review và đối chiếu nguồn; kiểm thử kỹ thuật đạt 22/09/2026.
-- [ ] UV-07 — Testcase history/diff/edit/restore/release UI.
-- [ ] UV-08 — Regenerate/cập nhật có kiểm soát theo scope.
+- [ ] UV-07 — Code và kiểm thử kỹ thuật đạt; còn nghiệm thu phân biệt version với người dùng và screen reader.
+- [ ] UV-08 — Đã có nền pinned generation/selected requirements/safe dedupe; còn proposal classification/apply và UI theo scope.
 - [ ] UV-09 — Browser E2E, usability, migration drill và rollout.
 
 Mỗi lần hoàn thành phase, điền bên dưới hoặc tạo subsection theo phase:
@@ -1113,3 +1128,27 @@ dấu hết checklist code chưa thay thế bằng chứng đó.
   usage còn dấu khi kết quả provider chưa chắc chắn và structured HTTP blocker.
 - UV-04 đã hoàn tất sau khi unit, vet, frontend production build và PostgreSQL
   integration suite chạy đạt trên schema 26.
+
+### Tiến độ UV-07 — 22/09/2026
+
+- Workspace identity/history/diff/editor/restore/release và guards backend đã bàn
+  giao trong working tree (chưa commit). Schema giữ nguyên 28.
+- Browser đi qua v1 approved → v2 draft → diff → approve → R2 → restore v3;
+  không đổi manifest R2, không kế thừa PASS. Hai tab tạo head conflict, form còn
+  nguyên và chỉ lưu v5 sau đối chiếu/rebase rõ ràng. Archive giữ đủ history.
+- Unit/vet/typecheck, production build, PostgreSQL integration và Chromium đạt.
+  Chi tiết fixture/script/ảnh: [UV07_TESTCASE_VERSIONING_VERIFICATION.md](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+- Chưa đóng phase: còn nghiệm thu screen reader và người mới phân biệt các loại
+  version; không tự đóng UV-05 usability hay E2E provider/SCM/sandbox thật.
+
+### Tiến độ UV-08 — chặng nền, 22/09/2026
+
+- Worker dùng exact requirement IDs đã pin; API hỗ trợ optional selected IDs và
+  idempotency theo scope. Nguồn thêm trong lúc AI chạy không mở rộng input.
+- Bỏ semantic auto-merge trước persist: khác data/steps/source vẫn giữ độc lập.
+  Revision mới ghi generation provenance; replay không thay head do QA sửa.
+- Unit/vet/typecheck và PostgreSQL integration đã chạy; chi tiết tại
+  [UV08_GENERATION_FOUNDATION_VERIFICATION.md](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
+- Chưa commit, chưa migration mới, chưa UI scope/proposal hoặc apply CAS. UV-08
+  còn mở; bước tiếp theo là persist/classify proposals và apply trên expected head,
+  sau đó mới nối bảng đối chiếu/phạm vi và retry từng unit vào UI.

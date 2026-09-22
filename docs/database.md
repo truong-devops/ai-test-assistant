@@ -16,6 +16,13 @@
 > Migration 28 adds exact requirement review receipts, clarification audit,
 > source comparison and reviewed-proof guards.
 
+UV-07 adds no migration: history/diff, release preview and version editor use
+schema 28. Preview runs the release validations in a rolled-back transaction and
+persists neither a release nor a receipt. New draft revisions keep immutable
+source links, never copy run items or approved automation artifacts, and reset
+an inherited `AUTOMATED` readiness flag to `AUTOMATABLE`. Archive preserves all
+historical revisions, releases and runs. See [UV-07 verification](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+
 ## Requirement review and source comparison (migration 28)
 
 `requirements.stable_identifier` is backfilled from extraction payload and copied

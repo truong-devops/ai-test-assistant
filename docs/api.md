@@ -183,6 +183,35 @@ budget state has since changed; reusing it for a different command returns a
 conflict. Legacy synchronous mutation routes remain available during migration
 and advertise deprecation/link headers pointing clients to this API.
 
+### Selected generation input (UV-08 foundation)
+
+`POST /api/document-sets/{id}/workflow-operations` accepts an optional
+`requirement_ids` field for `GENERATE_TESTCASES` only:
+
+```json
+{"operation":"GENERATE_TESTCASES","requirement_ids":[42,43]}
+```
+
+Send `Idempotency-Key` as usual. A nonempty selection must contain 1–100 unique
+positive IDs, all owned by this document set, current, approved and unblocked;
+the server never silently drops invalid selections. Invalid IDs/duplicates or
+more than 100 return 400; unavailable/foreign/unapproved items return
+`422 GENERATION_SELECTION_BLOCKED`. Reordered identical selections replay the
+same job; changing the selection or switching to all-baseline with the same key
+returns 409. Omitted/empty selection retains the legacy all-approved-current scope.
+
+The snapshot stores the explicit selection, exact revision/source metadata and
+input hash. The worker validates this snapshot and then loads only its recorded
+IDs, not a new live inventory. It preloads all requirements before calling a
+provider. A requirement approved outside an explicit selection does not expand
+the job. New drafts include server-built generation provider/model/prompt-version,
+prompt/response hashes and workflow input provenance; the existing AI-call log
+retains the actual prompt/schema/response. Model output cannot set this provenance.
+
+This is a foundation, not the full regeneration proposal API: generation still
+saves drafts through the existing service. Affected-case scope, classifications,
+review/apply endpoints and the scope UI are pending. No new migration is required.
+
 ### Source review and guided workspace (UV-05)
 
 `GET /api/document-sets/{id}/workflow` also returns `source_intents` (latest 20)
@@ -381,6 +410,48 @@ stays false while any approved requirement is uncovered or any current
 conflict/TBD exists—even if the approved-only ratio is 100%.
 
 ## Export, execution scope and automation (Phases 6–8)
+
+### Testcase version workspace (UV-07)
+
+- `GET /api/test-case-families/{id}/history?before=0&limit=20` returns `entries`
+  containing `revision` and `releases` (`id`, `number`), plus optional
+  `next_before`. Cursor is the exclusive version number; descending version/ID
+  ordering is stable. Limit is 1–50; release references are the newest 50 per entry.
+- `GET /api/test-case-families/{id}/comparison?from=1&to=2&offset=0&limit=20`
+  returns revision metadata, `changes`, `total` and optional `next_offset`.
+  Both revisions must belong to the family. Changes have deterministic field
+  order; ordered collections use one-based paths such as `steps[2]`. Limit is
+  1–50 changed entries, not a byte cap on historical fields. Legacy `/diff` and
+  `/versions` remain unchanged. Identity-list pagination is currently client-side.
+- `GET /api/test-cases/{id}/runs?scope=revision&before=0` returns `runs` and
+  optional `next_before` (exclusive run-item ID), 20 entries newest first.
+  `scope=family` explicitly includes the identity's other revisions, each with
+  its exact testcase ID/version. Default scope does not inherit a predecessor's PASS.
+- `POST /api/document-sets/{id}/suite-releases/preview` is reviewer-only and
+  accepts the publish selection (`test_suite_id`, exact `revision_ids`, optional
+  `source_snapshot_id`, `published_by`, `scope_decision`). It returns a release-shaped
+  preview with `preview_hash`, `manifest_hash`, exact items, source snapshot,
+  scope status and covered/uncovered counts. It creates no release/receipt and
+  needs no idempotency key. Partial-scope reason is mandatory only at publish.
+- Publish the reviewed selection at `/suite-releases` with `Idempotency-Key`
+  and `expected_preview_hash`. The server revalidates approval, ownership,
+  archive/evidence/source blockers, manifest and current coverage in the publish
+  transaction. Changed preview yields `409 RELEASE_PREVIEW_CHANGED`; clients
+  must preview again. Legacy clients may omit the hash but still receive normal
+  publish validation. Existing idempotent/manifest replays do not create a new release.
+
+The new editor uses `/versions` for saving a draft and `/review` separately with
+`expected_content_hash`; HTTP audit actor comes from authenticated server context,
+not the reviewer display name. Repeating the same current decision does not add
+a duplicate review event. Archived families and blocked source requirements cannot
+be approved. A changed top-level expected result must equal an approved linked
+requirement statement or flow-step expected result; missing grounding returns
+`422 TESTCASE_FIELD_INVALID` with `field`, `error`, and `next_action`.
+New editor payloads allow at most 200 steps/requirement IDs, 500 citations,
+100 assumptions, and 16000 bytes per business field/step value. These size checks
+do not invalidate historical reads or restore. Head conflicts preserve the usual
+`409 TESTCASE_HEAD_CONFLICT` with current head ID/token; the UI retains local edits
+and requires explicit comparison/rebase, never silently overwrites the new head.
 
 - `POST /api/document-sets/{id}/suite-releases` publishes an immutable manifest
   of approved `revision_ids`. It requires `test_suite_id`, `published_by` and an

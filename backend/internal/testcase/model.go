@@ -33,6 +33,7 @@ var (
 	ErrFamilyArchived      = errors.New("test case family is archived")
 	ErrEvidenceInvalid     = errors.New("test case evidence is invalid or outside the family scope")
 	ErrReleaseScope        = errors.New("suite release scope is incomplete or inconsistent")
+	ErrPreviewChanged      = errors.New("release preview changed; preview the selected scope again")
 )
 
 type Suite struct {
@@ -51,6 +52,7 @@ const (
 )
 
 type SuiteRelease struct {
+	PreviewHash              string        `json:"preview_hash,omitempty"`
 	ID                       int64         `json:"id"`
 	TestSuiteID              int64         `json:"test_suite_id"`
 	DocumentSetID            int64         `json:"document_set_id"`
@@ -83,11 +85,12 @@ type ReleaseItem struct {
 }
 
 type PublishReleaseInput struct {
-	TestSuiteID      int64   `json:"test_suite_id"`
-	SourceSnapshotID *int64  `json:"source_snapshot_id,omitempty"`
-	RevisionIDs      []int64 `json:"revision_ids"`
-	PublishedBy      string  `json:"published_by"`
-	ScopeDecision    string  `json:"scope_decision,omitempty"`
+	ExpectedPreviewHash string  `json:"expected_preview_hash,omitempty"`
+	TestSuiteID         int64   `json:"test_suite_id"`
+	SourceSnapshotID    *int64  `json:"source_snapshot_id,omitempty"`
+	RevisionIDs         []int64 `json:"revision_ids"`
+	PublishedBy         string  `json:"published_by"`
+	ScopeDecision       string  `json:"scope_decision,omitempty"`
 }
 
 type TestCase struct {
@@ -174,21 +177,42 @@ type Detail struct {
 }
 
 type Proposal struct {
-	Title            string   `json:"title"`
-	TestType         string   `json:"test_type"`
-	Risk             string   `json:"risk"`
-	Actor            string   `json:"actor"`
-	Precondition     string   `json:"precondition"`
-	TestData         string   `json:"test_data"`
-	ExpectedResult   string   `json:"expected_result"`
-	Postcondition    string   `json:"postcondition"`
-	AutomationStatus string   `json:"automation_status"`
-	Confidence       float64  `json:"confidence"`
-	GeneratedBy      string   `json:"-"`
-	Assumptions      []string `json:"assumptions"`
-	Steps            []Step   `json:"steps"`
-	RequirementIDs   []int64  `json:"-"`
-	RequirementKeys  []string `json:"-"`
+	Generation       *GenerationProvenance `json:"-"`
+	Title            string                `json:"title"`
+	TestType         string                `json:"test_type"`
+	Risk             string                `json:"risk"`
+	Actor            string                `json:"actor"`
+	Precondition     string                `json:"precondition"`
+	TestData         string                `json:"test_data"`
+	ExpectedResult   string                `json:"expected_result"`
+	Postcondition    string                `json:"postcondition"`
+	AutomationStatus string                `json:"automation_status"`
+	Confidence       float64               `json:"confidence"`
+	GeneratedBy      string                `json:"-"`
+	Assumptions      []string              `json:"assumptions"`
+	Steps            []Step                `json:"steps"`
+	RequirementIDs   []int64               `json:"-"`
+	RequirementKeys  []string              `json:"-"`
+}
+
+// GenerationBaseline is supplied by the durable workflow, never by model output.
+type GenerationBaseline struct {
+	RequirementIDs []int64
+	WorkflowJobID  int64
+	InputHash      string
+	SourceRevision int64
+}
+
+type GenerationProvenance struct {
+	Provider              string `json:"provider"`
+	Model                 string `json:"model"`
+	PromptVersion         string `json:"prompt_version"`
+	PromptHash            string `json:"prompt_hash"`
+	ResponseHash          string `json:"response_hash,omitempty"`
+	RequirementReviewHash string `json:"requirement_review_hash,omitempty"`
+	WorkflowJobID         int64  `json:"workflow_job_id,omitempty"`
+	WorkflowInputHash     string `json:"workflow_input_hash,omitempty"`
+	SourceRevision        int64  `json:"source_revision,omitempty"`
 }
 
 type GenerateSummary struct {

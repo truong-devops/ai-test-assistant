@@ -1,8 +1,8 @@
 # Architecture
 
-> **Architecture status – 2026-09-21:** this document records the architecture
+> **Architecture status – 2026-09-22:** this document records the architecture
 > implemented by document-driven Phases 0–10, Phase 11 rollout controls,
-> workflow/versioning UV-00–UV-06 (UV-05 human usability acceptance pending), and the still-running code-first
+> workflow/versioning UV-00–UV-07 (UV-05 usability and UV-07 human/screen-reader acceptance pending), and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
 > target architecture and its ordered backend/frontend work are defined in
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
@@ -25,6 +25,15 @@ not transfer decisions. Reviewed content/evidence stay immutable, old IDs remain
 readable, and affected testcase revisions must be reviewed before a new release.
 Existing release/run snapshots are unchanged. See
 [UV-06 verification](UV06_REQUIREMENT_REVIEW_VERIFICATION.md).
+
+UV-07 reuses the revision service for separate save/review/restore actions and
+explicit conflict resolution. Bounded history/comparison reads expose source and
+release references; runs default to the exact revision. Preview and publish share
+the same serializable release validation, and new UI publishes with a hash of
+the manifest, source revision and coverage scope. A preview persists no release;
+restoring or editing never transfers execution/automation approval. Navigation
+polls workflow JSON without refreshing the whole page and discarding open forms.
+No new schema is needed. See [UV-07 verification](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
 
 The refactor does not remove SCM automation or sandbox execution. It separates
 business truth from technical execution:
@@ -78,7 +87,7 @@ extraction worker -> retrieve per semantic unit -> strict schema/rule extractor
 
 approved requirements -> generator per requirement/flow
                       -> grounded expected result + steps + source links
-                      -> exact/semantic dedupe -> QA review/versioning
+                      -> exact scenario/source dedupe -> QA review/versioning
                       -> database-derived coverage matrix
 
 approved testcase revisions -> immutable suite release manifest

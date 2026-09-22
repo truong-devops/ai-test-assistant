@@ -1,59 +1,443 @@
 "use client";
-
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import type { BusinessTestCase } from "@/lib/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type {
+  BusinessTestCase,
+  TestCaseFamily,
+  SuiteRelease,
+} from "@/lib/types";
 import { StatusBadge } from "@/components/status-badge";
-import { humanize } from "@/lib/presentation";
-
-export function TestCaseWorkspace({ setId, testCases, canReview = false }: { setId: number; testCases: BusinessTestCase[]; canReview?: boolean }) {
-  const router = useRouter();
-  const [selected, setSelected] = useState<number[]>([]);
+const defaults = {
+  query: "",
+  status: "ALL",
+  risk: "ALL",
+  sort: "KEY",
+  archived: "ACTIVE",
+  page: 0,
+};
+export function TestCaseWorkspace({
+  setId,
+  testCases,
+  canReview = false,
+}: {
+  setId: number;
+  testCases: BusinessTestCase[];
+  canReview?: boolean;
+}) {
+  const [families, setFamilies] = useState<TestCaseFamily[]>([]);
+  const [releases, setReleases] = useState<SuiteRelease[]>([]);
+  const [filters, setFilters] = useState(defaults);
+  const [restored, setRestored] = useState(false);
+  const [selected, setSelected] = useState<BusinessTestCase[]>([]);
   const [reviewer, setReviewer] = useState("");
   const [comment, setComment] = useState("");
+  const [confirmation, setConfirmation] = useState<"APPROVED" | "REJECTED">();
   const [error, setError] = useState("");
-	const [query, setQuery] = useState("");
-	const [status, setStatus] = useState("ALL");
-	const [risk, setRisk] = useState("ALL");
-	const [sort, setSort] = useState("KEY");
-  const [pending, startTransition] = useTransition();
-  const toggle = (id: number) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
-	const visible = useMemo(() => testCases.filter((item) => (!query || `${item.test_case_key} ${item.title} ${item.expected_result}`.toLowerCase().includes(query.toLowerCase())) && (status === "ALL" || item.status === status) && (risk === "ALL" || item.risk === risk)).sort((left, right) => sort === "RISK" ? right.risk.localeCompare(left.risk) : sort === "TITLE" ? left.title.localeCompare(right.title) : left.test_case_key.localeCompare(right.test_case_key)), [testCases, query, status, risk, sort]);
-  const review = (decision: "APPROVED" | "REJECTED") => {
-    if (!canReview) return;
-    setError("");
-    if (!reviewer.trim() || selected.length === 0) {
-      setError("Select at least one test case and enter the reviewer name.");
-      return;
+  const [results, setResults] = useState<string[]>([]);
+  const [pending, setPending] = useState(false);
+  const busy = useRef(false);
+  const [epoch, setEpoch] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(`cases:${setId}`);
+      if (saved) setFilters({ ...defaults, ...JSON.parse(saved) });
+    } catch {}
+    setRestored(true);
+  }, [setId]);
+  useEffect(() => {
+    if (restored) {
+      try {
+        sessionStorage.setItem(`cases:${setId}`, JSON.stringify(filters));
+      } catch {}
     }
-    startTransition(async () => {
-      const response = await fetch("/api/backend/api/test-cases/bulk-review", {
-        method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ test_case_ids: selected, reviewer_name: reviewer.trim(), decision, comment: comment.trim() }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) {
-        setError(payload.error ?? "Bulk review failed.");
-        return;
+  }, [filters, restored, setId]);
+  useEffect(() => {
+    const abort = new AbortController();
+    let timer: number;
+    const load = async () => {
+      try {
+        if (busy.current || document.visibilityState !== "visible") return;
+        const responses = await Promise.all(
+          ["test-case-families", "suite-releases"].map((route) =>
+            fetch(`/api/backend/api/document-sets/${setId}/${route}`, {
+              signal: abort.signal,
+              cache: "no-store",
+            }),
+          ),
+        );
+        if (responses.some((r) => !r.ok))
+          throw new Error("Không tải được identities/releases. Thử tải lại.");
+        const [f, r] = await Promise.all(responses.map((r) => r.json()));
+        if (!abort.signal.aborted) {
+          setFamilies(f.families);
+          setReleases(r.releases);
+          setLoaded(true);
+        }
+      } catch (caught) {
+        if (!abort.signal.aborted) setError((caught as Error).message);
+      } finally {
+        if (!abort.signal.aborted) timer = window.setTimeout(load, 10000);
       }
-      setSelected([]);
-      router.refresh();
-    });
+    };
+    void load();
+    return () => {
+      abort.abort();
+      window.clearTimeout(timer);
+    };
+  }, [setId, epoch]);
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      const scroll = sessionStorage.getItem(`cases-scroll:${setId}`);
+      if (scroll) {
+        sessionStorage.removeItem(`cases-scroll:${setId}`);
+        window.requestAnimationFrame(() =>
+          window.requestAnimationFrame(() =>
+            window.scrollTo(0, Number(scroll)),
+          ),
+        );
+      }
+    } catch {}
+  }, [loaded, setId]);
+  const filtered = useMemo(
+    () =>
+      families
+        .filter((f) => {
+          const t = f.latest_revision;
+          return (
+            t &&
+            (filters.archived === "ALL" ||
+              (filters.archived === "ARCHIVED" ? f.archived : !f.archived)) &&
+            (!filters.query ||
+              `${f.public_key} ${t.title} ${t.expected_result}`
+                .toLowerCase()
+                .includes(filters.query.toLowerCase())) &&
+            (filters.status === "ALL" || t.status === filters.status) &&
+            (filters.risk === "ALL" || t.risk === filters.risk)
+          );
+        })
+        .sort((a, b) =>
+          filters.sort === "TITLE"
+            ? a.latest_revision!.title.localeCompare(b.latest_revision!.title)
+            : filters.sort === "RISK"
+              ? { HIGH: 0, MEDIUM: 1, LOW: 2 }[a.latest_revision!.risk] -
+                { HIGH: 0, MEDIUM: 1, LOW: 2 }[b.latest_revision!.risk]
+              : a.public_key.localeCompare(b.public_key),
+        ),
+    [families, filters],
+  );
+  const page = Math.min(
+    filters.page,
+    Math.max(0, Math.ceil(filtered.length / 20) - 1),
+  );
+  const visible = filtered.slice(page * 20, page * 20 + 20);
+  const link = (t: BusinessTestCase) => (
+    <Link
+      prefetch={false}
+      onClick={() => {
+        try {
+          sessionStorage.setItem(
+            `cases-scroll:${setId}`,
+            String(window.scrollY),
+          );
+        } catch {}
+      }}
+      href={`/documents/${setId}/test-cases/${t.id}`}
+    >
+      {t.test_case_key} v{t.version_number} · #{t.id}
+    </Link>
+  );
+  const review = async () => {
+    if (!confirmation || busy.current || !reviewer.trim()) return;
+    busy.current = true;
+    setPending(true);
+    setError("");
+    const done: number[] = [];
+    const messages: string[] = [];
+    try {
+      for (const item of selected) {
+        try {
+          const response = await fetch(
+            `/api/backend/api/test-cases/${item.id}/review`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                decision: confirmation,
+                reviewer_name: reviewer,
+                comment,
+                expected_content_hash: item.content_hash,
+              }),
+            },
+          );
+          const value = await response.json();
+          if (!response.ok) throw new Error(value.error);
+          done.push(item.id);
+          messages.push(
+            `#${item.id} v${item.version_number}: đã lưu ${confirmation}`,
+          );
+        } catch (caught) {
+          messages.push(`#${item.id}: ${(caught as Error).message}`);
+        }
+      }
+      setResults(messages);
+      setSelected((old) => old.filter((t) => !done.includes(t.id)));
+      setConfirmation(undefined);
+      setEpoch((v) => v + 1);
+      window.dispatchEvent(new Event("document-workspace-updated"));
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
   };
   return (
-    <section className="panel">
-      {testCases.some((item)=>item.needs_source_review)?<p className="notice">Nguồn requirement đã thay đổi. Các testcase cần xem lại trước khi chốt bộ mới: {testCases.filter((item)=>item.needs_source_review).map((item)=><Link key={item.id} href={`/documents/${setId}/test-cases/${item.id}`}>{item.test_case_key} </Link>)}. Case và run lịch sử vẫn được giữ nguyên.</p>:null}
-      <div className="panel-header"><div><h2>Business test cases</h2><p>Expected results come from approved requirement evidence, not implementation code.</p></div><span className="section-counter">{testCases.length}</span></div>
-	  <div className="bulk-review-bar"><label><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ID, title, expected…" /></label><label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option>ALL</option><option>DRAFT</option><option>APPROVED</option><option>REJECTED</option></select></label><label><span>Risk</span><select value={risk} onChange={(event) => setRisk(event.target.value)}><option>ALL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select></label><label><span>Sort</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="KEY">Case ID</option><option value="TITLE">Title</option><option value="RISK">Risk</option></select></label></div>
-      {canReview ? <div className="bulk-review-bar"><label><span>Reviewer</span><input value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label><label><span>Comment</span><input value={comment} onChange={(event) => setComment(event.target.value)} /></label><button className="button secondary" disabled={pending} onClick={() => review("REJECTED")}>Reject selected</button><button className="button" disabled={pending} onClick={() => review("APPROVED")}>Approve selected</button></div> : <p className="panel-message">Chế độ xem. Cần quyền reviewer để duyệt testcase.</p>}
-      {error ? <p className="form-error panel-message">{error}</p> : null}
-	  <p className="table-subtitle">Showing {visible.length} of {testCases.length}. Filters affect this workspace view; export always records the complete immutable suite snapshot.</p>
-      <div className="table-wrap"><table className="data-table"><thead><tr><th><span className="sr-only">Select</span></th><th>Case</th><th>Type</th><th>Risk</th><th>Expected</th><th>Actual</th><th>Execution</th><th>Source / automation</th><th>Review</th></tr></thead><tbody>{visible.map((item) => <tr key={item.id}>
-        <td><input type="checkbox" disabled={!canReview || pending} aria-label={`Select ${item.test_case_key}`} checked={selected.includes(item.id)} onChange={() => toggle(item.id)} /></td>
-        <td><Link href={`/documents/${setId}/test-cases/${item.id}`}><span className="table-title">{item.test_case_key} · {item.title}</span><span className="table-subtitle chunk-copy">{item.expected_result}</span></Link></td>
-		<td><StatusBadge status={item.test_type} /></td><td><StatusBadge status={item.risk} /></td><td>{item.expected_result}</td><td>{item.latest_execution && item.latest_execution.status !== "NOT_RUN" ? item.latest_execution.actual_result || "—" : "Chưa chạy"}</td><td>{item.latest_execution ? <><StatusBadge status={item.latest_execution.status} /><span className="table-subtitle">Run #{item.latest_execution.test_run_id} · revision v{item.version_number}</span></> : <><StatusBadge status="NOT_RUN" /><span className="table-subtitle">Chưa có run cho revision v{item.version_number}</span></>}</td><td>{humanize(item.generated_by)}<span className="table-subtitle"><StatusBadge status={item.automation_status} /></span></td><td><StatusBadge status={item.status} /><span className="table-subtitle">{Math.round(item.confidence * 100)}% confidence</span></td>
-      </tr>)}</tbody></table></div>
+    <section className="panel revision-workspace">
+      <div className="panel-header">
+        <div>
+          <h2>Testcase theo identity</h2>
+          <p>
+            Latest, approved và revision trong release là các mốc độc lập. Mỗi
+            link mở đúng revision.
+          </p>
+        </div>
+        <span>{loaded ? families.length : testCases.length} identities</span>
+      </div>
+      <div className="filter-strip">
+        <input
+          aria-label="Tìm testcase"
+          placeholder="ID, tiêu đề, expected"
+          value={filters.query}
+          onChange={(e) =>
+            setFilters({ ...filters, query: e.target.value, page: 0 })
+          }
+        />
+        {(
+          [
+            ["status", "Trạng thái", ["ALL", "DRAFT", "APPROVED", "REJECTED"]],
+            ["risk", "Rủi ro", ["ALL", "HIGH", "MEDIUM", "LOW"]],
+            ["sort", "Sắp xếp", ["KEY", "TITLE", "RISK"]],
+            ["archived", "Lưu trữ", ["ACTIVE", "ARCHIVED", "ALL"]],
+          ] as const
+        ).map(([key, label, values]) => (
+          <label key={key}>
+            {label}
+            <select
+              value={filters[key]}
+              onChange={(e) =>
+                setFilters({ ...filters, [key]: e.target.value, page: 0 })
+              }
+            >
+              {values.map((v) => (
+                <option key={v}>{v}</option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+      {error ? (
+        <p role="alert">
+          {error}
+          <button
+            onClick={() => {
+              setError("");
+              setEpoch((v) => v + 1);
+            }}
+          >
+            Tải lại
+          </button>
+        </p>
+      ) : null}
+      <p className="panel-body">
+        {filtered.length} kết quả · trang {page + 1} · chọn {selected.length}
+        /100 exact revisions (
+        {
+          selected.filter(
+            (s) => !visible.some((f) => f.head_revision_id === s.id),
+          ).length
+        }{" "}
+        ngoài trang này). Không mặc định chọn xuyên trang.
+      </p>
+      <div className="table-wrap" tabIndex={0} aria-label="Danh sách testcase">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Chọn</th>
+              <th>Identity / latest</th>
+              <th>Approved</th>
+              <th>Trong release (pinned)</th>
+              <th>Readiness / nguồn</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((f) => {
+              const t = f.latest_revision!;
+              const pinned = releases.flatMap((r) =>
+                r.items
+                  .filter((i) => i.family_id === f.id)
+                  .map((i) => ({ r, i })),
+              );
+              return (
+                <tr key={f.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Chọn ${f.public_key} v${t.version_number}`}
+                      checked={selected.some((s) => s.id === t.id)}
+                      disabled={!canReview || pending || f.archived}
+                      onChange={() =>
+                        setSelected((old) =>
+                          old.some((s) => s.id === t.id)
+                            ? old.filter((s) => s.id !== t.id)
+                            : old.length < 100
+                              ? [...old, t]
+                              : old,
+                        )
+                      }
+                    />
+                  </td>
+                  <td>
+                    {link(t)}
+                    <p>{t.title}</p>
+                    <StatusBadge status={t.status} />
+                    {f.archived ? (
+                      <p>Đã lưu trữ · history vẫn đọc được</p>
+                    ) : null}
+                  </td>
+                  <td>
+                    {f.latest_approved_revision
+                      ? link(f.latest_approved_revision)
+                      : "Chưa duyệt"}
+                  </td>
+                  <td>
+                    {pinned.length
+                      ? pinned.map(({ r, i }) => (
+                          <p key={r.id}>
+                            <Link
+                              prefetch={false}
+                              href={`/documents/${setId}/test-cases/${i.test_case_id}`}
+                            >
+                              R{r.release_number} → v{i.revision_number}
+                            </Link>
+                          </p>
+                        ))
+                      : "Chưa chốt"}
+                  </td>
+                  <td>
+                    {t.needs_source_review
+                      ? "Cần đối chiếu nguồn"
+                      : t.status === "APPROVED"
+                        ? "Đã duyệt; publish sẽ kiểm tra nguồn lại"
+                        : "Chưa sẵn sàng chốt"}
+                    <p>
+                      {t.latest_execution ? (
+                        <>
+                          {t.latest_execution.status} · Run #
+                          {t.latest_execution.test_run_id}
+                        </>
+                      ) : (
+                        "Chưa chạy revision này"
+                      )}
+                    </p>
+                    <p>Automation: {t.automation_status}</p>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {!visible.length ? (
+        <p className="panel-body">
+          {loaded ? "Không có identity khớp bộ lọc." : "Đang tải identities…"}
+        </p>
+      ) : null}
+      <div className="panel-body decision-actions">
+        <button
+          disabled={!page}
+          onClick={() => setFilters({ ...filters, page: page - 1 })}
+        >
+          Trang trước
+        </button>
+        <button
+          disabled={(page + 1) * 20 >= filtered.length}
+          onClick={() => setFilters({ ...filters, page: page + 1 })}
+        >
+          Trang sau
+        </button>
+      </div>
+      {canReview ? (
+        <div className="panel-body">
+          <h3>Duyệt exact revisions</h3>
+          <div className="connect-grid">
+            <label>
+              Tên người duyệt
+              <input
+                value={reviewer}
+                onChange={(e) => setReviewer(e.target.value)}
+              />
+            </label>
+            <label>
+              Ghi chú
+              <input
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+              />
+            </label>
+          </div>
+          <button
+            className="button"
+            disabled={pending || !selected.length}
+            onClick={() => setConfirmation("APPROVED")}
+          >
+            Duyệt nhóm đã chọn
+          </button>
+          <button
+            className="button secondary"
+            disabled={pending || !selected.length}
+            onClick={() => setConfirmation("REJECTED")}
+          >
+            Từ chối nhóm
+          </button>
+          {confirmation ? (
+            <section role="dialog" aria-label="Xác nhận revision testcase">
+              <h3>
+                Xác nhận {confirmation} cho {selected.length} revision
+              </h3>
+              <ul>
+                {selected.map((t) => (
+                  <li key={t.id}>
+                    {t.test_case_key} v{t.version_number} · #{t.id}
+                  </li>
+                ))}
+              </ul>
+              <p>
+                Mục thành công giữ nguyên; mục lỗi hiện riêng và vẫn được chọn.
+              </p>
+              <button
+                className="button"
+                disabled={pending || !reviewer.trim()}
+                onClick={() => void review()}
+              >
+                Xác nhận duyệt revision
+              </button>
+              <button
+                disabled={pending}
+                onClick={() => setConfirmation(undefined)}
+              >
+                Hủy
+              </button>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+      {results.length ? (
+        <div role="status" className="notice">
+          {results.map((v, i) => (
+            <p key={i}>{v}</p>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -1,7 +1,7 @@
 package testcase
 
 import (
-	"fmt"
+	"encoding/json"
 	"regexp"
 	"sort"
 	"strings"
@@ -101,7 +101,7 @@ func dedupeProposals(items []Proposal) []Proposal {
 	seen := make(map[string]struct{}, len(items))
 	result := make([]Proposal, 0, len(items))
 	for _, item := range items {
-		key := item.TestType + "\x00" + normalize(item.Title) + "\x00" + normalize(item.ExpectedResult)
+		key := proposalIdentity(item)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -111,17 +111,33 @@ func dedupeProposals(items []Proposal) []Proposal {
 	return result
 }
 
-func mergeProposalSources(target *Proposal, source Proposal) {
-	ids := append(append([]int64(nil), target.RequirementIDs...), source.RequirementIDs...)
-	keys := append(append([]string(nil), target.RequirementKeys...), source.RequirementKeys...)
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	sort.Strings(keys)
-	target.RequirementIDs = uniqueInt64(ids)
-	target.RequirementKeys = uniqueStrings(keys)
-}
-
 func proposalIdentity(item Proposal) string {
-	return fmt.Sprintf("%s\x00%s\x00%s", item.TestType, normalize(item.Title), normalize(item.ExpectedResult))
+	// Compare all business fields and exact source revision IDs. Case and test-data
+	// whitespace may be meaningful; conservatively keep differences independent.
+	// Step database IDs/timestamps are not business content; array order is.
+	steps := make([]StepInput, 0, len(item.Steps))
+	for _, step := range item.Steps {
+		steps = append(steps, StepInput{Action: step.Action, ExpectedResult: step.ExpectedResult})
+	}
+	assumptions := append([]string{}, item.Assumptions...)
+	sort.Strings(assumptions)
+	content := RevisionContent{Title: item.Title, TestType: item.TestType, Risk: item.Risk,
+		Actor: item.Actor, Precondition: item.Precondition, TestData: item.TestData,
+		ExpectedResult: item.ExpectedResult, Postcondition: item.Postcondition,
+		Steps: steps, Assumptions: assumptions, RequirementRevisionIDs: uniqueSortedIDs(item.RequirementIDs)}
+	var provenance GenerationProvenance
+	if item.Generation != nil {
+		provenance = *item.Generation
+		// Attempt/job bookkeeping is not a new scenario or source revision.
+		provenance.WorkflowJobID, provenance.WorkflowInputHash = 0, ""
+	}
+	payload, _ := json.Marshal(struct {
+		Content                       RevisionContent
+		GeneratedBy, AutomationStatus string
+		Confidence                    float64
+		Generation                    GenerationProvenance
+	}{content, item.GeneratedBy, item.AutomationStatus, item.Confidence, provenance})
+	return hash(string(payload))
 }
 
 func normalize(value string) string { return strings.ToLower(strings.Join(strings.Fields(value), " ")) }

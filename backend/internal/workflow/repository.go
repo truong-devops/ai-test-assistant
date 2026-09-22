@@ -245,15 +245,26 @@ type generateRequirementSnapshot struct {
 }
 
 type generateInputSnapshot struct {
-	SourceRevision int64                         `json:"source_revision"`
-	Requirements   []generateRequirementSnapshot `json:"requirements"`
+	SourceRevision         int64                         `json:"source_revision"`
+	Requirements           []generateRequirementSnapshot `json:"requirements"`
+	SelectedRequirementIDs []int64                       `json:"selected_requirement_ids,omitempty"`
 }
 
 func (r *Repository) BuildGenerateSnapshot(ctx context.Context, setID int64) (
 	json.RawMessage, string, error,
 ) {
+	return r.BuildGenerateSnapshotForRequirements(ctx, setID, nil)
+}
+
+func (r *Repository) BuildGenerateSnapshotForRequirements(ctx context.Context, setID int64, selected []int64) (
+	json.RawMessage, string, error,
+) {
 	if setID <= 0 {
 		return nil, "", ErrInvalidInput
+	}
+	selected, err := generationSelection(selected)
+	if err != nil {
+		return nil, "", err
 	}
 	var sourceRevision int64
 	var status string
@@ -275,13 +286,14 @@ func (r *Repository) BuildGenerateSnapshot(ctx context.Context, setID int64) (
 		WHERE requirement.document_set_id=$1 AND requirement.status='APPROVED'
 		AND cardinality(requirement_review_blockers(requirement.id))=0
 		AND requirement_is_current(requirement.id)
-		ORDER BY requirement.id`, setID)
+		AND (cardinality($2::bigint[])=0 OR requirement.id=ANY($2::bigint[]))
+		ORDER BY requirement.id`, setID, selected)
 	if err != nil {
 		return nil, "", err
 	}
 	defer rows.Close()
 	snapshot := generateInputSnapshot{SourceRevision: sourceRevision,
-		Requirements: []generateRequirementSnapshot{}}
+		Requirements: []generateRequirementSnapshot{}, SelectedRequirementIDs: selected}
 	for rows.Next() {
 		var item generateRequirementSnapshot
 		if err := rows.Scan(&item.ID, &item.VersionNumber, &item.SourceSnapshotID,
@@ -292,6 +304,11 @@ func (r *Repository) BuildGenerateSnapshot(ctx context.Context, setID int64) (
 	}
 	if err := rows.Err(); err != nil {
 		return nil, "", err
+	}
+	if len(selected) > 0 && len(snapshot.Requirements) != len(selected) {
+		return nil, "", &BlockedError{Code: "GENERATION_SELECTION_BLOCKED",
+			Message:    "every selected requirement must belong to this set and be current, approved and unblocked",
+			NextAction: "REVIEW_REQUIREMENTS"}
 	}
 	if len(snapshot.Requirements) == 0 {
 		reason := BlockingReason{Code: "NO_APPROVED_REQUIREMENTS",
@@ -319,7 +336,11 @@ func (r *Repository) ValidateInputSnapshot(ctx context.Context, job Job) error {
 			return ErrInputStale
 		}
 	case OperationGenerate:
-		_, currentHash, err := r.BuildGenerateSnapshot(ctx, job.DocumentSetID)
+		var snapshot generateInputSnapshot
+		if json.Unmarshal(job.InputSnapshot, &snapshot) != nil {
+			return ErrInvalidInput
+		}
+		_, currentHash, err := r.BuildGenerateSnapshotForRequirements(ctx, job.DocumentSetID, snapshot.SelectedRequirementIDs)
 		if err != nil {
 			return err
 		}

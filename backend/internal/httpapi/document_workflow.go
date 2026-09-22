@@ -318,6 +318,8 @@ func (h testCaseWorkflowHandler) review(w http.ResponseWriter, r *http.Request) 
 	if !decodeWorkflowJSON(w, r, &input) {
 		return
 	}
+	input.Comment += "\nDisplay name: " + input.ReviewerName
+	input.ReviewerName = workflowActor(r)
 	result, err := h.service.Review(r.Context(), id, input)
 	if err != nil {
 		writeWorkflowError(w, err, "could not review test case")
@@ -553,7 +555,16 @@ func decodeWorkflowJSON(w http.ResponseWriter, r *http.Request, target any) bool
 
 func writeWorkflowError(w http.ResponseWriter, err error, fallback string) {
 	var revisionConflict *testcase.RevisionConflictError
+	var validation *testcase.ValidationError
 	switch {
+	case errors.As(err, &validation):
+		nextAction := "EDIT_TESTCASE"
+		if validation.Field == "expected_result" {
+			nextAction = "REVIEW_REQUIREMENT"
+		}
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": validation.Message, "code": "TESTCASE_FIELD_INVALID", "field": validation.Field, "next_action": nextAction})
+	case errors.Is(err, testcase.ErrPreviewChanged):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "RELEASE_PREVIEW_CHANGED"})
 	case errors.Is(err, requirement.ErrRevisionConflict):
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "REQUIREMENT_REVISION_CONFLICT"})
 	case errors.Is(err, requirement.ErrIdempotencyConflict):

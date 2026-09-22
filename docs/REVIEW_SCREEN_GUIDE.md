@@ -9,6 +9,12 @@ Tài liệu này giải thích các thành phần trên màn hình **Review queu
 > [DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md](DOCUMENT_DRIVEN_TESTING_REFACTOR_PLAN.md).
 > Analysis #9 bên dưới chỉ là ví dụ lịch sử, không phải luồng nghiệp vụ đích.
 
+Với workspace testcase hiện tại, xem phần UV-07 trong
+[kịch bản demo](DOCUMENT_DRIVEN_DEMO.md#quản-lý-version-testcase-uv-07) và
+[bằng chứng kiểm thử](UV07_TESTCASE_VERSIONING_VERIFICATION.md). Testcase vN là
+nội dung nghiệp vụ; automation artifact là mã thực thi; release RN chốt tập exact
+revision. Duyệt một loại không tự duyệt hay chuyển PASS sang loại khác.
+
 ## 1. Mục đích của màn hình
 
 Đây là nơi tổng hợp toàn bộ bằng chứng của một Pull Request/Merge Request:

@@ -49,7 +49,7 @@ export default async function DocumentSetPage({ params, searchParams }: {
       {step === "test-cases" ? <>
         <p>Sinh testcase cho {approvedRequirements} yêu cầu đã duyệt. Yêu cầu chưa duyệt không được tự đưa vào phạm vi.</p>
         <WorkflowOperationAction setId={id} operation="GENERATE_TESTCASES" label={cases.length ? "Sinh lại từ yêu cầu đã duyệt" : "Sinh testcase từ yêu cầu đã duyệt"} activeLabel="Đang sinh testcase…" initialJob={generation} disabled={!workflow.capabilities.can_generate} canRetry={workflow.capabilities.can_retry_job} canCancel={workflow.capabilities.can_cancel_job} />
-        {cases.length ? <TestCaseWorkspace setId={set.id} testCases={cases} canReview={workflow.capabilities.can_review} /> : <EmptyState title="Chưa có testcase" message="Duyệt ít nhất một yêu cầu, sau đó bấm Sinh testcase. AI không tự duyệt kết quả." />}
+        <TestCaseWorkspace setId={set.id} testCases={cases} canReview={workflow.capabilities.can_review} />
         <Link className="button secondary" href={`/documents/${id}/test-cases`}>Xem ma trận coverage và lịch sử kết quả</Link>
         <Link className="button" href={`/documents/${id}?step=use-export`}>Tiếp tục đến sử dụng / xuất</Link>
       </> : null}

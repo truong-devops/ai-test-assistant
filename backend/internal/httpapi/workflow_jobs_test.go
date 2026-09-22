@@ -53,6 +53,30 @@ func TestWorkflowOperationReturnsAcceptedStatusURL(t *testing.T) {
 	}
 }
 
+type selectedGenerationServiceStub struct {
+	documentWorkflowJobServiceStub
+	input workflowjob.OperationInput
+}
+
+func (s *selectedGenerationServiceStub) Enqueue(_ context.Context, _ int64, input workflowjob.OperationInput, _, _ string) (workflowjob.Job, bool, error) {
+	s.input = input
+	return workflowjob.Job{ID: 18, Status: workflowjob.StatusQueued}, true, nil
+}
+
+func TestUV08WorkflowAcceptsExactGenerationSelection(t *testing.T) {
+	service := &selectedGenerationServiceStub{}
+	handler := documentWorkflowJobHandler{service: service}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/document-sets/{id}/workflow-operations", handler.enqueue)
+	request := httptest.NewRequest(http.MethodPost, "/api/document-sets/9/workflow-operations", strings.NewReader(`{"operation":"GENERATE_TESTCASES","requirement_ids":[42,43]}`))
+	request.Header.Set("Idempotency-Key", "uv08-selection")
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || len(service.input.RequirementIDs) != 2 || service.input.RequirementIDs[0] != 42 || service.input.RequirementIDs[1] != 43 {
+		t.Fatalf("selection lost: status=%d input=%+v body=%s", response.Code, service.input, response.Body.String())
+	}
+}
+
 func TestWorkflowOperationReturnsStructuredBlocker(t *testing.T) {
 	blocked := &workflowjob.BlockedError{Code: "NO_APPROVED_REQUIREMENTS",
 		Message: "approve requirements first", NextAction: "REVIEW_REQUIREMENTS",

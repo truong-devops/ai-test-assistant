@@ -19,9 +19,12 @@ import (
 
 type workflowTestCaseGeneratorStub struct{}
 
-func (workflowTestCaseGeneratorStub) Generate(_ context.Context, setID int64) (
+func (workflowTestCaseGeneratorStub) GeneratePinned(_ context.Context, setID int64, input testcase.GenerationBaseline) (
 	testcase.GenerateSummary, error,
 ) {
+	if len(input.RequirementIDs) != 1 || input.RequirementIDs[0] <= 0 || input.WorkflowJobID <= 0 || len(input.InputHash) != 64 {
+		return testcase.GenerateSummary{}, errors.New("workflow did not forward its pinned generation baseline")
+	}
 	return testcase.GenerateSummary{DocumentSetID: setID, SuiteID: 77,
 		RequirementCount: 1, CreatedCount: 1}, nil
 }
@@ -39,7 +42,7 @@ func TestUV04WorkflowQueueLifecycleDelegateUsageAndPinnedInput(t *testing.T) {
 	}
 	defer pool.Close()
 	setID := workflowFixture(t, ctx, pool)
-	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM document_sets WHERE id=$1`, setID) })
+	defer cleanupWorkflowFixtures(t, pool, setID)
 	repository := NewRepository(pool)
 
 	snapshot, inputHash, err := repository.BuildIndexSnapshot(ctx, setID, nil)
@@ -315,6 +318,34 @@ func workflowFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) int6
 		t.Fatal(err)
 	}
 	return setID
+}
+
+func cleanupWorkflowFixtures(t *testing.T, pool *pgxpool.Pool, setIDs ...int64) {
+	t.Helper()
+	// Run before pool.Close. RESTRICT snapshot links require dependency ordering;
+	// leaving a queued fixture behind makes a later ClaimNext take the wrong job.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	for _, query := range []string{
+		`DELETE FROM document_workflow_jobs WHERE document_set_id=ANY($1)`,
+		`DELETE FROM requirements WHERE document_set_id=ANY($1)`,
+		`DELETE FROM document_source_snapshots WHERE document_set_id=ANY($1)`,
+		`DELETE FROM document_sets WHERE id=ANY($1)`,
+	} {
+		if _, err := tx.Exec(ctx, query, setIDs); err != nil {
+			t.Errorf("workflow fixture cleanup: %v", err)
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestUV04WorkflowJobJSONKeepsMachineReadableProgress(t *testing.T) {

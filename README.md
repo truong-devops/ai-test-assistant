@@ -52,6 +52,20 @@ proof; affected testcase revisions are flagged before a new release. Deployment
 requires migrations through **28** and matching API, worker and frontend.
 See [UV-06 verification](docs/UV06_REQUIREMENT_REVIEW_VERIFICATION.md).
 
+The testcase workspace now separates stable identity, draft/approved revisions,
+automation versions and published releases. QA can edit ordered steps, inspect
+history/diffs, recover from concurrent-head conflicts, restore a historical
+revision as a new draft, and preview exact release scope before publishing.
+Runs and exports remain revision-specific. UV-07 adds no migration (schema 28);
+technical checks passed, with human usability/screen-reader acceptance still open.
+See [UV-07 verification](docs/UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+
+UV-08 is in progress: generation now consumes the job's exact requirement IDs,
+supports an optional explicit requirement selection, records generation provenance,
+and no longer merges scenarios by title/expected similarity. The proposal comparison,
+apply workflow and scope UI are not implemented yet. See
+[UV-08 foundation verification](docs/UV08_GENERATION_FOUNDATION_VERIFICATION.md).
+
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,
