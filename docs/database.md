@@ -1,6 +1,6 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–28.
+> This page documents the schema currently implemented by migrations 1–30.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
@@ -15,6 +15,8 @@
 > durable source-review/index/extraction continuations for the guided workspace.
 > Migration 28 adds exact requirement review receipts, clarification audit,
 > source comparison and reviewed-proof guards.
+> Migration 29 adds immutable generation proposals and atomic review receipts.
+> Migration 30 links proposal outputs to durable per-requirement checkpoints.
 
 UV-07 adds no migration: history/diff, release preview and version editor use
 schema 28. Preview runs the release validations in a rolled-back transaction and
@@ -22,6 +24,42 @@ persists neither a release nor a receipt. New draft revisions keep immutable
 source links, never copy run items or approved automation artifacts, and reset
 an inherited `AUTOMATED` readiness flag to `AUTOMATABLE`. Archive preserves all
 historical revisions, releases and runs. See [UV-07 verification](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+
+## Generation proposals and checkpoints (migrations 29–30)
+
+`test_case_generation_proposals` records the exact generated content, full content
+hash, generation context, classification/reason, source revision and candidate
+family/revision/head tokens. Its per-job proposal key deduplicates publication.
+A trigger prevents rewriting input and freezes a completed decision. The worker
+persists each requirement batch and its successful unit checkpoint together under
+a current job revision/attempt/lease/cancel fence; it does not create testcase
+revisions in proposal mode. Existing job snapshots keep their old execution mode.
+
+Migration 30 adds nullable `workflow_unit_id` with a restrictive FK and index.
+New proposal jobs retain the queue's `operation` coordinator and add
+`requirement:<id>` children plus `retire` for ALL/AFFECTED scope. Progress counts
+exclude the coordinator. The retire checkpoint can succeed with zero proposals
+and never calls a provider. Successful children and reviewer receipts survive
+partial retry; the job input/targets remain frozen. Legacy proposals have a null
+unit link and require whole-job success before apply.
+
+Rollback 30 removes only the proposal-to-unit link/index, not proposals, testcase
+revisions or workflow units. This loses checkpoint association needed by new code;
+stop workers/writes and deploy a compatible version first. Down/up on an empty
+test database is not approval to roll back populated production data.
+
+`test_case_proposal_commands` stores per-set idempotency keys, request hashes,
+trusted actor and response snapshots. A review transaction writes the draft or
+archive action, proposal decision and receipt together. Result revision links
+restrict deletion; owning set/job/suite links cascade proposals and their receipts.
+History/run/release proof is never copied to a new draft or rewritten by apply.
+
+Rollback 29 drops both new tables, their receipts and the input-protection trigger/
+function; it does **not** remove already-created testcase revisions. Those revisions
+retain provenance but lose their referenced proposal record. Stop writes/workers,
+back up and deploy compatible code before operational rollback. Empty-database
+down/up verification is not a populated production rollback or purge drill.
+See [UV-08 completion verification](UV08_COMPLETION_VERIFICATION.md).
 
 ## Requirement review and source comparison (migration 28)
 

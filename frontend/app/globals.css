@@ -465,3 +465,15 @@ a { color: inherit; text-decoration: none; }
  .source-workspace .decision-actions { display: grid; grid-template-columns: 1fr; }
  .source-workspace .decision-actions .button { width: 100%; }
 }
+.proposal-requirement { display: flex; align-items: flex-start; gap: .6rem; margin: .7rem 0; overflow-wrap: anywhere; }
+.proposal-requirement input[type="checkbox"] { flex: 0 0 auto; width: auto; margin-top: .25rem; }
+.proposal-review { border-top: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.proposal-review details, .proposal-review fieldset { margin: 1rem 0; }
+.proposal-review select, .proposal-review textarea { max-width: 100%; }
+.proposal-review dl > div { margin: .5rem 0; }
+.generation-workspace label:not(.proposal-requirement) { display: grid; gap: 6px; margin: 12px 0; }
+.generation-workspace select, .generation-workspace textarea, .generation-workspace input:not([type="checkbox"]) { width: 100%; min-height: 36px; padding: 8px 9px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 4px; font: inherit; }
+.generation-workspace fieldset { padding: 12px; border: 1px solid var(--line); border-radius: 4px; }
+.generation-workspace button:not(.button) { min-height: 34px; padding: 7px 12px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.generation-workspace button:not(.button):disabled { cursor: not-allowed; opacity: .5; }
+.generation-workspace button:focus-visible { outline: 3px solid rgb(195 74 23 / 24%); outline-offset: 2px; }

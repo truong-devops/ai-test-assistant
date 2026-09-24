@@ -96,6 +96,8 @@ type Usage struct {
 }
 
 type OperationInput struct {
+	GenerationScope    string  `json:"generation_scope,omitempty"`
+	ReviewProposals    bool    `json:"review_proposals,omitempty"`
 	Operation          string  `json:"operation"`
 	RequirementIDs     []int64 `json:"requirement_ids,omitempty"`
 	RequestedBy        string  `json:"requested_by,omitempty"`
@@ -135,6 +137,7 @@ type Step struct {
 }
 
 type ReadModel struct {
+	GenerationScope GenerationScope  `json:"generation_scope"`
 	SourceIntents   []SourceIntent   `json:"source_intents"`
 	DocumentSetID   int64            `json:"document_set_id"`
 	SourceRevision  int64            `json:"source_revision"`

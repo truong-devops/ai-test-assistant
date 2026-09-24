@@ -9,6 +9,7 @@ import { TestCaseWorkspace } from "@/components/test-case-workspace";
 import { SuiteReleasePublisher } from "@/components/suite-release-publisher";
 import { ExportControls } from "@/components/export-controls";
 import { WorkflowOperationAction } from "@/components/workflow-operation-action";
+import { TestcaseGenerationWorkspace } from "@/components/testcase-generation-workspace";
 import { ApiError, documentMaxUploadBytes, getAIBudget, getDocumentSet, getDocuments,
   getDocumentWorkflow, getRequirements, getBusinessTestCases, getSuiteReleases, getTestExports } from "@/lib/api";
 import { documentWorkflowCopy as copy } from "@/lib/document-workflow-copy";
@@ -25,11 +26,9 @@ export default async function DocumentSetPage({ params, searchParams }: {
   try { set = await getDocumentSet(id); } catch (error) { if (error instanceof ApiError && error.status === 404) notFound(); throw error; }
   const [documents, workflow] = await Promise.all([getDocuments(set.id), getDocumentWorkflow(set.id)]);
   const budget = workflow.capabilities.can_manage ? await getAIBudget(set.id) : undefined;
-  const requirements = step === "requirements" ? await getRequirements(set.id) : [];
+  const requirements = step === "requirements" || step === "test-cases" ? await getRequirements(set.id) : [];
   const cases = step === "test-cases" || step === "use-export" ? await getBusinessTestCases(set.id) : [];
   const [releases, exports] = step === "use-export" ? await Promise.all([getSuiteReleases(set.id), getTestExports(set.id)]) : [[], []];
-  const generation = workflow.active_jobs.find((job) => job.operation === "GENERATE_TESTCASES") ?? workflow.recent_jobs.find((job) => job.operation === "GENERATE_TESTCASES");
-  const approvedRequirements = workflow.steps.find((s) => s.key === "REQUIREMENTS")?.completed_units ?? 0;
   const blockerCopy: Record<string, string> = {
     NO_DOCUMENTS: copy.blockers.noDocuments, SOURCE_PARSE_PENDING: copy.blockers.parsing,
     INDEX_NOT_CURRENT: copy.blockers.indexStale, SOURCE_NOT_APPROVED: copy.blockers.sourceReviewRequired,
@@ -47,8 +46,7 @@ export default async function DocumentSetPage({ params, searchParams }: {
         <RequirementReviewWorkspace key={set.id} setId={set.id} requirements={requirements} documents={documents} canReview={workflow.capabilities.can_review} />
       </> : null}
       {step === "test-cases" ? <>
-        <p>Sinh testcase cho {approvedRequirements} yêu cầu đã duyệt. Yêu cầu chưa duyệt không được tự đưa vào phạm vi.</p>
-        <WorkflowOperationAction setId={id} operation="GENERATE_TESTCASES" label={cases.length ? "Sinh lại từ yêu cầu đã duyệt" : "Sinh testcase từ yêu cầu đã duyệt"} activeLabel="Đang sinh testcase…" initialJob={generation} disabled={!workflow.capabilities.can_generate} canRetry={workflow.capabilities.can_retry_job} canCancel={workflow.capabilities.can_cancel_job} />
+        <TestcaseGenerationWorkspace key={set.id} setId={set.id} requirements={requirements} workflow={workflow} budget={budget} affectedRevisionCount={cases.filter((c) => c.needs_source_review).length} />
         <TestCaseWorkspace setId={set.id} testCases={cases} canReview={workflow.capabilities.can_review} />
         <Link className="button secondary" href={`/documents/${id}/test-cases`}>Xem ma trận coverage và lịch sử kết quả</Link>
         <Link className="button" href={`/documents/${id}?step=use-export`}>Tiếp tục đến sử dụng / xuất</Link>

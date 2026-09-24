@@ -208,9 +208,99 @@ the job. New drafts include server-built generation provider/model/prompt-versio
 prompt/response hashes and workflow input provenance; the existing AI-call log
 retains the actual prompt/schema/response. Model output cannot set this provenance.
 
-This is a foundation, not the full regeneration proposal API: generation still
-saves drafts through the existing service. Affected-case scope, classifications,
-review/apply endpoints and the scope UI are pending. No new migration is required.
+Omitting `review_proposals` keeps legacy direct-draft generation. The selected
+input alone needs no new migration; the current proposal mode requires schema 30.
+
+### Generation proposal review (UV-08 backend, opt-in)
+
+Enqueue with an editor-or-higher service role and `Idempotency-Key`:
+
+```json
+{"operation":"GENERATE_TESTCASES","review_proposals":true,"requirement_ids":[42,43]}
+```
+
+The field is valid only for generation. `generation_scope` accepts `SELECTED`
+(requires 1–100 `requirement_ids`), `ALL`, or `AFFECTED` (both forbid nonempty IDs).
+When omitted, explicit IDs imply SELECTED; otherwise active identities imply
+AFFECTED and a fresh set implies ALL. To regenerate all eligible requirements
+explicitly, send `"generation_scope":"ALL"`.
+The server pins active family/revision/head tokens before
+the provider runs (maximum 1000 identities per set, otherwise
+`422 PROPOSAL_SCOPE_TOO_LARGE`). A different mode with the same idempotency key
+returns 409. Generation produces proposals, **not testcase revisions**. The job's
+output reference includes `proposal_count` and `review_proposals`; no new testcase
+is approved, no release is bound and no sandbox is started.
+
+The workflow read model includes `generation_scope`: `default_scope`,
+`affected_requirement_ids`, `affected_family_ids`, `removed_family_ids`,
+`blocked_requirements`, and latest current-source comparison `changes`.
+Affected scope includes eligible current requirements missing from active heads,
+or linked to a head containing non-current source. It does not infer semantic
+identity. No eligible changes and no confirmed removed family returns
+`422 NO_GENERATION_CHANGES`. ALL/AFFECTED supports a retire-only job with zero
+approved current requirements, including when AI budget is exhausted.
+
+New jobs have `requirement:<id>` checkpoints and, outside SELECTED, a `retire`
+checkpoint. The `operation` unit coordinates the queue but is excluded from progress
+totals. Job output includes `completed_units`/`failed_units`; partial failure is
+`PARTIAL_FAILED` with retry available. Retry retains successful units/proposals and
+review decisions, and uses the original scope and pinned targets. Changed source
+invalidates the snapshot: create a new confirmed job instead of silently rebasing.
+Provider requests before a committed checkpoint may repeat and incur cost.
+
+- `GET /api/document-sets/{id}/test-case-proposals?job_id=123&limit=20&before=456`
+  is viewer-readable. It returns `{proposals:[...],next_before?:id}` in descending
+  ID order. `job_id` and `before` default to zero; `limit` must be 1–50. Each item
+  includes full content, provenance, classification/reason, pinned candidates,
+  status and decision/result revision when present. Follow `next_before` for the
+  next page. A foreign job ID yields no items, not another set's proposals.
+- `POST /api/test-case-proposals/{id}/review` requires reviewer/admin role,
+  `Idempotency-Key`, a nonempty `reason` (maximum 4000 bytes) and an allowed decision.
+  Actor is taken from authenticated server context, never the JSON body.
+- `GET /api/test-case-proposals/{id}/comparison?target_family_id=10` is viewer-readable
+  and returns `{target,before,after}` with full immutable revision content/citations.
+  The family must be a recorded candidate (otherwise 400); the endpoint reads the
+  pinned revision, not the current head or current requirement evidence. A missing
+  proposal returns 404. It performs no mutation and confers no apply permission.
+
+```json
+{"decision":"REVISE","target_family_id":10,"expected_head_revision_id":22,"reason":"Confirmed the same business scenario"}
+```
+
+| Classification | Allowed decision (also `DISMISS` for every kind) |
+| --- | --- |
+| `NEW_CASE` | `CREATE_NEW` |
+| `NEW_REVISION` | `REVISE` |
+| `UNCHANGED` | `KEEP` |
+| `RETIRE_CANDIDATE` | `ARCHIVE` |
+| `AMBIGUOUS_MATCH` | `REVISE` or `CREATE_NEW` |
+
+`REVISE`, `KEEP` and `ARCHIVE` require a recorded candidate family and its exact
+pinned `expected_head_revision_id`; the server also compares the saved head token.
+`CREATE_NEW` must omit both target fields. Apply requires a successful job, or a
+successful linked unit within a `PARTIAL_FAILED` job, plus active set and unchanged
+source revision. New/revised content must still have approved,
+unblocked grounded requirements. `DISMISS` can close stale or failed-job proposals.
+
+Unchanged means exact full content/citations **and known generation context**;
+different/unknown context on a single exact-content target is `NEW_REVISION`.
+Related requirements, revision ancestry or source-comparison mappings alone mean
+`AMBIGUOUS_MATCH`, even with one candidate; no title/type similarity decides lineage.
+Retire is proposed only in ALL/AFFECTED mode when **all** requirements linked to
+the pinned case are explicitly `REMOVED`, never merely omitted from a selection.
+
+Success returns the decided proposal (200). Same-key/same-body replay returns the
+stored result; a different request with that key returns an idempotency conflict.
+Changed head returns the existing revision-conflict response with current head;
+stale source, unfinished job, a second decision or duplicate `CREATE_NEW` returns
+`409 TESTCASE_PROPOSAL_CONFLICT`. New/revised cases start `DRAFT`/`MANUAL`, with no
+inherited approval, automation artifact or PASS. Review/publish remain separate.
+
+The testcase workspace and coverage page now send `review_proposals:true` with an
+explicit affected/all/selected scope confirmation. Legacy API clients omitting it keep
+direct-draft behavior. The UI exposes proposals, pinned diff and reviewer decisions;
+affected-case default, source summary and per-requirement retry are implemented.
+See [UV-08 completion verification](UV08_COMPLETION_VERIFICATION.md).
 
 ### Source review and guided workspace (UV-05)
 

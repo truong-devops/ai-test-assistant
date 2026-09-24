@@ -197,10 +197,16 @@ type Proposal struct {
 
 // GenerationBaseline is supplied by the durable workflow, never by model output.
 type GenerationBaseline struct {
-	RequirementIDs []int64
-	WorkflowJobID  int64
-	InputHash      string
-	SourceRevision int64
+	WorkflowClaimRevision int
+	WorkflowUnitID        int64
+	ReviewProposals       bool
+	Targets               []GenerationTarget
+	WorkflowAttempt       int
+	IncludeRetire         bool
+	RequirementIDs        []int64
+	WorkflowJobID         int64
+	InputHash             string
+	SourceRevision        int64
 }
 
 type GenerationProvenance struct {
@@ -216,6 +222,7 @@ type GenerationProvenance struct {
 }
 
 type GenerateSummary struct {
+	ProposalCount    int   `json:"proposal_count,omitempty"`
 	DocumentSetID    int64 `json:"document_set_id"`
 	SuiteID          int64 `json:"test_suite_id"`
 	RequirementCount int   `json:"requirement_count"`

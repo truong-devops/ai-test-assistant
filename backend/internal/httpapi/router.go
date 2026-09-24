@@ -326,6 +326,9 @@ func newRouterWithServices(logger *slog.Logger, checker ReadinessChecker,
 		mux.HandleFunc("POST /api/document-sets/{id}/suite-releases", testCases.publishRelease)
 		mux.HandleFunc("GET /api/document-sets/{id}/suite-releases", testCases.listReleases)
 		mux.HandleFunc("GET /api/test-suite-releases/{id}", testCases.getRelease)
+		mux.HandleFunc("GET /api/document-sets/{id}/test-case-proposals", testCases.proposals)
+		mux.HandleFunc("POST /api/test-case-proposals/{id}/review", testCases.decideProposal)
+		mux.HandleFunc("GET /api/test-case-proposals/{id}/comparison", testCases.compareProposal)
 	}
 	if reportService != nil {
 		reports := reportHandler{service: reportService}

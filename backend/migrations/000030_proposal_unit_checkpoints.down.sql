@@ -1,0 +1,1 @@
+ALTER TABLE test_case_generation_proposals DROP COLUMN workflow_unit_id;

@@ -557,6 +557,8 @@ func writeWorkflowError(w http.ResponseWriter, err error, fallback string) {
 	var revisionConflict *testcase.RevisionConflictError
 	var validation *testcase.ValidationError
 	switch {
+	case errors.Is(err, testcase.ErrProposalConflict):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "TESTCASE_PROPOSAL_CONFLICT"})
 	case errors.As(err, &validation):
 		nextAction := "EDIT_TESTCASE"
 		if validation.Field == "expected_result" {

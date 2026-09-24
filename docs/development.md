@@ -11,6 +11,11 @@
   requirement/scenario/expected-result snapshot.
 - Coverage must be calculated from persisted requirement-flow/test-case links,
   not from an LLM claim.
+- UV-08 proposal generation uses schema 30: freeze scope/targets, publish each unit's
+  proposals and successful checkpoint atomically, and preserve completed human
+  decisions on retry. Never infer scenario identity from title/type similarity.
+  Follow [UV-08 verification](UV08_COMPLETION_VERIFICATION.md) for isolated database
+  and browser checks; do not run its retained fixtures on production.
 - Document intake accepts DOCX and Markdown only. Keep parser input passive: never run
   macros, embedded executables, document links, or uploaded code. XLSX input is
   deferred; do not silently treat the Phase 6 report template as a requirement

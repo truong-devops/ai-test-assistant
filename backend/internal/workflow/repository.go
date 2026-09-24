@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/testcase"
 )
 
 const jobColumns = `id,document_set_id,operation,status,revision,input_snapshot,input_hash,
@@ -245,9 +246,42 @@ type generateRequirementSnapshot struct {
 }
 
 type generateInputSnapshot struct {
+	Scope                  string                        `json:"scope,omitempty"`
+	RequestedScope         string                        `json:"requested_scope,omitempty"`
+	PerRequirementUnits    bool                          `json:"per_requirement_units,omitempty"`
+	ReviewProposals        bool                          `json:"review_proposals,omitempty"`
+	Targets                []testcase.GenerationTarget   `json:"targets,omitempty"`
 	SourceRevision         int64                         `json:"source_revision"`
 	Requirements           []generateRequirementSnapshot `json:"requirements"`
 	SelectedRequirementIDs []int64                       `json:"selected_requirement_ids,omitempty"`
+}
+
+func (r *Repository) PinProposalTargets(ctx context.Context, setID int64, payload json.RawMessage) (json.RawMessage, string, error) {
+	var input generateInputSnapshot
+	if json.Unmarshal(payload, &input) != nil {
+		return nil, "", ErrInvalidInput
+	}
+	input.ReviewProposals = true
+	rows, err := r.pool.Query(ctx, `SELECT id,head_revision_id,head_token FROM test_case_families
+		WHERE document_set_id=$1 AND NOT archived AND head_revision_id IS NOT NULL ORDER BY id LIMIT 1001`, setID)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var target testcase.GenerationTarget
+		if err := rows.Scan(&target.FamilyID, &target.RevisionID, &target.HeadToken); err != nil {
+			return nil, "", err
+		}
+		input.Targets = append(input.Targets, target)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	if len(input.Targets) > 1000 {
+		return nil, "", &BlockedError{Code: "PROPOSAL_SCOPE_TOO_LARGE", Message: "proposal review supports at most 1000 active identities per set"}
+	}
+	return hashJSON(input)
 }
 
 func (r *Repository) BuildGenerateSnapshot(ctx context.Context, setID int64) (
@@ -259,6 +293,9 @@ func (r *Repository) BuildGenerateSnapshot(ctx context.Context, setID int64) (
 func (r *Repository) BuildGenerateSnapshotForRequirements(ctx context.Context, setID int64, selected []int64) (
 	json.RawMessage, string, error,
 ) {
+	return r.buildGenerateSnapshot(ctx, setID, selected, false)
+}
+func (r *Repository) buildGenerateSnapshot(ctx context.Context, setID int64, selected []int64, allowEmpty bool) (json.RawMessage, string, error) {
 	if setID <= 0 {
 		return nil, "", ErrInvalidInput
 	}
@@ -310,7 +347,7 @@ func (r *Repository) BuildGenerateSnapshotForRequirements(ctx context.Context, s
 			Message:    "every selected requirement must belong to this set and be current, approved and unblocked",
 			NextAction: "REVIEW_REQUIREMENTS"}
 	}
-	if len(snapshot.Requirements) == 0 {
+	if len(snapshot.Requirements) == 0 && !allowEmpty {
 		reason := BlockingReason{Code: "NO_APPROVED_REQUIREMENTS",
 			Message: "approve at least one current requirement before generating test cases",
 			Step:    "REQUIREMENTS", NextAction: "REVIEW_REQUIREMENTS"}
@@ -340,9 +377,54 @@ func (r *Repository) ValidateInputSnapshot(ctx context.Context, job Job) error {
 		if json.Unmarshal(job.InputSnapshot, &snapshot) != nil {
 			return ErrInvalidInput
 		}
-		_, currentHash, err := r.BuildGenerateSnapshotForRequirements(ctx, job.DocumentSetID, snapshot.SelectedRequirementIDs)
+		if snapshot.PerRequirementUnits {
+			current, _, err := r.buildGenerateSnapshot(ctx, job.DocumentSetID, snapshot.SelectedRequirementIDs, true)
+			if err != nil {
+				return err
+			}
+			var rebuilt generateInputSnapshot
+			if err = json.Unmarshal(current, &rebuilt); err != nil {
+				return err
+			}
+			if snapshot.Scope == "AFFECTED" {
+				wanted := map[int64]bool{}
+				for _, req := range snapshot.Requirements {
+					wanted[req.ID] = true
+				}
+				items := []generateRequirementSnapshot{}
+				for _, req := range rebuilt.Requirements {
+					if wanted[req.ID] {
+						items = append(items, req)
+					}
+				}
+				rebuilt.Requirements = items
+			}
+			rebuilt.Scope, rebuilt.RequestedScope, rebuilt.PerRequirementUnits = snapshot.Scope, snapshot.RequestedScope, true
+			rebuilt.ReviewProposals, rebuilt.Targets = true, snapshot.Targets
+			_, h, err := hashJSON(rebuilt)
+			if err != nil {
+				return err
+			}
+			if h != job.InputHash {
+				return ErrInputStale
+			}
+			return nil
+		}
+		current, currentHash, err := r.BuildGenerateSnapshotForRequirements(ctx, job.DocumentSetID, snapshot.SelectedRequirementIDs)
 		if err != nil {
 			return err
+		}
+		if snapshot.ReviewProposals {
+			var rebuilt generateInputSnapshot
+			if json.Unmarshal(current, &rebuilt) != nil {
+				return ErrInvalidInput
+			}
+			// Head changes are resolved at proposal apply, never silently re-pinned.
+			rebuilt.ReviewProposals, rebuilt.Targets = true, snapshot.Targets
+			_, currentHash, err = hashJSON(rebuilt)
+			if err != nil {
+				return err
+			}
 		}
 		if currentHash != job.InputHash {
 			return ErrInputStale
@@ -451,6 +533,18 @@ func (r *Repository) enqueue(ctx context.Context, setID int64, operation, reques
 			return Job{}, false, ErrInvalidInput
 		}
 	}
+	var pin generateInputSnapshot
+	if operation == OperationGenerate && json.Unmarshal(snapshot, &pin) == nil && pin.PerRequirementUnits {
+		keys := generationKeys(pin)
+		for _, key := range keys {
+			if _, err := tx.Exec(ctx, `INSERT INTO document_workflow_job_units(workflow_job_id,unit_key,input_hash) VALUES($1,$2,$3)`, result.ID, key, inputHash); err != nil {
+				return Job{}, false, err
+			}
+		}
+		if _, err := tx.Exec(ctx, `UPDATE document_workflow_jobs SET total_units=$2 WHERE id=$1`, result.ID, len(keys)); err != nil {
+			return Job{}, false, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Job{}, false, err
 	}
@@ -538,8 +632,8 @@ func prefixedJobColumns(prefix string) string {
 func (r *Repository) Heartbeat(ctx context.Context, claimed Job, lease time.Duration) error {
 	result, err := r.pool.Exec(ctx, `UPDATE document_workflow_jobs SET heartbeat_at=NOW(),
 		lease_expires_at=NOW()+$3::interval,updated_at=NOW()
-		WHERE id=$1 AND status='RUNNING' AND attempt_count=$2 AND cancel_requested_at IS NULL`,
-		claimed.ID, claimed.AttemptCount, lease.String())
+		WHERE id=$1 AND status='RUNNING' AND attempt_count=$2 AND revision=$4 AND cancel_requested_at IS NULL`,
+		claimed.ID, claimed.AttemptCount, lease.String(), claimed.Revision)
 	if err != nil {
 		return err
 	}
@@ -556,6 +650,9 @@ func (r *Repository) Heartbeat(ctx context.Context, claimed Job, lease time.Dura
 }
 
 func (r *Repository) Complete(ctx context.Context, claimed Job, output any) error {
+	if generation, ok := output.(generationOutput); ok {
+		return r.completeGeneration(ctx, claimed, generation)
+	}
 	payload, err := json.Marshal(output)
 	if err != nil {
 		return err
@@ -607,8 +704,8 @@ func (r *Repository) Fail(ctx context.Context, claimed Job, processErr error, co
 	var cancelRequested bool
 	var status string
 	if err := tx.QueryRow(ctx, `SELECT cancel_requested_at IS NOT NULL,status
-		FROM document_workflow_jobs WHERE id=$1 AND attempt_count=$2 FOR UPDATE`,
-		claimed.ID, claimed.AttemptCount).Scan(&cancelRequested, &status); err != nil {
+		FROM document_workflow_jobs WHERE id=$1 AND attempt_count=$2 AND (revision=$3 OR cancel_requested_at IS NOT NULL) FOR UPDATE`,
+		claimed.ID, claimed.AttemptCount, claimed.Revision).Scan(&cancelRequested, &status); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrLeaseLost
 		}
@@ -741,7 +838,7 @@ func (r *Repository) Retry(ctx context.Context, id int64, expectedRevision int) 
 		return Job{}, err
 	}
 	_, err = tx.Exec(ctx, `UPDATE document_workflow_jobs SET status='QUEUED',revision=revision+1,
-		attempt_count=0,completed_units=0,failed_units=0,next_attempt_at=NOW(),lease_expires_at=NULL,
+		attempt_count=0,completed_units=(SELECT count(*) FROM document_workflow_job_units WHERE workflow_job_id=$1 AND unit_key<>'operation' AND status='SUCCEEDED'),failed_units=0,next_attempt_at=NOW(),lease_expires_at=NULL,
 		heartbeat_at=NULL,cancel_requested_at=NULL,error_code='',error_message='',retryable=FALSE,
 		started_at=NULL,finished_at=NULL,updated_at=NOW() WHERE id=$1`, id)
 	if err != nil {

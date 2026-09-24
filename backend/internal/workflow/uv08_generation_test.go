@@ -34,3 +34,28 @@ func TestUV08GenerationSelectionValidationAndCommandReplay(t *testing.T) {
 		t.Fatal("legacy job replay changed")
 	}
 }
+
+func TestUV08GenerationScopeReplayAndUnitKeys(t *testing.T) {
+	for _, scope := range []string{"ALL", "SELECTED", "AFFECTED"} {
+		pin := generateInputSnapshot{Scope: scope, RequestedScope: scope, ReviewProposals: true, PerRequirementUnits: true, Requirements: []generateRequirementSnapshot{{ID: 11}, {ID: 22}}}
+		keys := generationKeys(pin)
+		want := []string{"requirement:11", "requirement:22"}
+		if scope != "SELECTED" {
+			want = append(want, "retire")
+		}
+		if !reflect.DeepEqual(keys, want) {
+			t.Fatalf("%s keys=%v", scope, keys)
+		}
+		payload, _ := json.Marshal(pin)
+		job := Job{Operation: OperationGenerate, InputSnapshot: payload}
+		for _, requested := range []string{"", "ALL", "SELECTED", "AFFECTED"} {
+			matches := sameIdempotentCommand(job, OperationInput{Operation: OperationGenerate, ReviewProposals: true, GenerationScope: requested})
+			if matches != (scope == requested) {
+				t.Fatalf("scope=%s requested=%s match=%v", scope, requested, matches)
+			}
+		}
+	}
+	if keys := generationKeys(generateInputSnapshot{Scope: "AFFECTED"}); !reflect.DeepEqual(keys, []string{"retire"}) {
+		t.Fatalf("empty baseline must retain retire checkpoint: %v", keys)
+	}
+}

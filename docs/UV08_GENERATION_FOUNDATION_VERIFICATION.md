@@ -1,7 +1,14 @@
 # UV-08 — Chặng nền generation có scope và dedupe an toàn
 
 Ngày kiểm tra: 22/09/2026. Đây là một phần UV-08, **chưa hoàn thành phase**.
-Không thêm migration; schema vẫn là 28. Thay đổi chưa commit.
+Chặng nền này không thêm migration; kiểm thử lúc đó trên schema 28.
+
+**Cập nhật 23/09:** phần proposal backend tiếp nối đã có migration 29, classification,
+apply CAS và lease/cancel guard ở chế độ opt-in. Xem
+[UV08_PROPOSAL_VERIFICATION.md](UV08_PROPOSAL_VERIFICATION.md) cho chặng backend;
+trạng thái hoàn tất ngày 24/09 ở [nghiệm thu UV-08](UV08_COMPLETION_VERIFICATION.md).
+Danh sách còn thiếu bên dưới là mốc lịch sử của chặng nền, không phải toàn bộ
+trạng thái repo sau chặng tiếp nối.
 
 ## Phần đã triển khai
 

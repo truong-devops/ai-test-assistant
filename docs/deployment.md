@@ -14,6 +14,13 @@ mounts runtime secrets as files, binds HTTP ports to loopback by default, rotate
 container logs, and starts application containers with a read-only root
 filesystem, dropped capabilities, and `no-new-privileges`.
 
+The current UV-08 proposal workspace requires migrations through **30** and matching
+API/worker/frontend versions. Back up and drain old workers before the schema/code
+cutover. New jobs use per-requirement checkpoints; do not rewrite existing job input
+or silently repin releases during rollout. See the migration/rollback limits and
+isolated test evidence in [UV-08 completion verification](UV08_COMPLETION_VERIFICATION.md).
+Technical completion does not replace the UV-09 production acceptance gates.
+
 The production API requires a file-mounted bearer token and enforces service
 roles. It does not authenticate end-user identities: keep loopback ports behind
 an OIDC/authenticated reverse proxy, let only that trusted proxy/frontend know

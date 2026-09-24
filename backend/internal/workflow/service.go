@@ -47,6 +47,7 @@ func (s *Service) Enqueue(ctx context.Context, setID int64, input OperationInput
 	idempotencyKey, role string,
 ) (Job, bool, error) {
 	input.Operation = strings.ToUpper(strings.TrimSpace(input.Operation))
+	input.GenerationScope = strings.ToUpper(strings.TrimSpace(input.GenerationScope))
 	input.RequestedBy = strings.TrimSpace(input.RequestedBy)
 	idempotencyKey = strings.TrimSpace(idempotencyKey)
 	if input.RequestedBy == "" {
@@ -55,7 +56,10 @@ func (s *Service) Enqueue(ctx context.Context, setID int64, input OperationInput
 	if setID <= 0 || !validOperation(input.Operation) || idempotencyKey == "" {
 		return Job{}, false, ErrInvalidInput
 	}
-	if input.Operation != OperationGenerate && len(input.RequirementIDs) > 0 {
+	if input.GenerationScope != "" && (!input.ReviewProposals || !slices.Contains([]string{"ALL", "SELECTED", "AFFECTED"}, input.GenerationScope)) {
+		return Job{}, false, ErrInvalidInput
+	}
+	if input.Operation != OperationGenerate && (len(input.RequirementIDs) > 0 || input.ReviewProposals || input.GenerationScope != "") {
 		return Job{}, false, ErrInvalidInput
 	}
 	selection, err := generationSelection(input.RequirementIDs)
@@ -78,7 +82,7 @@ func (s *Service) Enqueue(ctx context.Context, setID int64, input OperationInput
 	if err != nil {
 		return Job{}, false, err
 	}
-	if input.Operation != OperationIndex && !budgetAvailable(facts) {
+	if input.Operation != OperationIndex && !input.ReviewProposals && !budgetAvailable(facts) {
 		reason := BlockingReason{Code: "AI_BUDGET_EXHAUSTED",
 			Message: "AI budget has no remaining capacity", Step: "REQUIREMENTS",
 			NextAction: "ADJUST_AI_BUDGET"}
@@ -93,7 +97,11 @@ func (s *Service) Enqueue(ctx context.Context, setID int64, input OperationInput
 		snapshot, inputHash, err = s.repository.BuildIndexSnapshot(ctx, setID,
 			input.ExcludedVersionIDs)
 	case OperationGenerate:
-		snapshot, inputHash, err = s.repository.BuildGenerateSnapshotForRequirements(ctx, setID, input.RequirementIDs)
+		if input.ReviewProposals {
+			snapshot, inputHash, err = s.repository.buildProposalSnapshot(ctx, setID, input)
+		} else {
+			snapshot, inputHash, err = s.repository.BuildGenerateSnapshotForRequirements(ctx, setID, input.RequirementIDs)
+		}
 	case OperationExtract:
 		if s.index == nil || s.extraction == nil {
 			return Job{}, false, ErrInvalidInput
@@ -121,6 +129,13 @@ func (s *Service) Enqueue(ctx context.Context, setID int64, input OperationInput
 	if err != nil {
 		return Job{}, false, err
 	}
+	if input.ReviewProposals && !budgetAvailable(facts) {
+		var pin generateInputSnapshot
+		_ = json.Unmarshal(snapshot, &pin)
+		if len(pin.Requirements) > 0 {
+			return Job{}, false, &BlockedError{Code: "AI_BUDGET_EXHAUSTED", Message: "AI budget has no remaining capacity"}
+		}
+	}
 	if input.Operation == OperationExtract {
 		external, requestErr := s.extraction.RequestExtraction(ctx, setID, input.RequestedBy)
 		if requestErr != nil {
@@ -141,6 +156,12 @@ func sameIdempotentCommand(existing Job, input OperationInput) bool {
 	if input.Operation == OperationGenerate {
 		var snapshot generateInputSnapshot
 		if json.Unmarshal(existing.InputSnapshot, &snapshot) != nil {
+			return false
+		}
+		if snapshot.ReviewProposals != input.ReviewProposals {
+			return false
+		}
+		if snapshot.RequestedScope != input.GenerationScope {
 			return false
 		}
 		wanted, err := generationSelection(input.RequirementIDs)
@@ -230,7 +251,13 @@ func (s *Service) Process(ctx context.Context, job Job) (any, error) {
 			return nil, ErrInvalidInput
 		}
 		var snapshot generateInputSnapshot
-		if err := json.Unmarshal(job.InputSnapshot, &snapshot); err != nil || len(snapshot.Requirements) == 0 {
+		if err := json.Unmarshal(job.InputSnapshot, &snapshot); err != nil {
+			return nil, ErrInvalidInput
+		}
+		if snapshot.PerRequirementUnits {
+			return s.processGenerationUnits(ctx, job, snapshot)
+		}
+		if len(snapshot.Requirements) == 0 {
 			return nil, ErrInvalidInput
 		}
 		ids := make([]int64, 0, len(snapshot.Requirements))
@@ -239,13 +266,16 @@ func (s *Service) Process(ctx context.Context, job Job) (any, error) {
 		}
 		result, err := s.testcases.GeneratePinned(ctx, job.DocumentSetID, testcase.GenerationBaseline{
 			RequirementIDs: ids, WorkflowJobID: job.ID, InputHash: job.InputHash,
-			SourceRevision: snapshot.SourceRevision})
+			SourceRevision: snapshot.SourceRevision, ReviewProposals: snapshot.ReviewProposals,
+			Targets: snapshot.Targets, WorkflowAttempt: job.AttemptCount,
+			IncludeRetire: len(snapshot.SelectedRequirementIDs) == 0})
 		if err != nil {
 			return nil, err
 		}
 		return map[string]any{"test_suite_id": result.SuiteID,
 			"requirement_count": result.RequirementCount, "created_count": result.CreatedCount,
-			"reused_count": result.ReusedCount, "suppressed_count": result.SuppressedCount}, nil
+			"reused_count": result.ReusedCount, "suppressed_count": result.SuppressedCount,
+			"proposal_count": result.ProposalCount, "review_proposals": snapshot.ReviewProposals}, nil
 	default:
 		return nil, ErrInvalidInput
 	}
@@ -263,6 +293,10 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 	result := ReadModel{DocumentSetID: setID, SourceRevision: facts.SourceRevision,
 		Steps: []Step{}, BlockingReasons: []BlockingReason{}, ActiveJobs: []Job{},
 		RecentJobs: jobs}
+	result.GenerationScope, err = s.repository.GenerationScope(ctx, setID)
+	if err != nil {
+		return ReadModel{}, err
+	}
 	result.SourceIntents, err = s.repository.SourceIntents(ctx, setID)
 	if err != nil {
 		return ReadModel{}, err
@@ -279,7 +313,7 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 		CanUpload: editable, CanManage: roleAtLeast(role, "reviewer"),
 		CanIndex:    editable && facts.DocumentCount > 0,
 		CanExtract:  editable && facts.ExtractionReady && budgetOK,
-		CanGenerate: editable && facts.ApprovedRequirements > 0 && budgetOK,
+		CanGenerate: editable && ((facts.ApprovedRequirements > 0 && budgetOK) || len(result.GenerationScope.RemovedFamilyIDs) > 0),
 		CanReview:   reviewer, CanPublish: reviewer && facts.ApprovedTestCases > 0,
 		CanRetryJob: editable, CanCancelJob: editable,
 		CanAdjustBudget: roleAtLeast(role, "admin"),
@@ -310,7 +344,7 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 			Code: "SOURCE_NOT_APPROVED", Message: "all included source versions must be approved",
 			Step: "REQUIREMENTS", NextAction: "REVIEW_SOURCE"})
 	}
-	if facts.ApprovedRequirements == 0 {
+	if facts.ApprovedRequirements == 0 && len(result.GenerationScope.RemovedFamilyIDs) == 0 {
 		result.BlockingReasons = append(result.BlockingReasons, BlockingReason{
 			Code: "NO_APPROVED_REQUIREMENTS", Message: "no current approved requirements",
 			Step: "TESTCASES", NextAction: "REVIEW_REQUIREMENTS"})
@@ -358,6 +392,8 @@ func (s *Service) Read(ctx context.Context, setID int64, role string) (ReadModel
 		result.NextAction = OperationIndex
 	case !facts.ExtractionReady:
 		result.NextAction = "REVIEW_SOURCE"
+	case result.Capabilities.CanGenerate && (len(result.GenerationScope.AffectedRequirementIDs) > 0 || len(result.GenerationScope.RemovedFamilyIDs) > 0):
+		result.NextAction = OperationGenerate
 	case result.Capabilities.CanExtract && facts.RequirementCount == 0:
 		result.NextAction = OperationExtract
 	case facts.ApprovedRequirements == 0:
@@ -440,6 +476,10 @@ func budgetAvailable(facts readFacts) bool {
 
 func classifyError(err error) (string, bool) {
 	switch {
+	case errors.Is(err, testcase.ErrGenerationLease):
+		return "GENERATION_LEASE_LOST", false
+	case errors.Is(err, testcase.ErrProposalConflict):
+		return "GENERATION_BASELINE_CHANGED", false
 	case errors.Is(err, ErrInputStale), errors.Is(err, requirement.ErrStaleIndex):
 		return "INPUT_SNAPSHOT_STALE", false
 	case errors.Is(err, requirement.ErrNoIndex), errors.Is(err, testcase.ErrNoApprovedSource),

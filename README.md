@@ -60,11 +60,17 @@ Runs and exports remain revision-specific. UV-07 adds no migration (schema 28);
 technical checks passed, with human usability/screen-reader acceptance still open.
 See [UV-07 verification](docs/UV07_TESTCASE_VERSIONING_VERIFICATION.md).
 
-UV-08 is in progress: generation now consumes the job's exact requirement IDs,
-supports an optional explicit requirement selection, records generation provenance,
-and no longer merges scenarios by title/expected similarity. The proposal comparison,
-apply workflow and scope UI are not implemented yet. See
-[UV-08 foundation verification](docs/UV08_GENERATION_FOUNDATION_VERIFICATION.md).
+UV-08 is technically complete on schema **30**. Both testcase entry pages use
+proposal-first generation with affected/selected/all scope, source-change summary,
+pinned diff and explicit reviewer decisions. Updates default to affected scope;
+confirmed removal can propose archive even without an approved current requirement.
+Each requirement has an atomic checkpoint; partial retry preserves completed
+proposals and human decisions. Generation never merges identities by title/type
+similarity, approves drafts, or switches releases automatically. Deploy matching
+API, worker and frontend after migrations 29–30. Source update → review → R2,
+unchanged R1/export and historical-run retention have automated evidence; real
+provider/SCM/sandbox rollout and human acceptance remain UV-09 gates.
+See [UV-08 completion verification](docs/UV08_COMPLETION_VERIFICATION.md).
 
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed

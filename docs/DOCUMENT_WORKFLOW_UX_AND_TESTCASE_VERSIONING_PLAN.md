@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật. UV-07 đã qua kiểm thử kỹ thuật, còn nghiệm thu người dùng/screen reader. UV-08 đang triển khai: đã có nền generation pin exact requirements và bỏ semantic auto-merge; proposal/apply/UI chưa hoàn thành**.
+- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật. UV-07 đã qua kiểm thử kỹ thuật, còn nghiệm thu người dùng/screen reader. UV-08 đã hoàn thành kỹ thuật (schema 30): affected/selected/all, diff/apply, retry từng requirement, all-removed và E2E đổi nguồn → R2. UV-09 và các gate nghiệm thu người dùng vẫn mở**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -779,43 +779,57 @@ Tiến độ chặng nền (22/09/2026): worker đã dùng exact IDs trong job t
 baseline live; API nhận optional `requirement_ids` (1–100), kiểm tra ownership/
 approval/current và idempotency theo scope. Dedupe trong generation không còn gộp
 theo title/expected gần giống hoặc tự merge nguồn. Revision mới lưu generation
-provenance. Chưa có proposal persistence/classification/apply hoặc UI chọn scope;
-không đánh dấu các mục gộp dưới đây hoàn tất chỉ vì đã có một phần nền.
-Xem [UV08_GENERATION_FOUNDATION_VERIFICATION.md](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
+provenance. Chặng tiếp nối 23/09 thêm migration 29 và `review_proposals: true`:
+persist/classify proposal trước khi đổi testcase, reviewer apply có CAS + receipt.
+Chặng hoàn tất 24/09 thêm migration 30, affected mặc định khi cập nhật, summary
+nguồn và checkpoint/retry theo requirement; retire-only chạy khi không còn yêu cầu
+approved hiện hành. Client API legacy vẫn có thể sinh draft trực tiếp; các mục
+backend bên dưới áp dụng cho proposal mode. Kiểm thử kỹ thuật UV-08 đã hoàn tất;
+không tự đóng các gate rollout/demo thật và nghiệm thu người dùng của UV-09.
+Xem [UV08_COMPLETION_VERIFICATION.md](UV08_COMPLETION_VERIFICATION.md).
 
 Backend:
 
-- [ ] Generation job pin requirement/source snapshot; lưu input/version/prompt/output
+- [x] Generation job pin requirement/source snapshot; lưu input/version/prompt/output
   đủ để biết vì sao một revision được đề xuất.
-- [ ] Chọn scope `yêu cầu đã chọn`, `case bị ảnh hưởng`, `toàn bộ bộ làm việc`;
+- [x] Chọn scope `yêu cầu đã chọn`, `case bị ảnh hưởng`, `toàn bộ bộ làm việc`;
   default chỉ phần bị ảnh hưởng khi cập nhật tài liệu.
-- [ ] Kết quả phân loại `NEW_CASE`, `NEW_REVISION`, `UNCHANGED`, `RETIRE_CANDIDATE`,
+- [x] Kết quả phân loại `NEW_CASE`, `NEW_REVISION`, `UNCHANGED`, `RETIRE_CANDIDATE`,
   `AMBIGUOUS_MATCH`; lưu reason và exact target identity nếu đã xác nhận.
-- [ ] Unchanged phải so đủ content + provenance; không lấy title/type/expected
+- [x] Unchanged phải so đủ content + provenance; không lấy title/type/expected
   đơn thuần. Không gộp negative/boundary case có data/steps khác nhau.
-- [ ] Gợi ý semantic matching không tự quyết lineage; reviewer giải quyết ambiguity.
-- [ ] Apply proposal kiểm tra expected head, idempotency và approval đã có; user
+- [x] Gợi ý semantic matching không tự quyết lineage; reviewer giải quyết ambiguity
+  qua API. Quan hệ nguồn chưa đủ xác nhận lineage luôn trả `AMBIGUOUS_MATCH`.
+- [x] Apply proposal kiểm tra expected head, idempotency và approval đã có; user
   sửa trong lúc AI chạy thì trả conflict, không ghi đè bản human edit.
-- [ ] Nguồn bị removed đề xuất archive/exclude từ release mới, không delete case.
-- [ ] Regeneration không tự approve, đổi release binding hoặc chạy sandbox.
+- [x] Nguồn bị removed đề xuất archive/exclude từ release mới, không delete case.
+  `RETIRE_CANDIDATE`/`ARCHIVE` trong ALL/AFFECTED khi mọi nguồn liên kết removed;
+  hỗ trợ baseline không còn requirement approved và không cần ngân sách AI.
+- [x] Regeneration không tự approve, đổi release binding hoặc chạy sandbox.
 
 Frontend:
 
-- [ ] Trước khi chạy: summary nguồn thay đổi, requirement/case ảnh hưởng, phạm vi
+- [x] Trước khi chạy: summary nguồn thay đổi, requirement/case ảnh hưởng, phạm vi
   đã chọn và usage/budget hiện có; không đưa ước lượng token giả chính xác.
-- [ ] Sau chạy: bảng đối chiếu mới/sửa/không đổi/bỏ/không rõ, mở diff và source.
-- [ ] Chọn áp dụng proposal; nút publish Rn+1/gắn project chỉ sau review đúng điều kiện.
-- [ ] Job partial lỗi chỉ retry unit cần thiết, giữ kết quả human đã xử lý.
+  Hiển thị source revision/comparison, nguồn bị chặn, ảnh hưởng theo quan hệ lưu
+  được và budget theo quyền; quan hệ mơ hồ vẫn yêu cầu reviewer xác nhận.
+- [x] Sau chạy: bảng đối chiếu mới/sửa/không đổi/bỏ/không rõ, mở diff và source.
+- [x] Chọn áp dụng proposal; nút publish Rn+1/gắn project chỉ sau review đúng điều kiện.
+  Apply chỉ tạo draft; link dẫn sang exact revision review, không publish/bind tự động.
+- [x] Job partial lỗi chỉ retry unit cần thiết, giữ kết quả human đã xử lý.
 
 Kiểm tra và Definition of Done:
 
-- [ ] Cùng nguồn/payload không đổi không tăng revision vô ích; retry cùng output
+- [x] Cùng nguồn/payload không đổi không tăng revision vô ích; retry cùng output
   không nhân testcase dù provider request có thể đã tốn phí ở attempt trước.
-- [ ] Một thay đổi requirement chỉ đề xuất cập nhật các case thực sự có liên kết;
+- [x] Một thay đổi requirement chỉ đề xuất cập nhật các case thực sự có liên kết;
   quan hệ không chắc phải được báo, không giả vờ xác định ảnh hưởng đầy đủ.
-- [ ] Case mới cùng test type được giữ độc lập; case removed không biến mất khỏi run cũ.
-- [ ] Reviewer đang edit và job generate đồng thời không làm mất chỉnh sửa.
-- [ ] R1/run/export trước thay đổi vẫn truy xuất nguyên trạng sau publish R2.
+- [x] Case mới cùng test type được giữ độc lập; case removed không biến mất khỏi run cũ.
+- [x] Reviewer đang edit và job generate đồng thời không làm mất chỉnh sửa.
+- [x] R1/run/export trước thay đổi vẫn truy xuất nguyên trạng sau publish R2.
+  Browser kiểm tra nguồn upload thật/R1/export/R2/archive; PostgreSQL integration
+  kiểm tra run PASSED fixture cũ và XLSX giữ nguyên, revision mới không kế thừa PASS.
+  Không dùng fixture này làm bằng chứng sandbox/provider thật.
 
 File trọng tâm: testcase generation service/schema/repository, requirement source
 mapping, workflow jobs, compare proposals UI và release publishing.
@@ -1023,7 +1037,7 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 - [ ] UV-05 — Code và kiểm thử kỹ thuật đã đạt; còn nghiệm thu người mới tự sử dụng.
 - [x] UV-06 — Requirement batch review và đối chiếu nguồn; kiểm thử kỹ thuật đạt 22/09/2026.
 - [ ] UV-07 — Code và kiểm thử kỹ thuật đạt; còn nghiệm thu phân biệt version với người dùng và screen reader.
-- [ ] UV-08 — Đã có nền pinned generation/selected requirements/safe dedupe; còn proposal classification/apply và UI theo scope.
+- [x] UV-08 — Hoàn tất kỹ thuật: proposal-first, affected/selected/all, per-unit retry, all-removed, E2E đổi nguồn/R2 và giữ proof lịch sử; xem nghiệm thu schema 30.
 - [ ] UV-09 — Browser E2E, usability, migration drill và rollout.
 
 Mỗi lần hoàn thành phase, điền bên dưới hoặc tạo subsection theo phase:
@@ -1149,6 +1163,57 @@ dấu hết checklist code chưa thay thế bằng chứng đó.
   Revision mới ghi generation provenance; replay không thay head do QA sửa.
 - Unit/vet/typecheck và PostgreSQL integration đã chạy; chi tiết tại
   [UV08_GENERATION_FOUNDATION_VERIFICATION.md](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
-- Chưa commit, chưa migration mới, chưa UI scope/proposal hoặc apply CAS. UV-08
-  còn mở; bước tiếp theo là persist/classify proposals và apply trên expected head,
-  sau đó mới nối bảng đối chiếu/phạm vi và retry từng unit vào UI.
+- Chặng nền không thêm migration; các phần proposal tiếp nối được ghi bên dưới.
+
+### Tiến độ UV-08 — proposal backend, 23/09/2026
+
+- Migration 29 lưu proposal input/classification/reason/candidate heads bất biến
+  và receipt quyết định theo idempotency key. Enqueue opt-in pin exact heads;
+  worker không rebase sang human head mới và không ghi testcase trước apply.
+- Phân loại đủ năm nhóm; chỉ exact full content + known generation context là
+  unchanged. Quan hệ requirement/ancestry/source comparison không tự quyết lineage.
+- API list phân trang và reviewer apply/dismiss; CAS head + source/approval guard,
+  draft/decision/receipt cùng transaction. Archive không xóa revision/release/run.
+- Kiểm thử concurrent replay, human edit khi generate, R1/R2/PASS giữ nguyên,
+  retire, rollback batch lỗi, lease/cancel và quyền reviewer. Workflow integration
+  dùng service thật xác nhận pin targets và tái sử dụng checkpoint whole-batch.
+- Chi tiết lệnh, bằng chứng, giới hạn và rollout:
+  [UV08_PROPOSAL_VERIFICATION.md](UV08_PROPOSAL_VERIFICATION.md).
+- Tại mốc backend, UI scope/diff/apply còn thiếu; chặng tiếp nối bên dưới đã nối UI.
+  Default affected cases, all-removed baseline, retry failed unit và browser journey
+  R1/export → source update → proposal → R2 vẫn mở.
+  Không tự đóng UV-05/07 human acceptance hoặc E2E provider/SCM/sandbox thật.
+
+### Tiến độ UV-08 — nối giao diện proposal-first, 23/09/2026
+
+- Hai entry pages testcase dùng chung UI: explicit all/selected scope, xác nhận
+  nguồn/phạm vi, usage/budget theo quyền và job polling. Không còn generation chính
+  direct-draft trên hai trang này; API cũ giữ compatibility.
+- Bảng proposal phân trang/lọc job, nội dung/source/provenance, diff exact bản pin.
+  Reviewer chọn decision/identity/reason và xác nhận; apply giữ CAS/receipt server,
+  không publish/bind/approve tự động. Viewer chỉ đọc.
+- Browser kiểm tra mất response sau commit, retry cùng key, KEEP, stale-head
+  conflict giữ reason, dismiss rồi REVISE có xác nhận; R1 không đổi, draft không
+  kế thừa approval/PASS. Hai trang và viewport 390 px, viewer API 403 đã kiểm tra.
+- `make test lint`, production build, toàn bộ PostgreSQL integration đạt.
+  Bằng chứng và giới hạn: [UV08_PROPOSAL_UI_VERIFICATION.md](UV08_PROPOSAL_UI_VERIFICATION.md).
+- Bước tiếp theo: scope/default affected cases + all-removed baseline, sau đó
+  checkpoint/retry từng requirement và E2E đổi nguồn đầy đủ. Chưa đóng UV-08.
+
+### Hoàn tất UV-08 — 24/09/2026
+
+- Đã hoàn thành scope AFFECTED/SELECTED/ALL, mặc định affected khi đã có testcase,
+  summary thay đổi nguồn và xác nhận phạm vi. Baseline all-removed sinh retire
+  không gọi AI; archive giữ release/run/history.
+- Migration 30 liên kết proposal với checkpoint từng requirement. Partial retry
+  giữ unit thành công và quyết định reviewer; claim revision ngăn worker cũ ảnh
+  hưởng attempt mới. Scope/targets đóng băng, không tự rebase sau human edit.
+- PostgreSQL integration kiểm tra lỗi từng phần, KEEP + human edit + retry,
+  affected scope không lan sang case khác, R1/run/XLSX giữ nguyên sau R2/archive.
+- Browser đầy đủ PASS hai lượt (set 11/12): đổi nguồn thật → affected proposal →
+  review v4 → preview/publish R2, rồi removed toàn bộ → archive; viewer 403, diff
+  mobile, mất response và head conflict. Provider disabled, không suy ra PASS thật.
+- `make test lint`, frontend build, toàn bộ integration, fresh migration 1–30 và
+  down/up 30 trên DB trống đều đạt. Đã đóng checklist kỹ thuật UV-08.
+  Xem [nghiệm thu và giới hạn](UV08_COMPLETION_VERIFICATION.md).
+- UV-09, UV-05/07 human acceptance vẫn mở. Chưa migrate DB chính hoặc deploy/commit.
