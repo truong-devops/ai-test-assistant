@@ -108,7 +108,7 @@ func (s *Service) Generate(ctx context.Context, analysisID int64, input Generate
 	baseCall := Call{AnalysisID: analysisID, TestCaseID: input.TestCaseID, Provider: defaultValue(s.providerName, "disabled"), ModelName: defaultValue(response.Model, s.model), Instructions: instructions, Prompt: prompt, Schema: schema, Response: response.Output, ResponseID: response.ID, BusinessContext: business, TechnicalContext: technical, ExpectedHash: subject.ExpectedResultHash, InputTokens: response.Usage.InputTokens, OutputTokens: response.Usage.OutputTokens, LatencyMS: latency}
 	if err != nil {
 		if s.budget != nil {
-			_ = s.budget.Release(context.WithoutCancel(ctx), reservation)
+			aibudget.ResolveProviderError(context.WithoutCancel(ctx), s.budget, reservation, err)
 		}
 		baseCall.Status = "BLOCKED"
 		baseCall.ErrorMessage = err.Error()

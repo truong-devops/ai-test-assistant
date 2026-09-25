@@ -108,11 +108,11 @@ func (r *Repository) readFacts(ctx context.Context, setID int64) (readFacts, err
 		COALESCE(sum(reservation.input_tokens+reservation.output_tokens)
 			FILTER(WHERE reservation.status='COMPLETED'),0),
 		COALESCE(sum(reservation.reserved_tokens)
-			FILTER(WHERE reservation.status='RESERVED' AND reservation.expires_at>NOW()),0),
+			FILTER(WHERE reservation.status='RESERVED'),0),
 		COALESCE(sum(reservation.actual_cost_microusd)
 			FILTER(WHERE reservation.status='COMPLETED'),0),
 		COALESCE(sum(reservation.reserved_cost_microusd)
-			FILTER(WHERE reservation.status='RESERVED' AND reservation.expires_at>NOW()),0)
+			FILTER(WHERE reservation.status='RESERVED'),0)
 		FROM document_sets set LEFT JOIN document_ai_budget_reservations reservation
 			ON reservation.document_set_id=set.id WHERE set.id=$1 GROUP BY set.id`, setID).Scan(
 		&tokenBudget, &costBudget, &usedTokens, &reservedTokens, &usedCost, &reservedCost); err != nil {

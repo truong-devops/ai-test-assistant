@@ -79,15 +79,16 @@ type LifecycleInput struct {
 }
 
 type AIBudgetStatus struct {
-	DocumentSetID         int64 `json:"document_set_id"`
-	TokenBudget           int64 `json:"token_budget"`
-	UsedTokens            int64 `json:"used_tokens"`
-	ReservedTokens        int64 `json:"reserved_tokens"`
-	RemainingTokens       int64 `json:"remaining_tokens"`
-	CostBudgetMicroUSD    int64 `json:"cost_budget_microusd"`
-	UsedCostMicroUSD      int64 `json:"used_cost_microusd"`
-	ReservedCostMicroUSD  int64 `json:"reserved_cost_microusd"`
-	RemainingCostMicroUSD int64 `json:"remaining_cost_microusd"`
+	UnreconciledReservations int64 `json:"unreconciled_reservations"`
+	DocumentSetID            int64 `json:"document_set_id"`
+	TokenBudget              int64 `json:"token_budget"`
+	UsedTokens               int64 `json:"used_tokens"`
+	ReservedTokens           int64 `json:"reserved_tokens"`
+	RemainingTokens          int64 `json:"remaining_tokens"`
+	CostBudgetMicroUSD       int64 `json:"cost_budget_microusd"`
+	UsedCostMicroUSD         int64 `json:"used_cost_microusd"`
+	ReservedCostMicroUSD     int64 `json:"reserved_cost_microusd"`
+	RemainingCostMicroUSD    int64 `json:"remaining_cost_microusd"`
 }
 
 type PurgePreview struct {

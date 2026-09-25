@@ -58,7 +58,11 @@ const path = require('node:path');
     await page.getByRole('navigation', { name: 'Các bước từ tài liệu đến testcase' }).getByRole('link').filter({ hasText: 'Yêu cầu' }).click();
     await page.getByRole('heading', { name: 'Requirement inventory' }).waitFor();
     console.log('Requirements navigation ready');
-    assert.ok(await page.locator('tbody tr').count() > 0);
+    // The inventory shell can render before its async JSON refresh completes.
+    // Wait for business data without manually reloading or retrying the journey.
+    const requirementRows = page.getByLabel('Danh sách yêu cầu', { exact: true }).locator('tbody tr');
+    await requirementRows.first().waitFor({ state: 'visible', timeout: 30000 });
+    assert.ok(await requirementRows.count() > 0);
     await page.goto(`${base}/documents/${setID}?step=documents`);
     const sourceRow = page.getByRole('table').first().getByRole('row').filter({ hasText: 'checkout.md' });
     await sourceRow.getByRole('button', { name: 'Tải phiên bản mới' }).click();

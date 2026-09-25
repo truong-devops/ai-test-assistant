@@ -77,6 +77,7 @@ export function DocumentLifecycle({ set, budget }: { set: DocumentSet; budget: A
       <label><span>Total AI token budget</span><input type="number" min={1000} max={1_000_000_000} value={tokenBudget} onChange={(event) => setTokenBudget(event.target.value)} /></label>
       <label><span>Total AI cost budget (USD)</span><input type="number" min={0.000001} step="0.000001" value={costBudgetUSD} onChange={(event) => setCostBudgetUSD(event.target.value)} /></label>
       <p className="table-subtitle">Used: {budget.used_tokens.toLocaleString()} tokens; reserved: {budget.reserved_tokens.toLocaleString()}; remaining: {budget.remaining_tokens.toLocaleString()}. Cost used: ${(budget.used_cost_microusd / 1_000_000).toFixed(4)}.</p>
+      {budget.unreconciled_reservations ? <p role="alert">Có {budget.unreconciled_reservations} reservation quá hạn chưa đối soát. Ngân sách vẫn được giữ vì chưa biết usage thực tế; liên hệ người quản lý kiểm tra provider/job, không coi retry là miễn phí.</p> : null}
       <label><span>Actor</span><input value={actor} onChange={(event) => setActor(event.target.value)} /></label>
       <label><span>Audit reason</span><input value={reason} onChange={(event) => setReason(event.target.value)} /></label>
       {set.status !== "PURGING" ? <button className="button secondary" disabled={pending} onClick={() => save(set.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE")}>{set.status === "ACTIVE" ? "Archive set" : "Restore set"}</button> : null}

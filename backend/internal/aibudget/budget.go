@@ -43,21 +43,23 @@ func WithWorkflowAttempt(ctx context.Context, jobID, unitID int64, attempt int) 
 }
 
 type Status struct {
-	DocumentSetID         int64 `json:"document_set_id"`
-	TokenBudget           int64 `json:"token_budget"`
-	UsedTokens            int64 `json:"used_tokens"`
-	ReservedTokens        int64 `json:"reserved_tokens"`
-	RemainingTokens       int64 `json:"remaining_tokens"`
-	CostBudgetMicroUSD    int64 `json:"cost_budget_microusd"`
-	UsedCostMicroUSD      int64 `json:"used_cost_microusd"`
-	ReservedCostMicroUSD  int64 `json:"reserved_cost_microusd"`
-	RemainingCostMicroUSD int64 `json:"remaining_cost_microusd"`
+	UnreconciledReservations int64 `json:"unreconciled_reservations"`
+	DocumentSetID            int64 `json:"document_set_id"`
+	TokenBudget              int64 `json:"token_budget"`
+	UsedTokens               int64 `json:"used_tokens"`
+	ReservedTokens           int64 `json:"reserved_tokens"`
+	RemainingTokens          int64 `json:"remaining_tokens"`
+	CostBudgetMicroUSD       int64 `json:"cost_budget_microusd"`
+	UsedCostMicroUSD         int64 `json:"used_cost_microusd"`
+	ReservedCostMicroUSD     int64 `json:"reserved_cost_microusd"`
+	RemainingCostMicroUSD    int64 `json:"remaining_cost_microusd"`
 }
 
 type Controller interface {
 	Reserve(context.Context, int64, string, string, llm.Request) (Reservation, error)
 	Finalize(context.Context, Reservation, llm.Usage) error
 	Release(context.Context, Reservation) error
+	Uncertain(context.Context, Reservation) error
 }
 
 type Manager struct {
@@ -102,17 +104,15 @@ func (m *Manager) Reserve(ctx context.Context, setID int64, phase, subject strin
 	if status != "ACTIVE" {
 		return Reservation{}, fmt.Errorf("%w: document set is %s", ErrExceeded, status)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE document_ai_budget_reservations
-		SET status='RELEASED',completed_at=NOW()
-		WHERE document_set_id=$1 AND status='RESERVED' AND expires_at<=NOW()`, setID); err != nil {
-		return Reservation{}, err
-	}
+	// Expiry means the call needs reconciliation, not that the provider charged
+	// zero tokens. A killed worker may have sent the request before losing usage.
+	// Keep the conservative hold until explicit Finalize/Release resolves it.
 	var usedTokens, heldTokens, usedCost, heldCost int64
 	err = tx.QueryRow(ctx, `SELECT
 		COALESCE(sum(input_tokens+output_tokens) FILTER (WHERE status='COMPLETED'),0),
-		COALESCE(sum(reserved_tokens) FILTER (WHERE status='RESERVED' AND expires_at>NOW()),0),
+		COALESCE(sum(reserved_tokens) FILTER (WHERE status='RESERVED'),0),
 		COALESCE(sum(actual_cost_microusd) FILTER (WHERE status='COMPLETED'),0),
-		COALESCE(sum(reserved_cost_microusd) FILTER (WHERE status='RESERVED' AND expires_at>NOW()),0)
+		COALESCE(sum(reserved_cost_microusd) FILTER (WHERE status='RESERVED'),0)
 		FROM document_ai_budget_reservations WHERE document_set_id=$1`, setID).
 		Scan(&usedTokens, &heldTokens, &usedCost, &heldCost)
 	if err != nil {
@@ -174,18 +174,42 @@ func (m *Manager) Release(ctx context.Context, reservation Reservation) error {
 	return err
 }
 
+// Uncertain keeps the full hold and makes it immediately visible for review.
+// A provider/network error alone is not a receipt proving zero billable usage.
+func (m *Manager) Uncertain(ctx context.Context, reservation Reservation) error {
+	if m == nil || m.pool == nil || reservation.ID == 0 {
+		return nil
+	}
+	_, err := m.pool.Exec(ctx, `UPDATE document_ai_budget_reservations SET expires_at=LEAST(expires_at,NOW()) WHERE id=$1 AND status='RESERVED'`, reservation.ID)
+	return err
+}
+
+func ResolveProviderError(ctx context.Context, budget Controller, reservation Reservation, cause error) {
+	if budget == nil {
+		return
+	}
+	// Disabled is a local rejection before dispatch; all other failures are
+	// conservative until actual provider usage/non-billing evidence is available.
+	if errors.Is(cause, llm.ErrDisabled) {
+		_ = budget.Release(ctx, reservation)
+		return
+	}
+	_ = budget.Uncertain(ctx, reservation)
+}
+
 func (m *Manager) Status(ctx context.Context, setID int64) (Status, error) {
 	var result Status
 	result.DocumentSetID = setID
 	err := m.pool.QueryRow(ctx, `SELECT s.ai_token_budget,s.ai_cost_budget_microusd,
 		COALESCE(sum(r.input_tokens+r.output_tokens) FILTER (WHERE r.status='COMPLETED'),0),
-		COALESCE(sum(r.reserved_tokens) FILTER (WHERE r.status='RESERVED' AND r.expires_at>NOW()),0),
+		COALESCE(sum(r.reserved_tokens) FILTER (WHERE r.status='RESERVED'),0),
 		COALESCE(sum(r.actual_cost_microusd) FILTER (WHERE r.status='COMPLETED'),0),
-		COALESCE(sum(r.reserved_cost_microusd) FILTER (WHERE r.status='RESERVED' AND r.expires_at>NOW()),0)
+		COALESCE(sum(r.reserved_cost_microusd) FILTER (WHERE r.status='RESERVED'),0),
+		count(r.id) FILTER (WHERE r.status='RESERVED' AND r.expires_at<=NOW())
 		FROM document_sets s LEFT JOIN document_ai_budget_reservations r ON r.document_set_id=s.id
 		WHERE s.id=$1 GROUP BY s.id`, setID).Scan(&result.TokenBudget, &result.CostBudgetMicroUSD,
 		&result.UsedTokens, &result.ReservedTokens, &result.UsedCostMicroUSD,
-		&result.ReservedCostMicroUSD)
+		&result.ReservedCostMicroUSD, &result.UnreconciledReservations)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Status{}, fmt.Errorf("AI budget status: document set not found")
 	}

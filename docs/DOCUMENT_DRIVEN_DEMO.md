@@ -22,8 +22,10 @@ repository chỉ được dùng sau khi test case đã duyệt để tạo và c
    UI polling trạng thái nên không giữ HTTP request chờ LLM nhiều phút.
 5. Mở **Yêu cầu**, xem evidence và giải quyết conflict/TBD; chọn exact revisions
    để duyệt theo nhóm rồi sinh testcase cho phạm vi đã approved.
-6. Mở **Test cases**, sinh draft, kiểm tra ma trận main/alternate/exception flow,
-   rồi duyệt test case. Xuất XLSX trước khi chạy để minh họa trạng thái `NY`.
+6. Mở **Test cases**, chọn phạm vi sinh và xem proposals/diff. Apply các đề xuất
+   được chọn để tạo draft, kiểm tra main/alternate/exception flow rồi duyệt riêng
+   từng revision. Apply không tự approve hoặc publish. Xuất XLSX trước khi chạy
+   để minh họa trạng thái `NY`.
 7. Sang **Sử dụng & xuất**, chọn exact approved revisions, xem preview coverage
    rồi chốt release R1. Vào **Projects**, bind release đó làm baseline và đặt
    pipeline mode `DOCUMENT_DRIVEN` với actor/reason audit.
@@ -37,7 +39,9 @@ repository chỉ được dùng sau khi test case đã duyệt để tạo và c
     Actual, taxonomy gốc, source SHA và evidence.
 12. Ghi lại `DOCUMENT_SET_ID`, `PROJECT_ID`, `ANALYSIS_ID`, `TEST_RUN_ID` rồi chạy
     `make prod-document-e2e-verify DOCUMENT_SET_ID=... PROJECT_ID=... ANALYSIS_ID=... TEST_RUN_ID=...`.
-    Chỉ kết quả JSON `"passed": true` mới là bằng chứng DoD E2E.
+    Cần JSON `"passed": true` cùng artifacts của webhook/provider/sandbox thật.
+    Verifier kiểm tra dữ liệu persisted, không tự chứng thực rằng các hệ thống
+    ngoài đã được gọi; dữ liệu seed hoặc browser deterministic không thay demo thật.
 
 ## Quản lý version testcase (UV-07)
 
@@ -60,6 +64,23 @@ repository chỉ được dùng sau khi test case đã duyệt để tạo và c
 
 Xem [bằng chứng và giới hạn UV-07](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
 Kiểm thử local này không thay thế demo provider/SCM/sandbox thật bên trên.
+
+## Cập nhật nguồn và giữ proof lịch sử (UV-08/09)
+
+1. Lưu IDs của analysis/run R1 và tải export R1 trước khi thay nguồn.
+2. Upload và duyệt nguồn v2; giải quyết requirement changes, chọn **affected**,
+   **selected** hoặc **all** rõ ràng khi sinh proposal. Theo dõi job/unit progress;
+   retry unit lỗi không được nhân proposal hoặc xóa quyết định đã hoàn tất.
+3. Đọc diff, xử lý từng đề xuất apply/dismiss/keep/retire theo action UI cho phép.
+   Matching mơ hồ cần người review; không tự nối hai scenario bằng title giống nhau.
+4. Duyệt revision mới, publish R2 và bind project sang R2. Mở lại run/export R1:
+   expected, revision manifest và bytes export đã lưu phải không đổi.
+5. Chạy lại verifier với **IDs R1 ban đầu**, không thay bằng analysis/run mới để
+   che mất proof lịch sử. Ghi riêng lỗi provider/sandbox nếu có.
+
+Xem [ma trận UV-09](UV09_VERIFICATION.md) và
+[mẫu nghiệm thu người mới](UV09_USABILITY_ACCEPTANCE.md). UV-09 còn mở; synthetic
+migration/restore và browser local không phải sign-off rollout.
 
 ## Bằng chứng nên mở cho giảng viên
 

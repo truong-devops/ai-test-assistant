@@ -72,6 +72,18 @@ unchanged R1/export and historical-run retention have automated evidence; real
 provider/SCM/sandbox rollout and human acceptance remain UV-09 gates.
 See [UV-08 completion verification](docs/UV08_COMPLETION_VERIFICATION.md).
 
+UV-09 is in progress: Node.js >=20, pinned Playwright and `make test-browser` now
+provide five real-backend browser journeys with JUnit/HTML evidence and GitLab CI
+configuration. Exact release/run/export verification and a populated synthetic
+schema-23→30→31 backup/restore drill are implemented. Migration 31 corrects only
+migrated-release timestamps, preserves the original metadata in an immutable audit,
+and refuses populated downgrade when audits exist. Provider smoke is a separate
+opt-in/manual lane, not part of deterministic browser acceptance. Three additional
+local protocol-fixture browser tests cover HTTP 400, timeout and invalid enums,
+persisted failure and UI retry recovery. Worker process-kill/usage reconciliation,
+remote CI, real demo, usability and rollout gates remain open.
+See [UV-09 verification and commands](docs/UV09_VERIFICATION.md).
+
 The earlier baseline remains operational:
 GitLab/GitHub change capture, Go changed-symbol and impact analysis, a mixed
 code/document project RAG index, AI recommendations, generated Go tests,

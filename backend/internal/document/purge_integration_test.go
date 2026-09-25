@@ -58,6 +58,38 @@ func TestPhysicalPurgeDeletesObjectsAndRetainsAudit(t *testing.T) {
 		strings.Repeat("f", 64)); err != nil {
 		t.Fatal(err)
 	}
+	// UV09: retained proposal receipts and checkpoint/result FKs must not break
+	// an otherwise eligible set purge after schema 30/31.
+	if _, err = pool.Exec(ctx, `WITH suite AS (
+ INSERT INTO test_suites(document_set_id,name) VALUES($1,'Purge proposal suite') RETURNING id
+ ), revision AS (
+ INSERT INTO test_cases(test_suite_id,document_set_id,test_case_key,title,test_type,expected_result,expected_result_hash)
+ SELECT id,$1,'TC-PURGE','Purge draft','HAPPY','Order is created',encode(sha256(convert_to('Order is created','UTF8')),'hex') FROM suite RETURNING id,test_suite_id
+ ), job AS (
+ INSERT INTO document_workflow_jobs(document_set_id,operation,input_snapshot,input_hash,requested_by,idempotency_key,status)
+ VALUES($1,'GENERATE_TESTCASES','{}',repeat('a',64),'fixture','purge-fixture','SUCCEEDED') RETURNING id
+ ), unit AS (
+ INSERT INTO document_workflow_job_units(workflow_job_id,unit_key,input_hash,status)
+ SELECT id,'requirement:fixture',repeat('a',64),'SUCCEEDED' FROM job RETURNING id,workflow_job_id
+ ), proposal AS (
+ INSERT INTO test_case_generation_proposals(document_set_id,test_suite_id,workflow_job_id,workflow_unit_id,proposal_key,classification,reason,content,content_hash,generation,candidates,source_revision,status,result_revision_id,decision,decision_reason,decided_by,decided_at)
+ SELECT $1,revision.test_suite_id,unit.workflow_job_id,unit.id,'fixture','NEW_CASE','purge fixture','{}',repeat('b',64),'{}','[]',1,'APPLIED',revision.id,'CREATE_NEW','purge fixture','fixture',NOW() FROM unit,revision RETURNING id
+ ) INSERT INTO test_case_proposal_commands(document_set_id,idempotency_key,proposal_id,request_hash,result,actor)
+ SELECT $1,'purge-fixture',id,repeat('c',64),'{}','fixture' FROM proposal`, set.ID); err != nil {
+		t.Fatal(err)
+	}
+	var releaseID int64
+	if err = pool.QueryRow(ctx, `INSERT INTO test_suite_releases
+ (test_suite_id,document_set_id,release_number,name,manifest_hash,request_hash,scope_status,published_by,idempotency_key,origin)
+ SELECT id,$1,1,'Purge migration snapshot',repeat('d',64),repeat('e',64),'PARTIAL','MIGRATION','purge-migration','MIGRATED_CURRENT_STATE'
+ FROM test_suites WHERE document_set_id=$1 RETURNING id`, set.ID).Scan(&releaseID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO test_suite_release_timestamp_audits
+ (release_id,migration_version,previous_published_at,previous_created_at,previous_item_created_at,reason)
+ VALUES($1,31,'2001-01-01T00:00:00Z','2001-01-01T00:00:00Z','[]','Purge correction audit fixture')`, releaseID); err != nil {
+		t.Fatal(err)
+	}
 	set, err = service.UpdateLifecycle(ctx, set.ID, LifecycleInput{Status: SetStatusArchived,
 		RetentionDays: 30, Actor: "integration", Reason: "exercise retention purge"})
 	if err != nil {
@@ -89,5 +121,9 @@ func TestPhysicalPurgeDeletesObjectsAndRetainsAudit(t *testing.T) {
 	}
 	if setCount != 0 || auditCount != 1 {
 		t.Fatalf("set count=%d audit count=%d", setCount, auditCount)
+	}
+	var correctionCount int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM test_suite_release_timestamp_audits WHERE release_id=$1`, releaseID).Scan(&correctionCount); err != nil || correctionCount != 0 {
+		t.Fatalf("purged release correction count=%d error=%v", correctionCount, err)
 	}
 }

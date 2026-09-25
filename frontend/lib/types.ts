@@ -30,6 +30,7 @@ export type DocumentSet = {
 };
 
 export type AIBudgetStatus = {
+  unreconciled_reservations?: number;
   document_set_id: number;
   token_budget: number;
   used_tokens: number;

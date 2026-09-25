@@ -39,6 +39,7 @@ func TestUV03PublishedReleasePinsExactApprovedRevisions(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("create second revision: created=%v err=%v", created, err)
 	}
+	assertUV09CoverageLayers(t, ctx, repository, f.setID, nil, 0)
 	for _, item := range []TestCase{first, second} {
 		if _, err := repository.ReviewExact(ctx, item.ID, ReviewInput{ReviewerName: "QA",
 			Decision: StatusApproved, ExpectedContentHash: item.ContentHash}, "qa"); err != nil {
@@ -52,6 +53,7 @@ func TestUV03PublishedReleasePinsExactApprovedRevisions(t *testing.T) {
 		release1.ScopeStatus != ReleaseScopeComplete {
 		t.Fatalf("publish R1: release=%+v created=%v err=%v", release1, created, err)
 	}
+	assertUV09CoverageLayers(t, ctx, repository, f.setID, &release1.ID, 0)
 	replayed, created, err := repository.PublishRelease(ctx, f.setID, PublishReleaseInput{
 		TestSuiteID: f.suiteID, RevisionIDs: []int64{first.ID, second.ID}, PublishedBy: "QA",
 	}, "uv03-release-1", "qa")
@@ -67,6 +69,7 @@ func TestUV03PublishedReleasePinsExactApprovedRevisions(t *testing.T) {
 		first.ExpectedResult, first.ExpectedResultHash); err != nil {
 		t.Fatalf("save exact R1 execution: %v", err)
 	}
+	assertUV09CoverageLayers(t, ctx, repository, f.setID, &release1.ID, 1)
 	working, err := repository.List(ctx, f.setID)
 	if err != nil {
 		t.Fatalf("list working revisions with execution: %v", err)
@@ -91,6 +94,7 @@ func TestUV03PublishedReleasePinsExactApprovedRevisions(t *testing.T) {
 	if err != nil || !v2.Created {
 		t.Fatalf("create v2: result=%+v err=%v", v2, err)
 	}
+	assertUV09CoverageLayers(t, ctx, repository, f.setID, &release1.ID, 1)
 	working, err = repository.List(ctx, f.setID)
 	if err != nil {
 		t.Fatalf("list working revisions after successor: %v", err)
@@ -114,6 +118,7 @@ func TestUV03PublishedReleasePinsExactApprovedRevisions(t *testing.T) {
 	if err != nil || !created || release2.ReleaseNumber != 2 || release2.ID == release1.ID {
 		t.Fatalf("publish R2: release=%+v created=%v err=%v", release2, created, err)
 	}
+	assertUV09CoverageLayers(t, ctx, repository, f.setID, &release2.ID, 0)
 	if _, _, err := repository.PublishRelease(ctx, f.setID, PublishReleaseInput{
 		TestSuiteID: f.suiteID, RevisionIDs: []int64{first.ID, v2.Revision.ID},
 		PublishedBy: "QA",
@@ -123,6 +128,43 @@ func TestUV03PublishedReleasePinsExactApprovedRevisions(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE test_suite_release_items SET ordinal=9
 		WHERE release_id=$1 AND test_case_id=$2`, release1.ID, first.ID); err == nil {
 		t.Fatal("published release item accepted mutation")
+	}
+}
+
+// VER-07: a draft design is not published/automated/executed coverage. A new
+// release must not inherit an old release's execution, even for shared revisions.
+func assertUV09CoverageLayers(t *testing.T, ctx context.Context, repository *Repository, setID int64, releaseID *int64, executed int) {
+	t.Helper()
+	report, err := repository.Coverage(ctx, setID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLayers := 1
+	if releaseID != nil {
+		wantLayers = 4
+	}
+	if len(report.Layers) != wantLayers {
+		t.Fatalf("coverage layers=%+v", report.Layers)
+	}
+	for i, layer := range report.Layers {
+		key, numerator, denominator := "DESIGNED", 1, 1
+		switch i {
+		case 1:
+			key = "PUBLISHED"
+		case 2:
+			key, numerator, denominator = "AUTOMATED", 0, 2
+		case 3:
+			key, numerator, denominator = "EXECUTED", executed, 2
+		}
+		if layer.Key != key || layer.Numerator != numerator || layer.Denominator != denominator || layer.Percent != float64(numerator)*100/float64(denominator) || layer.SourceSnapshotID == nil {
+			t.Fatalf("wrong %s coverage: %+v", key, layer)
+		}
+		if i == 0 && layer.SuiteReleaseID != nil {
+			t.Fatalf("working design unexpectedly pinned: %+v", layer)
+		}
+		if i > 0 && (layer.SuiteReleaseID == nil || *layer.SuiteReleaseID != *releaseID) {
+			t.Fatalf("coverage not pinned to current release: %+v", layer)
+		}
 	}
 }
 

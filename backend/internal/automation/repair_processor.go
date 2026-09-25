@@ -68,7 +68,7 @@ func (p *RepairProcessor) Process(ctx context.Context, job RepairJob) error {
 	response, err := p.provider.Generate(ctx, request)
 	if err != nil {
 		if p.budget != nil {
-			_ = p.budget.Release(context.WithoutCancel(ctx), reservation)
+			aibudget.ResolveProviderError(context.WithoutCancel(ctx), p.budget, reservation, err)
 		}
 		return fmt.Errorf("repair automation artifact %d: %w", subject.Artifact.ID, err)
 	}

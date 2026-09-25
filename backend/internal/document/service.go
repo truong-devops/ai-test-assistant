@@ -170,7 +170,8 @@ func (s *Service) AIBudgetStatus(ctx context.Context, id int64) (AIBudgetStatus,
 		return AIBudgetStatus{}, err
 	}
 	return AIBudgetStatus{DocumentSetID: status.DocumentSetID, TokenBudget: status.TokenBudget,
-		UsedTokens: status.UsedTokens, ReservedTokens: status.ReservedTokens,
+		UnreconciledReservations: status.UnreconciledReservations,
+		UsedTokens:               status.UsedTokens, ReservedTokens: status.ReservedTokens,
 		RemainingTokens: status.RemainingTokens, CostBudgetMicroUSD: status.CostBudgetMicroUSD,
 		UsedCostMicroUSD: status.UsedCostMicroUSD, ReservedCostMicroUSD: status.ReservedCostMicroUSD,
 		RemainingCostMicroUSD: status.RemainingCostMicroUSD}, nil

@@ -93,6 +93,113 @@ postgres-integration:
     - cd backend
     - go test -count=1 -p 1 -tags=integration ./internal/...
 
+browser-backend:
+  stage: test
+  image: golang:1.26.6
+  cache: *go-cache
+  script:
+    - mkdir -p dist-browser
+    - cd backend
+    - CGO_ENABLED=0 go build -o ../dist-browser/api ./cmd/api
+    - CGO_ENABLED=0 go build -o ../dist-browser/worker ./cmd/worker
+  artifacts:
+    paths: [dist-browser/]
+    expire_in: 1 day
+
+browser-journeys:
+  stage: integration
+  image: mcr.microsoft.com/playwright:v1.63.0-noble
+  needs: [browser-backend]
+  services:
+    - name: pgvector/pgvector:pg17
+      alias: postgres
+  variables:
+    POSTGRES_DB: uv09_browser_ci
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    UV09_DATABASE_URL: postgres://postgres:postgres@postgres:5432/uv09_browser_ci?sslmode=disable
+    UV09_ALLOW_TEST_WRITES: "yes"
+    UV09_BIN_DIR: "$CI_PROJECT_DIR/dist-browser"
+  cache: *node-cache
+  timeout: 20m
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends postgresql-client
+    - for attempt in $(seq 1 30); do pg_isready -h postgres -U postgres -d "$POSTGRES_DB" && break; sleep 1; done
+    - pg_isready -h postgres -U postgres -d "$POSTGRES_DB"
+  script:
+    - for migration in backend/migrations/*.up.sql; do psql "$UV09_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"; done
+    - npm --prefix frontend ci --ignore-scripts
+    - npm --prefix frontend run build
+    - npm --prefix frontend run test:e2e
+  artifacts:
+    when: always
+    paths: [frontend/test-results/, frontend/playwright-report/]
+    reports:
+      junit: frontend/test-results/junit.xml
+    expire_in: 14 days
+
+browser-provider-faults:
+  extends: browser-journeys
+  variables:
+    POSTGRES_DB: uv09_provider_ci
+    UV09_DATABASE_URL: postgres://postgres:postgres@postgres:5432/uv09_provider_ci?sslmode=disable
+    UV09_PROVIDER_FIXTURE: "yes"
+  artifacts:
+    reports:
+      junit: frontend/test-results/provider-faults/junit.xml
+
+# Explicit protected/manual lane. A green deterministic browser job is not proof
+# that the deployed Gemini credentials/model work. Requires a protected FILE secret.
+provider-real-smoke:
+  stage: integration
+  image: golang:1.26.6
+  cache: *go-cache
+  rules:
+    - if: '$CI_COMMIT_REF_PROTECTED == "true" && $RUN_REAL_PROVIDER_SMOKE == "yes"'
+      when: manual
+    - when: never
+  allow_failure: false
+  timeout: 5m
+  script:
+    - test -n "$LLM_API_KEY_FILE" && test -n "$LLM_MODEL"
+    - cd backend
+    - go test -count=1 -v -tags=provider_smoke ./internal/llm -run '^TestGeminiLiveSmoke$'
+
+worker-restart-drill:
+  <<: *postgres-job
+  stage: integration
+  cache: *go-cache
+  script:
+    - for migration in backend/migrations/*.up.sql; do psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"; done
+    - mkdir -p test-artifacts
+    - cd backend
+    - go test -json -count=1 -p 1 -tags=integration ./internal/workflow ./internal/aibudget -run 'TestUV09WorkerSIGKILL|TestExpiredUnknownUsage' > ../test-artifacts/uv09-worker-restart.json
+  artifacts:
+    when: always
+    paths: [test-artifacts/uv09-worker-restart.json]
+    expire_in: 14 days
+
+migration-populated:
+  <<: *postgres-job
+  stage: integration
+  script:
+    - |
+      for migration in backend/migrations/*.up.sql; do
+        revision=${migration##*/}
+        revision=${revision%%_*}
+        if [ "$revision" -gt 23 ]; then break; fi
+        psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+      done
+    - psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/uv09-legacy-fixture.sql
+    - |
+      for migration in backend/migrations/*.up.sql; do
+        revision=${migration##*/}
+        revision=${revision%%_*}
+        if [ "$revision" -le 23 ]; then continue; fi
+        psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+      done
+    - psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/uv09-migration-assertions.sql
+
 migration-roundtrip:
   <<: *postgres-job
   stage: integration

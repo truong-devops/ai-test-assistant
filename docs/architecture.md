@@ -1,5 +1,12 @@
 # Architecture
 
+UV-09 verification is read-only and separate from writers: it checks persisted
+release chains, ordered manifests, exact revision hashes and exported run proof
+within a repeatable-read transaction. It never repins historical analyses to the
+project's current release. Browser fixtures use real API/worker/PostgreSQL with a
+disabled deterministic provider; live-provider/SCM/sandbox acceptance is separate.
+See [UV-09 verification](UV09_VERIFICATION.md).
+
 > **Architecture status – 2026-09-23:** this document records the architecture
 > implemented by document-driven Phases 0–10, Phase 11 rollout controls,
 > workflow/versioning UV-00–UV-07 (UV-05 usability and UV-07 human/screen-reader acceptance pending), and the still-running code-first

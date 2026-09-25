@@ -1,6 +1,17 @@
 # Database
 
-> This page documents the schema currently implemented by migrations 1–30.
+UV-09 adds migration **31**, correcting migration-25 timestamps for
+`MIGRATED_CURRENT_STATE` releases only. `test_suite_release_timestamp_audits`
+retains original release/item timestamps and records the correction time/reason.
+The new timestamp means migration-31 correction time, not an inferred historical
+publication or an inferred migration-25 time. Immutable guards are transactionally
+restored before commit; release IDs/manifests and persisted run/export proof stay
+unchanged. Audit rows are immutable and cascade with an eligible release purge.
+Populated down-31 is refused when audits exist; use forward fixes or a coordinated
+backup restore. The synthetic 23→30→31 drill checks this and restores the entire
+graph/audit/source into a new database; see [UV-09](UV09_VERIFICATION.md).
+
+> This page documents the schema currently implemented by migrations 1–31.
 > Migration 15 establishes the document-driven foundation beside the legacy
 > tables; migration 16 completes persistence and guards for semantic indexing,
 > requirement extraction/review and grounded test-case generation/coverage.
@@ -283,8 +294,13 @@ application point.
 `document_sets` gains `PURGING`, `ai_token_budget`, and
 `ai_cost_budget_microusd`. `document_ai_budget_reservations` provides an atomic
 ledger: active calls reserve conservative token/cost capacity, completed calls
-store actual usage, failed calls release capacity, and expired reservations no
-longer consume the limit. Historical document/automation token usage is
+store actual usage. Unknown provider outcomes (including timeout/HTTP error and
+worker death) keep their full reservation, even after expiry: expiry is a review
+signal, not proof of zero billing. Only a known local pre-dispatch rejection
+(`ErrDisabled`) releases automatically. `unreconciled_reservations` counts expired
+holds; those holds still reduce remaining capacity and can block retries.
+Finalize is a one-time transition, preventing duplicate usage accounting.
+Historical document/automation token usage is
 backfilled so an upgrade does not silently reset the token total; historical
 cost without a persisted rate remains zero rather than being fabricated.
 

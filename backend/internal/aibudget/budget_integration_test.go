@@ -96,3 +96,71 @@ func TestManagerReservesFinalizesAndEnforcesDocumentSetBudget(t *testing.T) {
 		t.Fatalf("concurrent reservations succeeded=%d rejected=%d", succeeded, rejected)
 	}
 }
+
+func TestExpiredUnknownUsageRemainsHeldUntilReconciled(t *testing.T) {
+	if os.Getenv("TEST_DATABASE_URL") == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var id int64
+	if err = pool.QueryRow(ctx, `INSERT INTO document_sets(name,ai_token_budget) VALUES('UV09 unresolved usage',1000) RETURNING id`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(context.Background(), `DELETE FROM document_sets WHERE id=$1`, id) }()
+	manager := NewManager(pool, 1, 2)
+	input := llm.Request{Instructions: "test", Input: "fixture", SchemaName: "test", MaxOutputTokens: 800}
+	reservation, err := manager.Reserve(ctx, id, "TEST", "uncertain", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE document_ai_budget_reservations SET expires_at=NOW()-INTERVAL '1 second' WHERE id=$1`, reservation.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = manager.Reserve(ctx, id, "TEST", "must-not-release-old", input); !errors.Is(err, ErrExceeded) {
+		t.Fatalf("expired unknown hold bypassed budget: %v", err)
+	}
+	held, err := manager.Status(ctx, id)
+	if err != nil || held.UnreconciledReservations != 1 || held.UsedTokens != 0 || held.ReservedTokens != reservation.ReservedTokens {
+		t.Fatalf("unknown status=%+v %v", held, err)
+	}
+	// Known fixture receipt, not an assumption that real provider calls are free.
+	if err = manager.Finalize(ctx, reservation, llm.Usage{InputTokens: 30, OutputTokens: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err = manager.Finalize(ctx, reservation, llm.Usage{InputTokens: 999}); err == nil {
+		t.Fatal("duplicate usage reconciliation accepted")
+	}
+	settled, err := manager.Status(ctx, id)
+	if err != nil || settled.UnreconciledReservations != 0 || settled.ReservedTokens != 0 || settled.UsedTokens != 40 || settled.UsedCostMicroUSD != 50 {
+		t.Fatalf("settled=%+v %v", settled, err)
+	}
+	reservation, err = manager.Reserve(ctx, id, "TEST", "network error", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ResolveProviderError(ctx, manager, reservation, context.DeadlineExceeded)
+	held, err = manager.Status(ctx, id)
+	if err != nil || held.UnreconciledReservations != 1 || held.ReservedTokens <= 0 {
+		t.Fatalf("timeout became free: %+v %v", held, err)
+	}
+	// Resolve this fixture timeout with its own receipt, not by relabeling it as
+	// a later local error. A new disabled-provider invocation has a separate hold.
+	if err = manager.Finalize(ctx, reservation, llm.Usage{InputTokens: 30, OutputTokens: 10}); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err = manager.Reserve(ctx, id, "TEST", "disabled locally", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ResolveProviderError(ctx, manager, reservation, llm.ErrDisabled)
+	settled, err = manager.Status(ctx, id)
+	if err != nil || settled.UnreconciledReservations != 0 || settled.ReservedTokens != 0 || settled.UsedTokens != 80 {
+		t.Fatalf("disabled provider reservation leaked: %+v %v", settled, err)
+	}
+}

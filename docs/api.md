@@ -1,5 +1,12 @@
 # API
 
+UV-09 changes no HTTP route or response shape. Migration 31 corrects the timestamp
+metadata of migrated releases and retains original values in a database audit;
+historical snapshots/exports are not rewritten. Browser role/token checks and the
+read-only `document-e2e-verify` CLI now verify exact release/revision/run/export
+relationships. A count-only or legacy unpinned record is not sufficient evidence.
+See [verification contract and limits](UV09_VERIFICATION.md).
+
 > This page documents the API currently implemented. Document-driven Phases
 > 2–10 and the Phase 11 rollout controls run beside the code-first baseline.
 > XLSX/Markdown export, approved baseline mapping, document-grounded Go
@@ -109,8 +116,11 @@ write endpoint.
 - `POST /api/document-sets/{id}/lifecycle` updates `ACTIVE`/`ARCHIVED` and
   retention days (30–3650) plus total token/cost budgets with mandatory
   actor/reason audit. Archive is recoverable and blocks new uploads.
-- `GET /api/document-sets/{id}/ai-budget` returns total, used, actively reserved,
-  and remaining tokens and micro-USD.
+- `GET /api/document-sets/{id}/ai-budget` returns total, used, reserved,
+  and remaining tokens and micro-USD, plus `unreconciled_reservations` (integer,
+  including zero). Expired reservations and unknown provider errors remain held
+  until reconciled; retry does not erase possibly billable usage. The workspace
+  warns about these holds. This is not a browser endpoint for clearing them.
 - `GET /api/document-sets/{id}/purge` is admin-only and previews retention
   eligibility, object totals, exact confirmation text, and immutable-reference
   blockers. `POST` to the same route permanently deletes an eligible archived

@@ -254,6 +254,10 @@ const path = require("node:path");
         `${base}/api/backend${exported.download_url}`,
       );
       assert.ok(response.ok());
+      if (process.env.UV09_TEST_TOKEN) {
+        assert.ok(!JSON.stringify(response.headers()).includes(process.env.UV09_TEST_TOKEN));
+        assert.ok(!(await response.body()).includes(Buffer.from(process.env.UV09_TEST_TOKEN)));
+      }
       return response.body();
     };
     const r1Bytes = await download();

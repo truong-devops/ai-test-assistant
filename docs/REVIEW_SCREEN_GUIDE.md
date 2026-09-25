@@ -15,6 +15,14 @@ Với workspace testcase hiện tại, xem phần UV-07 trong
 nội dung nghiệp vụ; automation artifact là mã thực thi; release RN chốt tập exact
 revision. Duyệt một loại không tự duyệt hay chuyển PASS sang loại khác.
 
+Luồng UV-08 hiện dùng proposal-first: chọn phạm vi affected/selected/all, theo dõi
+job và từng requirement unit, đọc diff rồi apply/dismiss hoặc quyết định keep/retire
+theo action được cung cấp. Apply chỉ tạo revision draft; approve và publish release
+là quyết định riêng. Retry unit lỗi phải giữ checkpoint và quyết định đã hoàn tất.
+Viewer/editor không được nâng quyền review bằng cách gọi POST trực tiếp.
+Xem [demo cập nhật nguồn](DOCUMENT_DRIVEN_DEMO.md#cập-nhật-nguồn-và-giữ-proof-lịch-sử-uv-0809)
+và [bằng chứng UV-09](UV09_VERIFICATION.md); nghiệm thu người mới/screen reader vẫn mở.
+
 ## 1. Mục đích của màn hình
 
 Đây là nơi tổng hợp toàn bộ bằng chứng của một Pull Request/Merge Request:
