@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/evidence"
 )
 
 type check struct {
@@ -83,6 +84,14 @@ func main() {
 		result.Checks = append(result.Checks, check{Name: item.name, Passed: passed,
 			Count: count, Detail: item.detail})
 		result.Passed = result.Passed && passed
+	}
+	pinned, err := evidence.VerifyPinned(ctx, pool, *setID, *projectID, *analysisID, *runID)
+	if err != nil {
+		fatal(fmt.Sprintf("pinned evidence verification: %v", err))
+	}
+	for _, item := range pinned {
+		result.Checks = append(result.Checks, check{Name: item.Name, Passed: item.Passed, Count: item.Count, Detail: item.Detail})
+		result.Passed = result.Passed && item.Passed
 	}
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {

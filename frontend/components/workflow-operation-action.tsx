@@ -16,7 +16,7 @@ type ErrorEnvelope = {
 
 export function WorkflowOperationAction({ setId, operation, label, activeLabel,
   initialJob, disabled = false, canRetry = false, canCancel = false,
-  payload = {}, onBlocked }: {
+  payload = {}, onBlocked, onJob }: {
   setId: string | number;
   operation: DocumentWorkflowOperation;
   label: string;
@@ -27,12 +27,14 @@ export function WorkflowOperationAction({ setId, operation, label, activeLabel,
   canCancel?: boolean;
   payload?: Record<string, unknown>;
   onBlocked?: (error: ErrorEnvelope) => void;
+  onJob?: (job: DocumentWorkflowJob) => void;
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const command = useRef<{ signature: string; key: string } | undefined>(undefined);
   const { job, setJob, pollError, active } = useWorkflowJob(initialJob, (finished) => {
+    onJob?.(finished);
     if (finished.status === "SUCCEEDED") {
       setError("");
       router.refresh();
@@ -61,6 +63,7 @@ export function WorkflowOperationAction({ setId, operation, label, activeLabel,
         throw new Error(result.message ?? result.error ?? `Request failed (${response.status})`);
       }
       setJob(result.job);
+      onJob?.(result.job);
       command.current = undefined;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not reach the workflow API.");
@@ -106,6 +109,7 @@ export function WorkflowOperationAction({ setId, operation, label, activeLabel,
     {job?.status === "SUCCEEDED" ? <small className="form-success" role="status">
       Hoàn tất · {job.completed_units}/{job.total_units} units
     </small> : null}
+    {job?.units && job.units.length > 1 ? <details><summary>Checkpoint theo requirement · {job.completed_units}/{job.total_units}</summary>{job.units.filter((unit) => unit.unit_key !== "operation").map((unit) => <p key={unit.id}>{unit.unit_key === "retire" ? "Đối chiếu nguồn removed" : `Requirement #${unit.unit_key.split(":")[1]}`} · {unit.status} · attempt {unit.attempt_count}{unit.error_message ? ` · ${unit.error_message}` : ""}</p>)}<p>Thử lại bước lỗi chỉ xử lý các unit chưa thành công, không chạy lại unit đã lưu.</p></details> : null}
     {error || pollError || (job?.status === "FAILED" ? job.error_message : "") ?
       <div><p className="form-error" role="alert">{pollError ? "Chưa cập nhật được tiến độ. Kiểm tra kết nối; tác vụ trên server vẫn được giữ." : "Chưa hoàn tất thao tác. Kiểm tra điều kiện nguồn/quyền và ngân sách; dùng Thử lại bước lỗi khi có."}</p>
         <details><summary>Chi tiết lỗi xử lý</summary><pre className="source-text">{error || pollError || job?.error_message}</pre></details></div> : null}

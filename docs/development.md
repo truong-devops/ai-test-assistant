@@ -11,6 +11,11 @@
   requirement/scenario/expected-result snapshot.
 - Coverage must be calculated from persisted requirement-flow/test-case links,
   not from an LLM claim.
+- UV-08 proposal generation uses schema 30: freeze scope/targets, publish each unit's
+  proposals and successful checkpoint atomically, and preserve completed human
+  decisions on retry. Never infer scenario identity from title/type similarity.
+  Follow [UV-08 verification](UV08_COMPLETION_VERIFICATION.md) for isolated database
+  and browser checks; do not run its retained fixtures on production.
 - Document intake accepts DOCX and Markdown only. Keep parser input passive: never run
   macros, embedded executables, document links, or uploaded code. XLSX input is
   deferred; do not silently treat the Phase 6 report template as a requirement
@@ -53,8 +58,11 @@
 - HTTP handlers must call services rather than querying PostgreSQL directly.
 - UV-07 testcase browser checks and isolated schema-28 setup are documented in
   [UV07_TESTCASE_VERSIONING_VERIFICATION.md](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
-  The script retains fixtures; never run it against production. Playwright/Chromium
-  must be installed separately until the UV-09 browser CI lane is established.
+  For current schema 31, use the [UV-09 runner](UV09_VERIFICATION.md): pinned
+  Playwright dependency, three service roles, real API/worker and retained fixtures.
+  Install Chromium locally; the CI lane supplies the matching browser image.
+  Never run retained fixtures against production. Remote CI and real-provider
+  acceptance remain separate gates, not implied by deterministic local success.
 - External systems must be represented by interfaces.
 - Pass `context.Context` through I/O boundaries.
 - Wrap errors with useful operation context and never log secrets.
@@ -117,7 +125,7 @@
   test path, forbid production-code changes, and reject unchanged code.
 - The Phase 9 frontend is a Next.js application. Run `make frontend-install`
   before `make frontend-typecheck` or `make frontend-build`; use Node.js
-  18.18+ locally. Docker builds it with Node 20.
+  20+ locally (including the UV-09 Playwright runner). Docker builds it with Node 20.
 - Keep `BACKEND_API_URL` server-only. Browser mutations must use the
   same-origin frontend proxy and must not expose GitLab/GitHub, LLM, or database
   credentials.

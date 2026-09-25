@@ -1,6 +1,13 @@
 # Architecture
 
-> **Architecture status – 2026-09-22:** this document records the architecture
+UV-09 verification is read-only and separate from writers: it checks persisted
+release chains, ordered manifests, exact revision hashes and exported run proof
+within a repeatable-read transaction. It never repins historical analyses to the
+project's current release. Browser fixtures use real API/worker/PostgreSQL with a
+disabled deterministic provider; live-provider/SCM/sandbox acceptance is separate.
+See [UV-09 verification](UV09_VERIFICATION.md).
+
+> **Architecture status – 2026-09-23:** this document records the architecture
 > implemented by document-driven Phases 0–10, Phase 11 rollout controls,
 > workflow/versioning UV-00–UV-07 (UV-05 usability and UV-07 human/screen-reader acceptance pending), and the still-running code-first
 > baseline. It is retained so maintainers can safely migrate the system. The
@@ -34,6 +41,26 @@ the manifest, source revision and coverage scope. A preview persists no release;
 restoring or editing never transfers execution/automation approval. Navigation
 polls workflow JSON without refreshing the whole page and discarding open forms.
 No new schema is needed. See [UV-07 verification](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
+
+UV-08 has an opt-in proposal backend (migrations 29–30). Enqueue pins requirement
+inputs and target heads; the worker compares against those exact revisions and
+atomically persists proposals under its attempt/lease/cancel guard. A human edit
+does not rebase the comparison. Reviewer apply checks current source eligibility
+and compare-and-swap head, then writes the draft/decision/idempotency receipt in
+one transaction using the revision repository's insertion primitive. Existing
+release/run proof stays pinned. An operation unit coordinates the queue; each
+requirement and the non-AI retire check have separate atomic output checkpoints.
+Partial failures allow review of successful units and retry only unfinished work.
+Claim revision, attempt, lease and cancellation fence stale workers even after
+manual retry resets the job attempt counter. Both testcase UI entry points use a
+shared proposal-first workspace with explicit scope confirmation and reviewer decisions.
+The comparison endpoint loads frozen revision/citation content, not a live head.
+Client-side diff is display-only; apply authority stays in the backend transaction.
+Legacy API clients keep direct-draft behavior. New proposal jobs default to affected
+scope once active identities exist; fresh sets default to all approved requirements.
+Source relations suggest candidates, never establish scenario lineage automatically.
+The frozen scope is not recomputed from heads modified by partial review/retry.
+See [UV-08 completion verification](UV08_COMPLETION_VERIFICATION.md).
 
 The refactor does not remove SCM automation or sandbox execution. It separates
 business truth from technical execution:

@@ -69,7 +69,7 @@ func (e *LLMExtractor) Extract(ctx context.Context, snapshot document.ContextSna
 	call.LatencyMS = time.Since(started).Milliseconds()
 	if err != nil {
 		if e.budget != nil {
-			_ = e.budget.Release(context.WithoutCancel(ctx), reservation)
+			aibudget.ResolveProviderError(context.WithoutCancel(ctx), e.budget, reservation, err)
 		}
 		call.Status, call.ErrorMessage = "FAILED", err.Error()
 		return nil, call, err

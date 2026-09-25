@@ -11,6 +11,22 @@ included; remaining production gates are tracked in
 
 ## Trust boundaries
 
+UV-09 browser checks exercise viewer/editor/reviewer frontends with one ephemeral
+test service token. Client-supplied role/actor/Authorization cannot override the
+proxy's trusted headers; token checks cover HTML, JS, storage/cookies, error and
+XLSX response bytes/headers. This is scoped regression evidence, not an exhaustive
+penetration test or end-user authentication. CI real-provider smoke is protected,
+manual and opt-in; deterministic browser tests never require production secrets.
+See [UV-09 evidence and open gates](UV09_VERIFICATION.md).
+
+The read-only evidence verifier parses generated XLSX ZIP/XML in memory, with
+32-entry, 16 MiB/part and 64 MiB total/compressed limits. It never extracts paths,
+fetches relationships or executes formulas. Cell values, revision metadata and
+summary formulas must match the immutable snapshot even when the byte checksum
+has been recomputed. This verifies the repo's export format, not arbitrary office
+documents, visual styling or actual provider/sandbox execution. Oversized or
+unsupported exports fail verification; do not interpret that as verified evidence.
+
 | Component | Trust level | Important controls | Residual risk |
 |---|---|---|---|
 | API/frontend | Trusted application | bearer service authentication, role checks, input caps, rate limit, security headers, non-root/read-only containers | shared token is not individual identity; OIDC proxy is still required |

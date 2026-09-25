@@ -30,6 +30,7 @@ export type DocumentSet = {
 };
 
 export type AIBudgetStatus = {
+  unreconciled_reservations?: number;
   document_set_id: number;
   token_budget: number;
   used_tokens: number;
@@ -164,6 +165,7 @@ export type WorkflowBlockingReason = {
 };
 
 export type DocumentWorkflowJob = {
+	units?: Array<{ id:number; unit_key:string; status:string; attempt_count:number; error_message?:string }>;
   id: number;
   document_set_id: number;
   operation: DocumentWorkflowOperation;
@@ -195,6 +197,7 @@ export type DocumentWorkflowJob = {
 };
 
 export type DocumentWorkflow = {
+	generation_scope?: {default_scope:string; affected_requirement_ids:number[]; affected_family_ids:number[]; removed_family_ids:number[]; blocked_requirements:number; changes:Array<{classification:string; reason:string; before_ids:number[]; after_ids:number[]; affected_test_case_ids:number[]}>};
   source_intents: SourceIntent[];
   document_set_id: number;
   source_revision: number;
@@ -403,6 +406,20 @@ export type TestCaseRevisionDiff = {
   to: BusinessTestCase;
   changes: Array<{ field: string; before: unknown; after: unknown }>;
 };
+
+export type GenerationTarget = { family_id: number; revision_id: number; head_token: string };
+export type GenerationProposal = {
+	workflow_unit_id?: number;
+  id: number; document_set_id: number; workflow_job_id: number;
+  classification: "NEW_CASE" | "NEW_REVISION" | "UNCHANGED" | "RETIRE_CANDIDATE" | "AMBIGUOUS_MATCH";
+  reason: string; content: TestCaseRevisionContent; content_hash: string;
+  generation: Record<string, unknown>; candidates: GenerationTarget[];
+  source_revision: number; status: "PENDING" | "APPLIED" | "DISMISSED";
+  decision: string; decision_reason: string; decided_by: string;
+  result_revision_id?: number;
+};
+export type ProposalPage = { proposals: GenerationProposal[]; next_before?: number };
+export type ProposalComparison = { target: GenerationTarget; before: TestCaseRevisionContent; after: TestCaseRevisionContent };
 
 export type BusinessTestCaseDetail = {
   test_case: BusinessTestCase;

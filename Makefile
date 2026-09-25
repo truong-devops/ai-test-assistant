@@ -46,6 +46,21 @@ test: frontend-typecheck
 test-integration:
 	cd backend && TEST_DATABASE_URL="$${TEST_DATABASE_URL}" go test -p 1 -tags=integration ./internal/...
 
+.PHONY: test-browser test-migration-drill test-provider-smoke test-worker-restart
+test-worker-restart:
+	test -n "$${TEST_DATABASE_URL}"
+	cd backend && go test -count=1 -v -p 1 -tags=integration ./internal/workflow ./internal/aibudget -run 'TestUV09WorkerSIGKILL|TestExpiredUnknownUsage'
+
+test-browser:
+	npm --prefix frontend run test:e2e
+
+test-migration-drill:
+	node scripts/uv09-migration-drill.cjs
+
+test-provider-smoke:
+	test "$${RUN_REAL_PROVIDER_SMOKE}" = "yes"
+	cd backend && go test -count=1 -v -tags=provider_smoke ./internal/llm -run '^TestGeminiLiveSmoke$$'
+
 evaluate-document:
 	mkdir -p evaluation/results
 	cd backend && go run ./cmd/document-evaluate -input "../$(DOCUMENT_EVALUATION_DATASET)" -output "../$(DOCUMENT_EVALUATION_OUTPUT)"

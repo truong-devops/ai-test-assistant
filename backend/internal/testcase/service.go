@@ -71,7 +71,11 @@ func (s *Service) Generate(ctx context.Context, setID int64) (GenerateSummary, e
 // GeneratePinned consumes only the exact IDs chosen when the job was enqueued.
 // Load and validate every input before invoking a provider or writing testcases.
 func (s *Service) GeneratePinned(ctx context.Context, setID int64, input GenerationBaseline) (GenerateSummary, error) {
-	baseline, err := s.loadGenerationBaseline(ctx, setID, input.RequirementIDs)
+	var baseline []requirement.Detail
+	var err error
+	if !(input.ReviewProposals && input.IncludeRetire && len(input.RequirementIDs) == 0) {
+		baseline, err = s.loadGenerationBaseline(ctx, setID, input.RequirementIDs)
+	}
 	if err != nil {
 		return GenerateSummary{}, err
 	}
@@ -81,6 +85,16 @@ func (s *Service) GeneratePinned(ctx context.Context, setID int64, input Generat
 	}
 	summary := GenerateSummary{DocumentSetID: setID, SuiteID: suite.ID,
 		RequirementCount: len(baseline)}
+	if input.ReviewProposals && input.WorkflowUnitID == 0 {
+		count, err := s.repository.proposalCount(ctx, setID, input.WorkflowJobID)
+		if err != nil {
+			return summary, err
+		}
+		if count > 0 {
+			summary.ProposalCount = count
+			return summary, nil
+		}
+	}
 	kept := make([]generatedCase, 0)
 	suppressed := make([]suppressedCase, 0)
 	for _, detail := range baseline {
@@ -116,6 +130,14 @@ func (s *Service) GeneratePinned(ctx context.Context, setID int64, input Generat
 			}
 			kept = append(kept, generatedCase{Proposal: proposal})
 		}
+	}
+	if input.ReviewProposals {
+		proposals := make([]Proposal, 0, len(kept))
+		for _, item := range kept {
+			proposals = append(proposals, item.Proposal)
+		}
+		summary.ProposalCount, err = s.repository.saveProposals(ctx, suite, input, proposals)
+		return summary, err
 	}
 	for index := range kept {
 		saved, created, err := s.repository.Save(ctx, suite, kept[index].Proposal)

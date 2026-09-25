@@ -1,7 +1,7 @@
 # Kế hoạch chuyển đổi sang Document-Driven Testing
 
 - **Ngày chốt định hướng:** 10/09/2026
-- **Cập nhật triển khai:** 22/09/2026
+- **Cập nhật triển khai:** 23/09/2026
 - **Trạng thái:** Phase 0–11 đã triển khai; Definition of Done E2E chờ chạy
   verifier trên hạ tầng demo thật
 - **Phạm vi:** Backend Go, Frontend Next.js, PostgreSQL/pgvector, LLM,
@@ -26,9 +26,16 @@ làm rõ conflict/TBD và đối chiếu nguồn với migration 28; kiểm th�
 UV-07 đã có workspace identity/history/diff/edit/restore, preview release và
 kiểm thử browser cả xung đột hai tab; còn nghiệm thu người dùng/screen reader.
 Xem [bằng chứng UV-07](UV07_TESTCASE_VERSIONING_VERIFICATION.md).
-UV-08 đang triển khai: đã có pinned generation, optional selected requirements
-và bỏ semantic auto-merge; proposal/classification/apply/UI vẫn chưa hoàn thành.
-Xem [bằng chứng chặng nền UV-08](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
+UV-08 đã hoàn thành kỹ thuật (schema 30): proposal-first, scope affected mặc định
+khi cập nhật, selected/all, summary nguồn, diff và reviewer apply có CAS. Checkpoint
+từng requirement giữ kết quả đã review khi retry; all-removed baseline sinh retire
+không cần gọi AI. Đã kiểm tra đổi nguồn → duyệt revision → R2, giữ nguyên R1/export
+và run lịch sử. Xem [nghiệm thu UV-08](UV08_COMPLETION_VERIFICATION.md).
+UV-09 đang triển khai: Playwright/CI config, 5/5 browser local, verifier pinning,
+synthetic populated migration/restore schema 31 và 3/3 U04 provider-error browser
+đã có bằng chứng. SIGKILL/restart ba ranh giới commit, generation fault/reload
+và unknown-usage ledger đã đạt local; chưa chạy smoke/billing provider thật,
+pipeline remote hoặc nghiệm thu người mới; xem [UV-09](UV09_VERIFICATION.md).
 Tiến độ này không tự đóng
 Definition of Done E2E trên hạ tầng demo thật của kế hoạch hiện tại.
 

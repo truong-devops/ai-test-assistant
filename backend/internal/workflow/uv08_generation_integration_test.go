@@ -11,7 +11,116 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/requirement"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/testcase"
 )
+
+func TestUV08ProposalWorkflowPinsTargetsAndReusesCheckpoint(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	setID := workflowFixture(t, ctx, pool)
+	defer func() {
+		_, _ = pool.Exec(context.Background(), `UPDATE document_workflow_jobs SET status='CANCELED',finished_at=NOW() WHERE document_set_id=$1 AND status IN ('QUEUED','RUNNING')`, setID)
+	}()
+	cases := testcase.NewRepository(pool)
+	caseService := testcase.NewService(cases, requirement.NewRepository(pool))
+	if _, err := caseService.Generate(ctx, setID); err != nil {
+		t.Fatal(err)
+	}
+	before, err := cases.List(ctx, setID)
+	if err != nil || len(before) == 0 {
+		t.Fatalf("initial cases=%v %v", before, err)
+	}
+	repo := NewRepository(pool)
+	service := NewService(repo, nil, nil, caseService, 3)
+	input := OperationInput{Operation: OperationGenerate, ReviewProposals: true, GenerationScope: "ALL"}
+	job, created, err := service.Enqueue(ctx, setID, input, "proposal-workflow", "editor")
+	if err != nil || !created {
+		t.Fatalf("enqueue=%+v %v", job, err)
+	}
+	var pinned generateInputSnapshot
+	if err := json.Unmarshal(job.InputSnapshot, &pinned); err != nil || !pinned.ReviewProposals || len(pinned.Targets) != len(before) {
+		t.Fatalf("pinned targets=%s %v", job.InputSnapshot, err)
+	}
+	if _, _, err := service.Enqueue(ctx, setID, OperationInput{Operation: OperationGenerate}, "proposal-workflow", "editor"); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("mode collision=%v", err)
+	}
+	target := pinned.Targets[0]
+	title := "Human edit after generation enqueue"
+	human, err := cases.CreateRevision(ctx, target.FamilyID, testcase.CreateRevisionInput{
+		BaseRevisionID: target.RevisionID, ExpectedHeadRevisionID: target.RevisionID,
+		Patch: &testcase.RevisionPatch{Title: &title}, Reason: "Human edit",
+	}, "human-edit", "qa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ValidateInputSnapshot(ctx, job); err != nil {
+		t.Fatalf("head change must not repin/invalidate generation source: %v", err)
+	}
+	claimed, err := repo.ClaimNext(ctx, time.Minute)
+	if err != nil || claimed.ID != job.ID {
+		t.Fatalf("claim=%+v %v", claimed, err)
+	}
+	output, err := service.Process(ctx, claimed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := caseService.ListProposals(ctx, setID, job.ID, 0, 50)
+	if err != nil || len(page.Proposals) != len(before) {
+		t.Fatalf("proposals=%+v %v", page, err)
+	}
+	// A crash after atomic proposal persistence can retry without new revisions
+	// or duplicate proposal rows. Completion still fences the worker attempt.
+	replayOutput, err := service.Process(ctx, claimed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstJSON, _ := json.Marshal(output)
+	replayJSON, _ := json.Marshal(replayOutput)
+	if string(firstJSON) != string(replayJSON) {
+		t.Fatalf("checkpoint changed output: %s / %s", firstJSON, replayJSON)
+	}
+	if err := repo.Complete(ctx, claimed, output); err != nil {
+		t.Fatal(err)
+	}
+	matched := false
+	for _, p := range page.Proposals {
+		if len(p.Candidates) != 1 || p.Candidates[0].FamilyID != target.FamilyID {
+			continue
+		}
+		matched = true
+		if p.Candidates[0] != target || p.Classification != "UNCHANGED" {
+			t.Fatalf("comparison used live head: %+v", p)
+		}
+		_, err := caseService.DecideProposal(ctx, p.ID, testcase.ProposalDecision{Decision: "KEEP", TargetFamilyID: target.FamilyID, ExpectedHeadRevisionID: target.RevisionID, Reason: "Review exact target"}, "stale-keep", "qa")
+		if !errors.Is(err, testcase.ErrRevisionConflict) {
+			t.Fatalf("stale apply=%v", err)
+		}
+	}
+	if !matched {
+		t.Fatal("missing pinned target proposal")
+	}
+	family, err := cases.GetFamily(ctx, target.FamilyID)
+	if err != nil || family.HeadRevisionID == nil || *family.HeadRevisionID != human.Revision.ID {
+		t.Fatalf("human head changed=%+v %v", family, err)
+	}
+	var revisionCount, proposalCount int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM test_cases WHERE document_set_id=$1),(SELECT count(*) FROM test_case_generation_proposals WHERE workflow_job_id=$2)`, setID, job.ID).Scan(&revisionCount, &proposalCount); err != nil {
+		t.Fatal(err)
+	}
+	if revisionCount != len(before)+1 || proposalCount != len(before) {
+		t.Fatalf("generation/checkpoint mutated cases: revisions=%d proposals=%d", revisionCount, proposalCount)
+	}
+}
 
 func TestUV08SelectedGenerationSnapshotOwnershipReplayAndFreshness(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")

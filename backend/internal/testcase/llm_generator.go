@@ -59,7 +59,7 @@ func (g *LLMGenerator) Generate(ctx context.Context, source requirement.Detail) 
 	call.LatencyMS = time.Since(started).Milliseconds()
 	if err != nil {
 		if g.budget != nil {
-			_ = g.budget.Release(context.WithoutCancel(ctx), reservation)
+			aibudget.ResolveProviderError(context.WithoutCancel(ctx), g.budget, reservation, err)
 		}
 		call.Status, call.ErrorMessage = "FAILED", err.Error()
 		return nil, call, err

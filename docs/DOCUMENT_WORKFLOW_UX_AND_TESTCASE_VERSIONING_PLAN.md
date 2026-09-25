@@ -2,7 +2,7 @@
 
 - Ngày lập: 17/09/2026.
 - Baseline khảo sát: commit `b6c88c3`.
-- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật. UV-07 đã qua kiểm thử kỹ thuật, còn nghiệm thu người dùng/screen reader. UV-08 đang triển khai: đã có nền generation pin exact requirements và bỏ semantic auto-merge; proposal/apply/UI chưa hoàn thành**.
+- Trạng thái: **UV-00 đến UV-04 đã nghiệm thu; UV-05 còn nghiệm thu usability với người mới. UV-06 đã hoàn thành kiểm thử kỹ thuật. UV-07 đã qua kiểm thử kỹ thuật, còn nghiệm thu người dùng/screen reader. UV-08 đã hoàn thành kỹ thuật (schema 30): affected/selected/all, diff/apply, retry từng requirement, all-removed và E2E đổi nguồn → R2. UV-09 đang triển khai, các gate nghiệm thu người dùng/phát hành vẫn mở**.
 - Phạm vi: frontend Next.js, backend Go, worker, PostgreSQL, nguồn tài liệu,
   requirements, testcase, baseline, automation, kết quả chạy và xuất báo cáo.
 - Hai mục tiêu: người mới tự hoàn thành luồng sinh testcase; QA quản lý được
@@ -779,43 +779,57 @@ Tiến độ chặng nền (22/09/2026): worker đã dùng exact IDs trong job t
 baseline live; API nhận optional `requirement_ids` (1–100), kiểm tra ownership/
 approval/current và idempotency theo scope. Dedupe trong generation không còn gộp
 theo title/expected gần giống hoặc tự merge nguồn. Revision mới lưu generation
-provenance. Chưa có proposal persistence/classification/apply hoặc UI chọn scope;
-không đánh dấu các mục gộp dưới đây hoàn tất chỉ vì đã có một phần nền.
-Xem [UV08_GENERATION_FOUNDATION_VERIFICATION.md](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
+provenance. Chặng tiếp nối 23/09 thêm migration 29 và `review_proposals: true`:
+persist/classify proposal trước khi đổi testcase, reviewer apply có CAS + receipt.
+Chặng hoàn tất 24/09 thêm migration 30, affected mặc định khi cập nhật, summary
+nguồn và checkpoint/retry theo requirement; retire-only chạy khi không còn yêu cầu
+approved hiện hành. Client API legacy vẫn có thể sinh draft trực tiếp; các mục
+backend bên dưới áp dụng cho proposal mode. Kiểm thử kỹ thuật UV-08 đã hoàn tất;
+không tự đóng các gate rollout/demo thật và nghiệm thu người dùng của UV-09.
+Xem [UV08_COMPLETION_VERIFICATION.md](UV08_COMPLETION_VERIFICATION.md).
 
 Backend:
 
-- [ ] Generation job pin requirement/source snapshot; lưu input/version/prompt/output
+- [x] Generation job pin requirement/source snapshot; lưu input/version/prompt/output
   đủ để biết vì sao một revision được đề xuất.
-- [ ] Chọn scope `yêu cầu đã chọn`, `case bị ảnh hưởng`, `toàn bộ bộ làm việc`;
+- [x] Chọn scope `yêu cầu đã chọn`, `case bị ảnh hưởng`, `toàn bộ bộ làm việc`;
   default chỉ phần bị ảnh hưởng khi cập nhật tài liệu.
-- [ ] Kết quả phân loại `NEW_CASE`, `NEW_REVISION`, `UNCHANGED`, `RETIRE_CANDIDATE`,
+- [x] Kết quả phân loại `NEW_CASE`, `NEW_REVISION`, `UNCHANGED`, `RETIRE_CANDIDATE`,
   `AMBIGUOUS_MATCH`; lưu reason và exact target identity nếu đã xác nhận.
-- [ ] Unchanged phải so đủ content + provenance; không lấy title/type/expected
+- [x] Unchanged phải so đủ content + provenance; không lấy title/type/expected
   đơn thuần. Không gộp negative/boundary case có data/steps khác nhau.
-- [ ] Gợi ý semantic matching không tự quyết lineage; reviewer giải quyết ambiguity.
-- [ ] Apply proposal kiểm tra expected head, idempotency và approval đã có; user
+- [x] Gợi ý semantic matching không tự quyết lineage; reviewer giải quyết ambiguity
+  qua API. Quan hệ nguồn chưa đủ xác nhận lineage luôn trả `AMBIGUOUS_MATCH`.
+- [x] Apply proposal kiểm tra expected head, idempotency và approval đã có; user
   sửa trong lúc AI chạy thì trả conflict, không ghi đè bản human edit.
-- [ ] Nguồn bị removed đề xuất archive/exclude từ release mới, không delete case.
-- [ ] Regeneration không tự approve, đổi release binding hoặc chạy sandbox.
+- [x] Nguồn bị removed đề xuất archive/exclude từ release mới, không delete case.
+  `RETIRE_CANDIDATE`/`ARCHIVE` trong ALL/AFFECTED khi mọi nguồn liên kết removed;
+  hỗ trợ baseline không còn requirement approved và không cần ngân sách AI.
+- [x] Regeneration không tự approve, đổi release binding hoặc chạy sandbox.
 
 Frontend:
 
-- [ ] Trước khi chạy: summary nguồn thay đổi, requirement/case ảnh hưởng, phạm vi
+- [x] Trước khi chạy: summary nguồn thay đổi, requirement/case ảnh hưởng, phạm vi
   đã chọn và usage/budget hiện có; không đưa ước lượng token giả chính xác.
-- [ ] Sau chạy: bảng đối chiếu mới/sửa/không đổi/bỏ/không rõ, mở diff và source.
-- [ ] Chọn áp dụng proposal; nút publish Rn+1/gắn project chỉ sau review đúng điều kiện.
-- [ ] Job partial lỗi chỉ retry unit cần thiết, giữ kết quả human đã xử lý.
+  Hiển thị source revision/comparison, nguồn bị chặn, ảnh hưởng theo quan hệ lưu
+  được và budget theo quyền; quan hệ mơ hồ vẫn yêu cầu reviewer xác nhận.
+- [x] Sau chạy: bảng đối chiếu mới/sửa/không đổi/bỏ/không rõ, mở diff và source.
+- [x] Chọn áp dụng proposal; nút publish Rn+1/gắn project chỉ sau review đúng điều kiện.
+  Apply chỉ tạo draft; link dẫn sang exact revision review, không publish/bind tự động.
+- [x] Job partial lỗi chỉ retry unit cần thiết, giữ kết quả human đã xử lý.
 
 Kiểm tra và Definition of Done:
 
-- [ ] Cùng nguồn/payload không đổi không tăng revision vô ích; retry cùng output
+- [x] Cùng nguồn/payload không đổi không tăng revision vô ích; retry cùng output
   không nhân testcase dù provider request có thể đã tốn phí ở attempt trước.
-- [ ] Một thay đổi requirement chỉ đề xuất cập nhật các case thực sự có liên kết;
+- [x] Một thay đổi requirement chỉ đề xuất cập nhật các case thực sự có liên kết;
   quan hệ không chắc phải được báo, không giả vờ xác định ảnh hưởng đầy đủ.
-- [ ] Case mới cùng test type được giữ độc lập; case removed không biến mất khỏi run cũ.
-- [ ] Reviewer đang edit và job generate đồng thời không làm mất chỉnh sửa.
-- [ ] R1/run/export trước thay đổi vẫn truy xuất nguyên trạng sau publish R2.
+- [x] Case mới cùng test type được giữ độc lập; case removed không biến mất khỏi run cũ.
+- [x] Reviewer đang edit và job generate đồng thời không làm mất chỉnh sửa.
+- [x] R1/run/export trước thay đổi vẫn truy xuất nguyên trạng sau publish R2.
+  Browser kiểm tra nguồn upload thật/R1/export/R2/archive; PostgreSQL integration
+  kiểm tra run PASSED fixture cũ và XLSX giữ nguyên, revision mới không kế thừa PASS.
+  Không dùng fixture này làm bằng chứng sandbox/provider thật.
 
 File trọng tâm: testcase generation service/schema/repository, requirement source
 mapping, workflow jobs, compare proposals UI và release publishing.
@@ -825,24 +839,40 @@ mapping, workflow jobs, compare proposals UI và release publishing.
 **Mục tiêu:** chứng minh cả tính đúng của dữ liệu lẫn khả năng tự sử dụng trước khi
 bật mặc định trên môi trường demo.
 
+Tiến độ 24/09: đã có runner Playwright/CI config, 5/5 browser local với API/worker
+thật, role/token checks, verifier exact release/revision và synthetic populated
+migration/restore 23→30→31. Migration 31 hiệu chỉnh timestamp legacy kèm audit,
+không đổi manifest/run/export cũ. Đã đạt 3/3 U04 browser provider-error fixture.
+Đã bổ sung SIGKILL/restart ba ranh giới commit, generation error/reload browser
+và unknown-usage budget hold; có local evidence, không thay billing receipt thật.
+**Chưa đóng UV-09**; còn CI remote, snapshot triển khai thực, demo/provider thật,
+đối soát billing thực tế và human acceptance.
+Xem [ma trận và bằng chứng UV-09](UV09_VERIFICATION.md).
+
 Kiểm thử và vận hành:
 
 - [ ] Thực hiện ma trận mục 8, bổ sung Playwright/dev dependencies và CI job cho
-  browser journey; package hiện chưa có browser-test script, phải thêm rõ ràng.
+  browser journey. Đã có dependency/lockfile, `npm run test:e2e`, HTML/JUnit và
+  GitLab job; ma trận còn các dòng chưa đủ evidence, pipeline remote chưa chạy.
 - [ ] Browser tests dùng LLM fixture cho kết quả ổn định; integration dùng PostgreSQL
   và API/worker thật. Có lane smoke provider thật riêng, không dùng mock để kết
   luận Gemini production đã hoạt động.
+  Đã có lane deterministic local, 3/3 browser protocol fixture cho 400/timeout/enum
+  và protected/manual Gemini smoke; real smoke chưa chạy.
 - [ ] Kiểm thử migration từ snapshot dữ liệu cũ, dry-run backfill, kiểm tra FK/hash,
   backup/restore có các bảng và artifact mới.
-- [ ] Mở workspace với viewer/editor/reviewer; API và UI cùng policy, service token
+  Đã PASS synthetic schema-23 populated → 30 → 31 và empty-target restore DB/files;
+  timestamp correction có audit, populated down bị chặn, empty down/up đạt;
+  còn snapshot của môi trường triển khai và coordinated operational drill.
+- [x] Mở workspace với viewer/editor/reviewer; API và UI cùng policy, service token
   không lộ ra browser/download/error.
 - [ ] Usability test ít nhất 3 người mới với ba nhiệm vụ mục 9; ghi lỗi/điểm vướng
   và sửa blocker trước release. Nếu chưa có người thử, để checkbox này mở.
 - [ ] Chạy demo thực từ upload → review → version/diff → release → webhook →
   sandbox → Excel, rồi sửa nguồn và kiểm tra run/report cũ vẫn đúng.
-- [ ] Mở rộng verifier persisted evidence hiện có để kiểm tra release/revision,
+- [x] Mở rộng verifier persisted evidence hiện có để kiểm tra release/revision,
   không chỉ đếm record có tồn tại.
-- [ ] Update README, API/database/deployment/security/development, demo guide,
+- [x] Update README, API/database/deployment/security/development, demo guide,
   review guide và kế hoạch gốc; ghi rõ hiện trạng so với mục tiêu.
 - [ ] Rollout/rollback theo mục 10 và lưu bằng chứng thực tế.
 
@@ -909,8 +939,9 @@ make test-integration
 ```
 
 `make test-integration` cần `TEST_DATABASE_URL` của PostgreSQL test riêng và migrations
-đã được áp dụng; không trỏ vào database production. Playwright scripts/CI sẽ được
-thêm ở UV-09, không coi là lệnh hiện đã tồn tại. Kiểm thử browser tích hợp không được
+đã được áp dụng; không trỏ vào database production. UV-09 đã thêm `make test-browser`
+và `make test-migration-drill`; xem điều kiện opt-in/DB riêng trong bằng chứng UV-09.
+Kiểm thử browser tích hợp không được
 thay hết backend bằng mock rồi coi migration/job/versioning đã được chứng minh.
 
 ## 9. Đo xem trải nghiệm đã dễ hơn chưa
@@ -962,6 +993,9 @@ thống kê đủ để chứng minh hiệu quả luận văn.
   hiện hành đang chọn, gắn `origin=MIGRATED_CURRENT_STATE`, timestamp lúc migrate.
   Không coi đây là release được user công bố trong quá khứ; không thêm case đã
   từng bị loại chỉ vì nay tìm thấy một approved version cũ.
+  Forward fix 31 giữ timestamp binding sai từ migration 25 trong audit và đặt
+  timestamp metadata bằng lúc hiệu chỉnh ở 31; không suy đoán thời gian chạy 25.
+  Proof đã persist vẫn giữ nguyên, kể cả metadata thời gian cũ.
 - [ ] Analysis/run cũ giữ snapshot/ref cũ; backfill release link chỉ khi chứng minh
   manifest khớp hoàn toàn. Nếu không khớp, trình bày “snapshot lịch sử chưa có release”.
 - [ ] Migration idempotent, thống kê trước/sau, validate FK/hash rồi mới nâng constraint.
@@ -1023,8 +1057,8 @@ tương thích consumer trước khi bật version writer; không cho FE flag t�
 - [ ] UV-05 — Code và kiểm thử kỹ thuật đã đạt; còn nghiệm thu người mới tự sử dụng.
 - [x] UV-06 — Requirement batch review và đối chiếu nguồn; kiểm thử kỹ thuật đạt 22/09/2026.
 - [ ] UV-07 — Code và kiểm thử kỹ thuật đạt; còn nghiệm thu phân biệt version với người dùng và screen reader.
-- [ ] UV-08 — Đã có nền pinned generation/selected requirements/safe dedupe; còn proposal classification/apply và UI theo scope.
-- [ ] UV-09 — Browser E2E, usability, migration drill và rollout.
+- [x] UV-08 — Hoàn tất kỹ thuật: proposal-first, affected/selected/all, per-unit retry, all-removed, E2E đổi nguồn/R2 và giữ proof lịch sử; xem nghiệm thu schema 30.
+- [ ] UV-09 — Đã có Playwright/CI config, 5/5 journey + 3/3 extraction/generation fault local, SIGKILL/restart + unknown-usage ledger, verifier và synthetic migration/restore schema 31; còn CI remote, billing/provider/demo thật, usability và rollout.
 
 Mỗi lần hoàn thành phase, điền bên dưới hoặc tạo subsection theo phase:
 
@@ -1149,6 +1183,125 @@ dấu hết checklist code chưa thay thế bằng chứng đó.
   Revision mới ghi generation provenance; replay không thay head do QA sửa.
 - Unit/vet/typecheck và PostgreSQL integration đã chạy; chi tiết tại
   [UV08_GENERATION_FOUNDATION_VERIFICATION.md](UV08_GENERATION_FOUNDATION_VERIFICATION.md).
-- Chưa commit, chưa migration mới, chưa UI scope/proposal hoặc apply CAS. UV-08
-  còn mở; bước tiếp theo là persist/classify proposals và apply trên expected head,
-  sau đó mới nối bảng đối chiếu/phạm vi và retry từng unit vào UI.
+- Chặng nền không thêm migration; các phần proposal tiếp nối được ghi bên dưới.
+
+### Tiến độ UV-08 — proposal backend, 23/09/2026
+
+- Migration 29 lưu proposal input/classification/reason/candidate heads bất biến
+  và receipt quyết định theo idempotency key. Enqueue opt-in pin exact heads;
+  worker không rebase sang human head mới và không ghi testcase trước apply.
+- Phân loại đủ năm nhóm; chỉ exact full content + known generation context là
+  unchanged. Quan hệ requirement/ancestry/source comparison không tự quyết lineage.
+- API list phân trang và reviewer apply/dismiss; CAS head + source/approval guard,
+  draft/decision/receipt cùng transaction. Archive không xóa revision/release/run.
+- Kiểm thử concurrent replay, human edit khi generate, R1/R2/PASS giữ nguyên,
+  retire, rollback batch lỗi, lease/cancel và quyền reviewer. Workflow integration
+  dùng service thật xác nhận pin targets và tái sử dụng checkpoint whole-batch.
+- Chi tiết lệnh, bằng chứng, giới hạn và rollout:
+  [UV08_PROPOSAL_VERIFICATION.md](UV08_PROPOSAL_VERIFICATION.md).
+- Tại mốc backend, UI scope/diff/apply còn thiếu; chặng tiếp nối bên dưới đã nối UI.
+  Default affected cases, all-removed baseline, retry failed unit và browser journey
+  R1/export → source update → proposal → R2 vẫn mở.
+  Không tự đóng UV-05/07 human acceptance hoặc E2E provider/SCM/sandbox thật.
+
+### Tiến độ UV-08 — nối giao diện proposal-first, 23/09/2026
+
+- Hai entry pages testcase dùng chung UI: explicit all/selected scope, xác nhận
+  nguồn/phạm vi, usage/budget theo quyền và job polling. Không còn generation chính
+  direct-draft trên hai trang này; API cũ giữ compatibility.
+- Bảng proposal phân trang/lọc job, nội dung/source/provenance, diff exact bản pin.
+  Reviewer chọn decision/identity/reason và xác nhận; apply giữ CAS/receipt server,
+  không publish/bind/approve tự động. Viewer chỉ đọc.
+- Browser kiểm tra mất response sau commit, retry cùng key, KEEP, stale-head
+  conflict giữ reason, dismiss rồi REVISE có xác nhận; R1 không đổi, draft không
+  kế thừa approval/PASS. Hai trang và viewport 390 px, viewer API 403 đã kiểm tra.
+- `make test lint`, production build, toàn bộ PostgreSQL integration đạt.
+  Bằng chứng và giới hạn: [UV08_PROPOSAL_UI_VERIFICATION.md](UV08_PROPOSAL_UI_VERIFICATION.md).
+- Bước tiếp theo: scope/default affected cases + all-removed baseline, sau đó
+  checkpoint/retry từng requirement và E2E đổi nguồn đầy đủ. Chưa đóng UV-08.
+
+### Hoàn tất UV-08 — 24/09/2026
+
+- Đã hoàn thành scope AFFECTED/SELECTED/ALL, mặc định affected khi đã có testcase,
+  summary thay đổi nguồn và xác nhận phạm vi. Baseline all-removed sinh retire
+  không gọi AI; archive giữ release/run/history.
+- Migration 30 liên kết proposal với checkpoint từng requirement. Partial retry
+  giữ unit thành công và quyết định reviewer; claim revision ngăn worker cũ ảnh
+  hưởng attempt mới. Scope/targets đóng băng, không tự rebase sau human edit.
+- PostgreSQL integration kiểm tra lỗi từng phần, KEEP + human edit + retry,
+  affected scope không lan sang case khác, R1/run/XLSX giữ nguyên sau R2/archive.
+- Browser đầy đủ PASS hai lượt (set 11/12): đổi nguồn thật → affected proposal →
+  review v4 → preview/publish R2, rồi removed toàn bộ → archive; viewer 403, diff
+  mobile, mất response và head conflict. Provider disabled, không suy ra PASS thật.
+- `make test lint`, frontend build, toàn bộ integration, fresh migration 1–30 và
+  down/up 30 trên DB trống đều đạt. Đã đóng checklist kỹ thuật UV-08.
+  Xem [nghiệm thu và giới hạn](UV08_COMPLETION_VERIFICATION.md).
+- UV-09, UV-05/07 human acceptance vẫn mở. Chưa migrate DB chính hoặc deploy/commit.
+
+### Tiến độ UV-09 — 24/09/2026
+
+- Thêm Playwright dependency/lockfile, runner API/worker thật với ba frontend role,
+  CI browser/artifact lane và protected/manual provider smoke riêng.
+- Browser local 5/5 đạt, gồm UV-05→08 và quyền/token. Unit/lint, frontend build,
+  PostgreSQL integration và focused graph purge schema 30 đạt.
+- Verifier đối chiếu exact release/revision, manifest, expected/artifact và export;
+  test giữ R1 sau bind R2 và từ chối proof trộn hai release.
+- Synthetic populated schema 23→30, backup/restore sang DB mới và source checksum
+  đạt; không gọi đó là drill trên snapshot production.
+- Đồng bộ tài liệu và mẫu human acceptance; xem [ma trận UV-09](UV09_VERIFICATION.md).
+  Còn browser fault injection/process-kill, audit trên snapshot triển khai thực,
+  CI remote, demo thật, nghiệm thu người mới/screen reader và rollout/rollback.
+- Không đổi schema/DB chính, không gọi provider thật, không commit hoặc deploy.
+
+### Tiến độ UV-09 — forward fix timestamp, 24/09/2026
+
+- Thêm migration 31, không sửa migration 25: chỉ hiệu chỉnh timestamp của release
+  MIGRATED_CURRENT_STATE và items, lưu bản cũ/reason/correction time vào audit bất biến.
+- Synthetic drill tái hiện timestamp 2001, kiểm ID/manifest/binding/run/export không
+  đổi, USER_PUBLISHED nguyên trạng, no-op, trigger từ chối write sau hiệu chỉnh,
+  backup/restore audit/source; populated down bị chặn, empty down/up đạt.
+- Toàn bộ PostgreSQL integration trên schema 31 đạt, gồm purge graph với audit mới.
+  Thêm CI populated migration lane dùng SQL assertions chung; chưa chạy CI remote.
+- Browser schema 31 đạt 5/5 sau khi sửa race trong assertion UV05: chờ dòng inventory
+  hiển thị thay vì đếm ngay khi heading xuất hiện, không reload hoặc automatic retry.
+- Chỉ migrate DB test riêng; database chính vẫn giữ nguyên. Gate fault-injection,
+  process-kill, staging/human/production chưa được đóng.
+
+### Tiến độ UV-09 — U04 provider fault browser, 25/09/2026
+
+- Local Gemini protocol fixture riêng, fake key, không gửi prompt ra ngoài. Thêm
+  lane CI và artifacts riêng, không dùng fixture để kết luận provider thật đã chạy.
+- 3/3 đạt: HTTP 400, timeout, status enum APPROVED bị chặn. UI tự hiện lỗi;
+  3 attempt rồi dừng, không lưu requirement sai; reload giữ error/progress/job.
+- Retry qua UI với output hợp lệ phục hồi cùng job/intent và tạo một requirement
+  DRAFT, không duplicate job hay false approval. Kiểm call count và lưu job JSON.
+- U05 process-kill/usage reconciliation, generation-specific provider fault,
+  pipeline remote và nghiệm thu thật vẫn mở; chưa commit/deploy/migrate DB chính.
+
+### Tiến độ UV-09 — restart, generation faults và P0 regression, 25/09/2026
+
+- Đã bổ sung và đạt 3 SIGKILL modes: đang gọi provider, trước commit unit,
+  sau commit checkpoint. Resume cùng job, không nhân proposal; giữ quyết định
+  reviewer và từ chối stale heartbeat. Test dùng subprocess thật + provider fixture.
+- Unknown usage không tự release vì timeout/HTTP error/TTL. Giữ ngân sách,
+  hiển thị reservation chưa đối soát qua API/UI; recorded usage chỉ finalize một
+  lần. Không gọi đây là hoàn tất đối soát hóa đơn provider thật.
+- 3/3 browser fault mở rộng đạt cả extraction, generation PARTIAL_FAILED/retry,
+  reload giữa generation, checkpoint và budget warnings. Chạy lại 5/5 journey
+  trên DB sạch schema 31 cũng đạt; report hai lane tách riêng.
+- Bổ sung coverage regression VER-07 và bảng mapping DATA/VER trong
+  [UV09_VERIFICATION.md](UV09_VERIFICATION.md). CI có lane restart JSON artifacts.
+- Phần còn lại cần môi trường/bằng chứng thực: CI remote, provider/SCM/sandbox
+  demo và billing receipts, 3 người mới + screen reader, snapshot/rollout/rollback.
+  Không tự đánh dấu UV-09 hoàn thành hoặc thay human acceptance bằng browser test.
+
+### Tiến độ UV-09 — kiểm chứng nội dung Excel, 25/09/2026
+
+- Verifier không chỉ kiểm checksum/snapshot: đọc ZIP/XML, đối chiếu ô dữ liệu,
+  history, revision/release metadata và công thức Summary với persisted snapshot.
+- Thêm regression sửa expected/actual/status/metadata dù checksum được tính lại;
+  kiểm routing sheet, duplicate/path/size limits, malformed XML và formula injection.
+  Không giải nén ra filesystem hoặc mở external relationship.
+- Scope/report integration xác nhận export R1 thật vẫn đạt sau bind R2.
+  Đây là bằng chứng tính nhất quán file/snapshot, không thay demo sandbox/provider
+  thật hoặc chứng minh người dùng đã mở Excel. Gate thực tế vẫn giữ trạng thái mở.

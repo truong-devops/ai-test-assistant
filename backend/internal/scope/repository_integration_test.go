@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/automation"
+	"github.com/maccuatruong/ai-test-assistant/backend/internal/evidence"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/job"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/knowledge"
 	"github.com/maccuatruong/ai-test-assistant/backend/internal/llm"
@@ -293,6 +294,30 @@ func TestBaselineScopeFallbackManualAuditAndImmutableExport(t *testing.T) {
 	if err != nil || pinnedR1.SuiteReleaseID != release.ID ||
 		pinnedR1.Items[0].TestCaseID == draft.Revision.ID {
 		t.Fatalf("existing R1 analysis changed after binding R2: %+v error=%v", pinnedR1, err)
+	}
+	// UV09 verifier must use persisted R1 even after the project binds R2.
+	checks, err := evidence.VerifyPinned(ctx, pool, setID, project1, explicitAnalysis, bundle.TestRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range checks {
+		if !check.Passed {
+			t.Fatalf("pinned verifier rejected retained R1: %+v", checks)
+		}
+	}
+	wrong, err := evidence.VerifyPinned(ctx, pool, setID, project2, explicitAnalysis, bundle.TestRunID)
+	if err != nil || len(wrong) != 1 || wrong[0].Passed {
+		t.Fatalf("verifier accepted foreign project: %+v %v", wrong, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE test_runs SET suite_release_id=$2 WHERE id=$1`, bundle.TestRunID, release2.ID); err != nil {
+		t.Fatal(err)
+	}
+	wrong, err = evidence.VerifyPinned(ctx, pool, setID, project1, explicitAnalysis, bundle.TestRunID)
+	if err != nil || len(wrong) != 1 || wrong[0].Passed {
+		t.Fatalf("verifier accepted mixed R1/R2: %+v %v", wrong, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE test_runs SET suite_release_id=$2 WHERE id=$1`, bundle.TestRunID, release.ID); err != nil {
+		t.Fatal(err)
 	}
 	r2Analysis := insertAnalysis(t, pool, ctx, project1, suffix+3,
 		json.RawMessage(`{"title":"Fix UC-B08 after R2"}`))

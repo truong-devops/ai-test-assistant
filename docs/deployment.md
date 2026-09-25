@@ -14,6 +14,39 @@ mounts runtime secrets as files, binds HTTP ports to loopback by default, rotate
 container logs, and starts application containers with a read-only root
 filesystem, dropped capabilities, and `no-new-privileges`.
 
+The current UV-08 proposal workspace requires migrations through **30** and matching
+API/worker/frontend versions. Back up and drain old workers before the schema/code
+cutover. New jobs use per-requirement checkpoints; do not rewrite existing job input
+or silently repin releases during rollout. See the migration/rollback limits and
+isolated test evidence in [UV-08 completion verification](UV08_COMPLETION_VERIFICATION.md).
+Technical completion does not replace the UV-09 production acceptance gates.
+
+AI budget recovery is conservative: a timeout, HTTP error or killed worker is not
+proof of a free request. Expired/uncertain reservations remain held and can stop
+new calls. Inspect the reservation's job/unit/attempt and obtain provider usage or
+non-billing evidence before reconciliation. Internal `Finalize`/`Release` are not
+an operator API; there is no UI action that clears unknown holds. Preserve the
+receipt and operational audit when reconciling through an approved maintenance
+procedure; do not clear all expired rows or increase budgets just to make a retry
+pass. Local fixture tests do not prove real provider billing reconciliation.
+
+UV-09 now supplies `make test-browser`, `make test-migration-drill` and an explicit
+`make test-provider-smoke` lane. Run the deterministic checks on isolated databases,
+not against this production stack. Synthetic migration/restore passes do not replace
+a coordinated production backup/restore rehearsal. Run the expanded persisted-proof
+verifier again on the OLD analysis/run IDs after publishing/binding R2; it must still
+verify R1. See [commands, matrix and open rollout gates](UV09_VERIFICATION.md).
+
+The UV-09 schema target is **31**. Before applying it, back up DB + storage and
+drain writers: it takes exclusive locks on releases/items while auditing and
+correcting only migrated-release timestamps. The time recorded is the correction
+time, not a recovered original publication time. Plan the maintenance window from
+a staging snapshot; local synthetic timings are not production sizing evidence.
+Down-31 refuses to discard existing correction audits. Roll back application code
+only after compatibility checks, or use a forward fix/coordinated pre-cutover
+restore; do not disable immutable triggers manually. No production rollout has
+been performed as part of the local verification.
+
 The production API requires a file-mounted bearer token and enforces service
 roles. It does not authenticate end-user identities: keep loopback ports behind
 an OIDC/authenticated reverse proxy, let only that trusted proxy/frontend know
